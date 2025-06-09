@@ -42,7 +42,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, Plus } from 'lucide-react';
 
 export function AiConfigManager() {
   const configs = useLiveQuery(() => db.aiConfigs.toArray(), []);
@@ -93,7 +93,9 @@ export function AiConfigManager() {
   return (
     <div className="w-full">
       <div className="flex justify-end mb-4">
-        <Button onClick={() => openDialog()}>添加配置</Button>
+        <Button onClick={() => openDialog()}>
+          <Plus className="mr-2 h-4 w-4" /> 添加配置
+        </Button>
       </div>
       <div className="border rounded-md">
         <Table>

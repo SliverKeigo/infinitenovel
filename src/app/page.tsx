@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, PenSquare, Library, Cpu } from "lucide-react";
 
 export default function Home() {
   return (
@@ -21,13 +21,19 @@ export default function Home() {
 
       <div className="mt-8 flex gap-4">
         <Link href="/create">
-          <Button size="lg">开始创作</Button>
+          <Button size="lg">
+            <PenSquare className="mr-2 h-5 w-5" /> 开始创作
+          </Button>
         </Link>
         <Link href="/manage">
-          <Button size="lg" variant="secondary">查看作品</Button>
+          <Button size="lg" variant="secondary">
+            <Library className="mr-2 h-5 w-5" /> 查看作品
+          </Button>
         </Link>
         <Link href="/ai-config">
-          <Button size="lg" variant="secondary">配置AI</Button>
+          <Button size="lg" variant="secondary">
+            <Cpu className="mr-2 h-5 w-5" /> 配置AI
+          </Button>
         </Link>
       </div>
 
