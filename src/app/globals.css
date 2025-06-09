@@ -56,6 +56,13 @@
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%
   }
+  @font-face {
+    font-family: 'MapleMono';
+    src: url('/MapleMono-NF-CN-Medium.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
 }
 
 @layer base {
