@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ∞ Infinite Novel
 
-## Getting Started
+### "让您的小说，永远有下一章。"
 
-First, run the development server:
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
+[![shadcn/ui](https://img.shields.io/badge/shadcn/ui-black?logo=shadcn-ui&logoColor=white)](https://ui.shadcn.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+**Infinite Novel** 是一个基于多 Agent 协作的无限扩展 AI 创作平台。它致力于解决长篇小说创作中的连贯性、创新性和可持续性问题，为作者提供一个永不枯竭的灵感源泉和创作伙伴。
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 核心功能 (Core Features)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+-   **♾️ 无限章节扩展**: 独创智能扩展协调器，动态分析故事潜力，保持主角不变，智能扩展世界观、人物关系和情节线索。
+-   **🤖 多 Agents 协作架构**: 业界首创5大专业 Agent 协同：总编统筹、人物塑造、情节推进、一致性检查、智能扩展，实现任务协调与冲突仲裁。
+-   **🧠 智能记忆管理**: 统一知识库架构，智能检索关联，分层记忆压缩，实时冲突检测，确保长篇小说的记忆一致性。
+-   **🔍 深度一致性检查**: 多维度一致性分析：人物性格、行为模式、情节逻辑、时间线、世界观规则，并提供智能修复建议。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ 技术栈 (Tech Stack)
 
-## Learn More
+-   **框架**: [Next.js](https://nextjs.org/) 14 (App Router)
+-   **语言**: [TypeScript](https://www.typescriptlang.org/)
+-   **样式**: [Tailwind CSS](https://tailwindcss.com/)
+-   **UI 组件库**: [shadcn/ui](https://ui.shadcn.com/)
+-   **图标库**: [Lucide React](https://lucide.dev/)
+-   **客户端状态管理**: [Zustand](https://github.com/pmndrs/zustand)
+-   **客户端数据库**: [Dexie.js](https://dexie.org/) (IndexedDB Wrapper)
 
-To learn more about Next.js, take a look at the following resources:
+## ⚡ 本地运行 (Getting Started)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1.  **克隆仓库**
+    ```bash
+    git clone https://github.com/SliverKeigo/infinitenovel.git
+    cd infinitenovel
+    ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+2.  **安装依赖**
+    ```bash
+    npm install
+    ```
 
-## Deploy on Vercel
+3.  **启动开发服务器**
+    ```bash
+    npm run dev
+    ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+4.  **打开浏览器**
+    访问 [http://localhost:3000](http://localhost:3000) 查看项目。
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📝 项目状态
+
+本项目正处于早期开发阶段，欢迎提出宝贵的意见和建议。
