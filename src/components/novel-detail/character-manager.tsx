@@ -25,9 +25,14 @@ export const CharacterManager = () => {
                         <p className="text-sm text-muted-foreground mt-2">系统会在生成章节时自动创建人物。</p>
                     </div>
                 ) : (
-                    <div>
-                        {/* 人物列表将在这里渲染 */}
-                    </div>
+                    <ul className="space-y-4">
+                        {characters.map((character) => (
+                            <li key={character.id} className="border-b border-muted pb-2 last:border-b-0">
+                                <p className="font-semibold">{character.name}</p>
+                                <p className="text-sm text-muted-foreground">{character.coreSetting}</p>
+                            </li>
+                        ))}
+                    </ul>
                 )}
             </CardContent>
         </Card>

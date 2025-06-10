@@ -25,9 +25,14 @@ export const PlotClueManager = () => {
                         <p className="text-sm text-muted-foreground mt-2">系统会在生成章节时自动构建情节线索。</p>
                     </div>
                 ) : (
-                    <div>
-                        {/* 情节线索列表将在这里渲染 */}
-                    </div>
+                    <ul className="space-y-4">
+                        {plotClues.map((clue) => (
+                            <li key={clue.id} className="border-b border-muted pb-2 last:border-b-0">
+                                <p className="font-semibold">{clue.title}</p>
+                                <p className="text-sm text-muted-foreground">{clue.description}</p>
+                            </li>
+                        ))}
+                    </ul>
                 )}
             </CardContent>
         </Card>
