@@ -61,11 +61,12 @@ export default function ManagePage() {
             ))
         ) : novels.length > 0 ? (
           novels.map((novel) => (
-            <NovelCard
-              key={novel.id}
-              novel={novel}
-              onDelete={handleDeleteRequest}
-            />
+            <Link href={`/manage/${novel.id}`} key={novel.id} className="block">
+                <NovelCard
+                  novel={novel}
+                  onDelete={() => handleDeleteRequest(novel)}
+                />
+            </Link>
           ))
         ) : (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">

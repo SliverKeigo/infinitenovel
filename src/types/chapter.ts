@@ -1,0 +1,23 @@
+/**
+ * 章节的数据模型
+ */
+export interface Chapter {
+  /** 数据库自动生成的唯一ID */
+  id?: number;
+  /** 所属小说的ID */
+  novelId: number;
+  /** 章节序号 */
+  chapterNumber: number;
+  /** 章节标题 */
+  title: string;
+  /** 章节正文内容 */
+  content: string;
+  /** 章节字数 */
+  wordCount: number;
+  /** 章节状态 ('draft': 草稿, 'published': 已发布) */
+  status: 'draft' | 'published';
+  /** 创建时间 */
+  createdAt: Date;
+  /** 最后更新时间 */
+  updatedAt: Date;
+} 
