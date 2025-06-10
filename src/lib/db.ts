@@ -5,6 +5,7 @@ import type { GenerationSettings } from '@/types/generation-settings';
 import type { Chapter } from '@/types/chapter';
 import type { Character } from '@/types/character';
 import type { PlotClue } from '@/types/plot-clue';
+import type { SerializedVectorIndex } from '@/types/vector-index';
 
 // 注意：SettingsProfile 不是 stores 中使用的类型，而似乎是一个数据库概念。
 // 如果它是其他类型的混合体，可以在这里定义。
@@ -30,6 +31,8 @@ export class InfiniteNovelDatabase extends Dexie {
   characters!: Table<Character>;
   /** 情节线索表 */
   plotClues!: Table<PlotClue>;
+  /** 小说向量索引表 */
+  novelVectorIndexes!: Table<SerializedVectorIndex>;
   
   // 注意：'settingsProfiles' 表似乎是多余的，如果它只是命名的 GenerationSettings。
   // generation-settings.ts store 中的逻辑直接使用预设和单个设置对象。
@@ -50,7 +53,7 @@ export class InfiniteNovelDatabase extends Dexie {
     this.version(2).stores({
       aiConfigs: '++id, &name',
       generationSettings: 'id', // ID 始终为 1
-      novels: '++id, name, genre, style, createdAt, updatedAt, totalChapterGoal, specialRequirements, expansionCount',
+      novels: '++id, name, genre, style, createdAt, updatedAt, totalChapterGoal, specialRequirements, expansionCount, plotOutline, plotClueCount',
       chapters: '++id, novelId, chapterNumber',
       characters: '++id, novelId',
       plotClues: '++id, novelId',
@@ -62,6 +65,10 @@ export class InfiniteNovelDatabase extends Dexie {
           novel.expansionCount = 0;
         }
       });
+    });
+
+    this.version(4).stores({
+      novelVectorIndexes: 'novelId', // novelId is the primary key and corresponds to the novel's id
     });
 
     this.on('populate', this.populate);

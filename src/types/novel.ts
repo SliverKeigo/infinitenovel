@@ -20,6 +20,10 @@ export interface Novel {
   totalChapterGoal: number;
   /** 扩写次数 */
   expansionCount: number;
+  /** 生成的剧情大纲 */
+  plotOutline?: string;
+  /** 包含的情节线索数量 */
+  plotClueCount: number;
   /** 用户的特殊要求或备注 */
   specialRequirements?: string;
   /** 创建时间 */
