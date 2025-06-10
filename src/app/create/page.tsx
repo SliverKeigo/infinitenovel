@@ -30,7 +30,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { GenerationProgress } from "@/components/generation-progress";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Book, Bot, Gem, PencilRuler, Target, Text, Workflow } from "lucide-react";
 
 
 const formSchema = z.object({
@@ -71,6 +71,7 @@ const formSchema = z.object({
 export default function CreateNovelPage() {
   const router = useRouter();
   const { addNovel, generateNovelChapters, generationTask } = useNovelStore();
+  const [submittedValues, setSubmittedValues] = useState<z.infer<typeof formSchema> | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -87,6 +88,7 @@ export default function CreateNovelPage() {
   const isGenerating = generationTask.isActive;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    setSubmittedValues(values);
     try {
       toast.info("正在创建小说设定...");
       const newNovelId = await addNovel(values);
@@ -222,7 +224,55 @@ export default function CreateNovelPage() {
               </Form>
             </Card>
         ) : (
-            <div/> // Empty div while generating, the progress is on the right
+            submittedValues && (
+                <Card className="animate-fade-in">
+                    <CardHeader>
+                        <CardTitle className="flex items-center text-2xl">
+                            <Bot className="mr-3 h-8 w-8 text-primary" />
+                            正在为您构筑新世界...
+                        </CardTitle>
+                        <CardDescription>
+                            AI引擎已启动，正在根据您的蓝图生成初始世界。请稍候片刻。
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6 text-sm">
+                        <div className="flex items-center">
+                            <Book className="h-5 w-5 mr-4 text-muted-foreground" />
+                            <span className="font-semibold text-muted-foreground mr-2">小说名称:</span>
+                            <span>{submittedValues.name}</span>
+                        </div>
+                        <div className="flex items-center">
+                            <PencilRuler className="h-5 w-5 mr-4 text-muted-foreground" />
+                            <span className="font-semibold text-muted-foreground mr-2">题材类型:</span>
+                            <span>{submittedValues.genre}</span>
+                        </div>
+                        <div className="flex items-center">
+                            <Gem className="h-5 w-5 mr-4 text-muted-foreground" />
+                            <span className="font-semibold text-muted-foreground mr-2">写作风格:</span>
+                            <span>{submittedValues.style}</span>
+                        </div>
+                         <div className="flex items-center">
+                            <Workflow className="h-5 w-5 mr-4 text-muted-foreground" />
+                            <span className="font-semibold text-muted-foreground mr-2">初始章节:</span>
+                            <span>{submittedValues.initialChapterGoal} 章</span>
+                        </div>
+                        <div className="flex items-center">
+                            <Target className="h-5 w-5 mr-4 text-muted-foreground" />
+                            <span className="font-semibold text-muted-foreground mr-2">目标篇幅:</span>
+                            <span>{submittedValues.totalChapterGoal} 章</span>
+                        </div>
+                        {submittedValues.specialRequirements && (
+                            <div className="flex items-start">
+                                <Text className="h-5 w-5 mr-4 text-muted-foreground flex-shrink-0 mt-1" />
+                                <div>
+                                    <span className="font-semibold text-muted-foreground">核心设定:</span>
+                                    <p className="mt-1 leading-relaxed whitespace-pre-wrap">{submittedValues.specialRequirements}</p>
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )
         )}
       </div>
       

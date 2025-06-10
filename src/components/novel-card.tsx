@@ -31,7 +31,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
-
+import { useRouter } from 'next/navigation';
 interface NovelCardProps {
   novel: Novel;
   onDelete: (novel: Novel) => void;
@@ -45,6 +45,8 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
       ? `${formatDistanceToNow(updatedAt, { locale: zhCN })}前`
       : format(updatedAt, 'yyyy-MM-dd', { locale: zhCN });
   };
+
+  const router = useRouter();
 
   const wordsPerChapter =
     novel.chapterCount > 0
@@ -68,7 +70,7 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => router.push(`/manage/${novel.id}`)}>
             <Eye className="mr-2 h-4 w-4" />
             查看
           </Button>

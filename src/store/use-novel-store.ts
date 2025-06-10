@@ -516,7 +516,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     }
   },
   saveGeneratedChapter: async (novelId) => {
-    const { generatedContent, chapters, currentNovel } = get();
+    const { generatedContent, chapters, currentNovel, characters } = get();
     if (!generatedContent || !currentNovel) return;
 
     // --- Step 0: Parse Title and Content ---
@@ -526,14 +526,29 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
     if (firstNewlineIndex !== -1) {
       const potentialTitle = generatedContent.substring(0, firstNewlineIndex).trim();
-      // To avoid using a very long sentence as title if AI fails to follow instruction
       if (potentialTitle.length > 0 && potentialTitle.length < 50) {
         title = potentialTitle;
         content = generatedContent.substring(firstNewlineIndex + 1).trim();
       }
     }
 
-    // --- Step 1: Analyze content to generate plot clues ---
+    // --- Step 1: Save the new chapter text first ---
+    const newChapterNumber = (chapters[chapters.length - 1]?.chapterNumber || 0) + 1;
+    const newChapter: Omit<Chapter, 'id'> = {
+      novelId,
+      chapterNumber: newChapterNumber,
+      title: title,
+      content: content,
+      summary: content.substring(0, 200),
+      status: 'draft',
+      wordCount: content.length,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await db.chapters.add(newChapter as Chapter);
+
+    // --- Step 2: Post-generation Analysis for new characters and plot clues ---
+    let newCharacters: Omit<Character, "id">[] = [];
     let newClues: Omit<PlotClue, "id">[] = [];
     try {
         const { activeConfigId } = useAIConfigStore.getState();
@@ -546,74 +561,95 @@ export const useNovelStore = create<NovelState>((set, get) => ({
                 dangerouslyAllowBrowser: true,
             });
 
-            const cluePrompt = `
-                你是一位目光敏锐的文学分析师。请仔细阅读以下小说章节内容，并提取3到5个最关键的情节线索、角色发展或重要事件。
-                请以一个JSON数组的形式返回你的分析结果，数组中的每个对象都应包含 "title" (简短标题) 和 "description" (详细描述) 两个字段。
-                
-                章节内容:
-                """
-                ${content.substring(0, 4000)}
-                """
+            const analysisPrompt = `
+              你是一位目光如炬的文学分析师和图书管理员。
 
-                请直接返回JSON数组，不要包含任何额外的解释或Markdown标记。
+              已知信息:
+              1. 小说名: 《${currentNovel.name}》
+              2. 当前已知的角色列表: [${characters.map(c => `"${c.name}"`).join(', ')}]
+              3. 刚刚生成的新章节内容:
+              """
+              ${content.substring(0, 4000)}
+              """
+
+              你的任务:
+              请仔细阅读上面的新章节内容，并以一个 JSON 对象的格式，返回你的分析结果。这个 JSON 对象应包含两个键： "newCharacters" 和 "newPlotClues"。
+
+              1. "newCharacters": 这是一个数组。请找出章节中所有被明确提及、且不在"当前已知角色列表"中的新人物。如果章节中没有新人物，则返回一个空数组 []。对于每一个新人物，提供一个包含以下字段的对象：
+                  - "name": 新人物的姓名。
+                  - "coreSetting": 根据本章内容，用一句话描述他/她的身份或核心作用 (例如："黑风寨的三当家", "神秘的炼丹老人")。
+                  - "initialRelationship": 根据本章内容，描述他/她与主角团的初次互动或关系 (例如："与主角发生冲突", "向主角发布了一个任务", "似乎在暗中观察主角")。
+
+              2. "newPlotClues": 这是一个数组。请找出章节中新出现的、可能对未来剧情有影响的关键线索、物品、事件或未解之谜。如果章节中没有新线索，则返回一个空数组 []。对于每一个新线索，提供一个包含以下字段的对象：
+                  - "title": 线索的简短标题 (例如："神秘的黑色铁片", "城东的废弃矿洞")。
+                  - "description": 对线索的详细描述，并解释其潜在的重要性。
+
+              请严格按照此 JSON 格式返回，不要添加任何额外的解释或 Markdown 标记。
             `;
             
-            const clueResponse = await openai.chat.completions.create({
+            const analysisResponse = await openai.chat.completions.create({
                 model: activeConfig.model,
-                messages: [{ role: 'user', content: cluePrompt }],
+                messages: [{ role: 'user', content: analysisPrompt }],
                 response_format: { type: "json_object" },
-                temperature: 0.5,
+                temperature: 0.3,
             });
 
-            const responseContent = clueResponse.choices[0].message.content;
+            const responseContent = analysisResponse.choices[0].message.content;
             if (responseContent) {
-                // The AI might wrap the array in an object like { "clues": [...] }
                 const parsedJson = JSON.parse(responseContent);
-                const cluesArray = Array.isArray(parsedJson) ? parsedJson : (parsedJson.clues || []);
+                const extractedCharacters = parsedJson.newCharacters || [];
+                const extractedClues = parsedJson.newPlotClues || [];
+
+                if (Array.isArray(extractedCharacters)) {
+                    newCharacters = extractedCharacters.map((char: any) => ({
+                        novelId,
+                        name: char.name || '未知姓名',
+                        coreSetting: char.coreSetting || '无设定',
+                        personality: '',
+                        backgroundStory: char.initialRelationship ? `初次登场关系：${char.initialRelationship}` : '',
+                        appearance: '',
+                        relationships: '',
+                        status: 'active',
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                    }));
+                }
+
+                if (Array.isArray(extractedClues)) {
+                    newClues = extractedClues.map((clue: any) => ({
+                        novelId,
+                        title: clue.title || '无标题线索',
+                        description: clue.description || '无描述',
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                    }));
+                }
                 
-                newClues = cluesArray.map((clue: any) => ({
-                    novelId,
-                    title: clue.title || '无标题线索',
-                    description: clue.description || '无描述',
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                }));
-                
+                if (newCharacters.length > 0) {
+                    toast.success(`发现了 ${newCharacters.length} 位新角色！`);
+                    await db.characters.bulkAdd(newCharacters as Character[]);
+                }
                 if (newClues.length > 0) {
+                    toast.success(`发现了 ${newClues.length} 条新线索！`);
                     await db.plotClues.bulkAdd(newClues as PlotClue[]);
                 }
             }
         }
     } catch (error) {
-        console.error("Failed to generate plot clues:", error);
-        // Do not block chapter saving if clue generation fails
+        console.error("Failed to analyze chapter for new elements:", error);
+        toast.error("分析新章节时出错，但章节已保存。");
     }
-
-    // --- Step 2: Save the new chapter ---
-    const newChapterNumber = (chapters[chapters.length - 1]?.chapterNumber || 0) + 1;
-
-    const newChapter: Omit<Chapter, 'id'> = {
-      novelId,
-      chapterNumber: newChapterNumber,
-      title: title, // Use parsed title
-      content: content, // Use parsed content
-      summary: content.substring(0, 200), // Auto-generate summary from content
-      status: 'draft',
-      wordCount: content.length, // Calculate word count from content
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    await db.chapters.add(newChapter as Chapter);
 
     // --- Step 3: Update novel statistics ---
     await db.novels.update(novelId, {
       chapterCount: currentNovel.chapterCount + 1,
       wordCount: currentNovel.wordCount + content.length,
+      characterCount: (currentNovel.characterCount || 0) + newCharacters.length,
       plotClueCount: (currentNovel.plotClueCount || 0) + newClues.length,
       updatedAt: new Date(),
     });
 
+    // --- Step 4: Refresh state ---
     await get().fetchNovelDetails(novelId);
     set({ generatedContent: null });
   },
@@ -693,7 +729,7 @@ const expandPlotOutline = async (novel: Novel) => {
           ---
           ${novel.plotOutline}
           ---
-          任务:
+          任务: 
           我们已经完成了前 ${currentChapterCount} 章的创作。现在，请你基于已有的宏观规划和剧情，为故事紧接着生成从第 ${detailedChaptersInOutline + 1} 章到第 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 章的详细剧情摘要。
           
           请确保新的细纲与前面的剧情无缝衔接，并稳步推进核心情节。

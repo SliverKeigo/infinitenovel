@@ -109,43 +109,6 @@ export class InfiniteNovelDatabase extends Dexie {
     const novelCount = await tx.table('novels').count();
     if (novelCount === 0) {
       await tx.table('novels').bulkAdd([
-        {
-          name: '无限代码',
-          genre: '科幻',
-          style: '赛博朋克',
-          wordCount: 125000,
-          chapterCount: 42,
-          characterCount: 5,
-          totalChapterGoal: 100,
-          expansionCount: 0,
-          specialRequirements: '主角需要有一个忠诚的机器人伙伴，并且故事结尾要有一个反转。',
-          createdAt: new Date('2024-07-20T10:00:00Z'),
-          updatedAt: new Date(new Date().getTime() - 2 * 60 * 60 * 1000), // 2 小时前
-        },
-        {
-          name: '长安数字魅影',
-          genre: '历史',
-          style: '悬疑',
-          wordCount: 88000,
-          chapterCount: 35,
-          characterCount: 8,
-          totalChapterGoal: 50,
-          expansionCount: 2,
-          createdAt: new Date('2024-07-18T14:30:00Z'),
-          updatedAt: new Date(new Date().getTime() - 80 * 60 * 60 * 1000), // 80 小时前
-        },
-        {
-          name: '东海人鱼传说',
-          genre: '奇幻',
-          style: '浪漫',
-          wordCount: 210000,
-          chapterCount: 60,
-          characterCount: 3,
-          totalChapterGoal: 60,
-          expansionCount: 5,
-          createdAt: new Date('2023-01-15T09:00:00Z'),
-          updatedAt: new Date('2024-05-10T18:00:00Z'),
-        },
       ]);
     }
   }
