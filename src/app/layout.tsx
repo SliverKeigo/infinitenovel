@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
+import { Inter } from 'next/font/google';
 import "./globals.css";
 import Header from "@/components/layout/Header";
+import { Toaster } from '@/components/ui/sonner';
+
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "无限小说",
-  description: "无限创作，永不枯竭",
+  title: "无限小说 - AI驱动的创作平台",
+  description: "释放你的想象力，与AI共同谱写无限的故事。",
 };
 
 export default function RootLayout({
@@ -13,10 +17,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="zh-CN">
+      <body className={inter.className}>
         <Header />
-        {children}
+        <main>{children}</main>
+        <Toaster />
       </body>
     </html>
   );

@@ -51,15 +51,15 @@ export default function Home() {
             <li className="flex items-center">
               <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
               记忆库连接: <span className="font-semibold ml-1">已连接</span>
-            </li>
+          </li>
             <li className="flex items-center">
               <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
               一致性检查服务: <span className="font-semibold ml-1">已激活</span>
-            </li>
+          </li>
           </ul>
         </CardContent>
       </Card>
 
-    </main>
+      </main>
   );
 }

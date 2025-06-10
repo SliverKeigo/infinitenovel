@@ -41,9 +41,9 @@
     ```
 
 3.  **启动开发服务器**
-    ```bash
-    npm run dev
-    ```
+```bash
+npm run dev
+```
 
 4.  **打开浏览器**
     访问 [http://localhost:3000](http://localhost:3000) 查看项目。
