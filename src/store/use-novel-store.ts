@@ -431,7 +431,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       ${finalUserPrompt}
       ---
       
-      请直接开始撰写新章节的正文内容，无需添加章节标题。
+      请在第一行提供本章的标题，然后换行，接着撰写新章节的正文内容。不要在标题前添加"标题："或"第X章"等前缀。
     `;
 
     try {
@@ -462,6 +462,20 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     const { generatedContent, chapters, currentNovel } = get();
     if (!generatedContent || !currentNovel) return;
 
+    // --- Step 0: Parse Title and Content ---
+    let title = `第 ${(chapters[chapters.length - 1]?.chapterNumber || 0) + 1} 章`;
+    let content = generatedContent;
+    const firstNewlineIndex = generatedContent.indexOf('\n');
+
+    if (firstNewlineIndex !== -1) {
+      const potentialTitle = generatedContent.substring(0, firstNewlineIndex).trim();
+      // To avoid using a very long sentence as title if AI fails to follow instruction
+      if (potentialTitle.length > 0 && potentialTitle.length < 50) {
+        title = potentialTitle;
+        content = generatedContent.substring(firstNewlineIndex + 1).trim();
+      }
+    }
+
     // --- Step 1: Analyze content to generate plot clues ---
     let newClues: Omit<PlotClue, "id">[] = [];
     try {
@@ -481,7 +495,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
                 
                 章节内容:
                 """
-                ${generatedContent.substring(0, 4000)}
+                ${content.substring(0, 4000)}
                 """
 
                 请直接返回JSON数组，不要包含任何额外的解释或Markdown标记。
@@ -524,11 +538,11 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     const newChapter: Omit<Chapter, 'id'> = {
       novelId,
       chapterNumber: newChapterNumber,
-      title: `第 ${newChapterNumber} 章`, // 暂时使用自动标题
-      content: generatedContent,
-      summary: generatedContent.substring(0, 200), // 自动生成摘要
-      status: 'draft', // 新章节默认为草稿状态
-      wordCount: generatedContent.length,
+      title: title, // Use parsed title
+      content: content, // Use parsed content
+      summary: content.substring(0, 200), // Auto-generate summary from content
+      status: 'draft',
+      wordCount: content.length, // Calculate word count from content
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -538,7 +552,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     // --- Step 3: Update novel statistics ---
     await db.novels.update(novelId, {
       chapterCount: currentNovel.chapterCount + 1,
-      wordCount: currentNovel.wordCount + generatedContent.length,
+      wordCount: currentNovel.wordCount + content.length,
       expansionCount: currentNovel.expansionCount + 1,
       plotClueCount: (currentNovel.plotClueCount || 0) + newClues.length,
       updatedAt: new Date(),
