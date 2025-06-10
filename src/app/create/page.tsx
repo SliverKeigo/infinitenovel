@@ -49,12 +49,19 @@ const formSchema = z.object({
   }).max(20, {
         message: '写作风格不能超过20个字符。'
   }),
+  initialChapterGoal: z.coerce.number().int().positive({
+    message: '初始章节数必须是一个正整数。'
+  }).min(1, {
+      message: '初始章节数至少为1。'
+  }).max(20, {
+      message: '一次性最多生成20章。'
+  }),
   totalChapterGoal: z.coerce.number().int().positive({
       message: '目标章节数必须是一个正整数。'
   }).min(1, {
       message: '目标章节数至少为1。'
-  }).max(1000, {
-      message: '目标章节数不能超过1000。'
+  }).max(3000, {
+      message: '目标章节数不能超过3000。'
   }),
   specialRequirements: z.string().max(2000, {
     message: '特殊要求不能超过2000个字符。'
@@ -71,7 +78,8 @@ export default function CreateNovelPage() {
       name: '',
       genre: '',
       style: '',
-      totalChapterGoal: 5,
+      initialChapterGoal: 5,
+      totalChapterGoal: 200,
       specialRequirements: '',
     },
   });
@@ -84,7 +92,7 @@ export default function CreateNovelPage() {
       const newNovelId = await addNovel(values);
       if (newNovelId) {
         toast.success("小说设定创建成功！正在启动生成引擎...");
-        await generateNovelChapters(newNovelId, values.totalChapterGoal);
+        await generateNovelChapters(newNovelId, values.totalChapterGoal, values.initialChapterGoal);
         // Generation is complete, now we can show a success message and a button to navigate
       } else {
         throw new Error('创建小说失败，未能获取到ID。');
@@ -151,22 +159,40 @@ export default function CreateNovelPage() {
                           )}
                       />
                     </div>
-                    <FormField
-                      control={form.control}
-                      name="totalChapterGoal"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>目标章节数</FormLabel>
-                          <FormControl>
-                            <Input type="number" {...field} />
-                          </FormControl>
-                          <FormDescription>
-                            这是您计划完成的小说总章节数。
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                            control={form.control}
+                            name="initialChapterGoal"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>初始生成章节数</FormLabel>
+                                    <FormControl>
+                                        <Input type="number" {...field} />
+                                    </FormControl>
+                                    <FormDescription>
+                                        创建时生成的故事开篇章节数。
+                                    </FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="totalChapterGoal"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>目标总章节数</FormLabel>
+                              <FormControl>
+                                <Input type="number" {...field} />
+                              </FormControl>
+                              <FormDescription>
+                                您计划完成的小说总章节数。
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                    </div>
                     <FormField
                           control={form.control}
                           name="specialRequirements"

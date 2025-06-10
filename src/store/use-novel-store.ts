@@ -10,6 +10,22 @@ import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
 import OpenAI from 'openai';
 import { log } from 'console';
+import { toast } from "sonner";
+
+const INITIAL_CHAPTER_GENERATION_COUNT = 5;
+const OUTLINE_EXPAND_THRESHOLD = 3; // 当细纲剩余少于3章时触发扩展
+const OUTLINE_EXPAND_CHUNK_SIZE = 10; // 每次扩展10章的细纲
+
+/**
+ * 计算大纲字符串中详细章节的数量
+ * @param outline - 剧情大纲字符串
+ * @returns 详细章节的数量
+ */
+const countDetailedChaptersInOutline = (outline: string): number => {
+    const detailedChapterRegex = /第\d+章:/g;
+    const matches = outline.match(detailedChapterRegex);
+    return matches ? matches.length : 0;
+};
 
 interface DocumentToIndex {
   id: string;
@@ -50,10 +66,11 @@ interface NovelState {
     },
     userPrompt?: string
   ) => Promise<void>;
-  generateNovelChapters: (novelId: number, goal: number) => Promise<void>;
+  generateNovelChapters: (novelId: number, goal: number, initialChapterGoal?: number) => Promise<void>;
   saveGeneratedChapter: (novelId: number) => Promise<void>;
   addNovel: (novel: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline' | 'plotClueCount'>) => Promise<number | undefined>;
   deleteNovel: (id: number) => Promise<void>;
+  recordExpansion: (novelId: number) => Promise<void>;
 }
 
 export const useNovelStore = create<NovelState>((set, get) => ({
@@ -162,7 +179,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       set({ indexLoading: false });
     }
   },
-  generateNovelChapters: async (novelId, goal) => {
+  generateNovelChapters: async (novelId, goal, initialChapterGoal = 5) => {
     set({
       generationTask: {
         isActive: true,
@@ -196,20 +213,41 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       // --- STAGE 1: CREATE PLOT OUTLINE ---
       set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '正在创建故事大纲...' } });
       
-      const outlinePrompt = `
-        你是一位经验丰富的小说编辑。请为一部名为《${novel.name}》的小说创作一个详细的章节大纲。
-        - 小说类型: ${novel.genre}
-        - 写作风格: ${novel.style}
-        - 目标总章节数: ${novel.totalChapterGoal}
-        - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
-        
-        请为从第1章到第${novel.totalChapterGoal}章的每一章都提供一个简洁的剧情摘要。
-        请确保大纲的连贯性和完整性。直接开始输出第一章的大纲。
-        格式如下：
-        第1章: [剧情摘要]
-        第2章: [剧情摘要]
-        ...
-      `;
+      const OUTLINE_THRESHOLD = 50;
+      let outlinePrompt: string;
+
+      if (goal > OUTLINE_THRESHOLD) {
+        // For long stories, generate a hierarchical outline
+        outlinePrompt = `
+          你是一位经验丰富的小说编辑和世界构建大师。请为一部名为《${novel.name}》的宏大长篇小说创作一个分层的故事大纲。
+          - 小说类型: ${novel.genre}
+          - 写作风格: ${novel.style}
+          - 计划总章节数: ${goal}
+          - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
+
+          请分两步完成：
+          1.  **宏观篇章规划**: 请将这 ${goal} 章的宏大故事划分成 5 到 8 个主要的"篇章"或"卷"。为每个篇章命名，并提供一个 100-200 字的剧情梗概，描述该阶段的核心冲突、主角成长和关键转折点。
+          2.  **开篇章节细纲**: 在完成宏观规划后，请为故事最开始的 ${initialChapterGoal} 章提供逐章的、更加详细的剧情摘要（每章约 50-100 字）。
+
+          请确保两部分内容都在一次响应中完成，并且格式清晰。先输出所有宏观篇章，然后另起一段输出开篇的章节细纲。
+        `;
+      } else {
+        // For shorter stories, generate a direct chapter-by-chapter outline
+        outlinePrompt = `
+          你是一位经验丰富的小说编辑。请为一部名为《${novel.name}》的小说创作一个详细的章节大纲。
+          - 小说类型: ${novel.genre}
+          - 写作风格: ${novel.style}
+          - 目标总章节数: ${goal}
+          - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
+          
+          请为从第1章到第${goal}章的每一章都提供一个简洁的剧情摘要。
+          请确保大纲的连贯性和完整性。直接开始输出第一章的大纲。
+          格式如下：
+          第1章: [剧情摘要]
+          第2章: [剧情摘要]
+          ...
+        `;
+      }
       
       const openai = new OpenAI({
           apiKey: activeConfig.apiKey,
@@ -282,17 +320,18 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '核心人物创建完毕！' } });
 
       // --- STAGE 3: GENERATE CHAPTERS ---
-      const chaptersToGenerate = Array.from({ length: goal }, (_, i) => i);
+      const chaptersToGenerateCount = Math.min(goal, initialChapterGoal);
+      const chaptersToGenerate = Array.from({ length: chaptersToGenerateCount }, (_, i) => i);
       const allCharacters = await db.characters.where('novelId').equals(novelId).toArray();
       const generationContext = { plotOutline, characters: allCharacters, settings };
 
       for (const i of chaptersToGenerate) {
-        const chapterProgress = 40 + ((i + 1) / goal) * 60;
+        const chapterProgress = 40 + ((i + 1) / chaptersToGenerateCount) * 60;
         set({
           generationTask: {
             ...get().generationTask,
-            progress: chapterProgress,
-            currentStep: `正在生成第 ${i + 1} / ${goal} 章...`,
+            progress: Math.floor(chapterProgress),
+            currentStep: `正在生成第 ${i + 1} / ${chaptersToGenerateCount} 章...`,
           },
         });
         
@@ -325,8 +364,26 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   generateNewChapter: async (novelId, context, userPrompt) => {
     set({ generationLoading: true, generatedContent: null });
     const { currentNovel, currentNovelIndex, currentNovelDocuments, chapters } = get();
-    if (!currentNovel || !currentNovelIndex) {
-      console.error("Novel or index not loaded.");
+
+    if (!currentNovel) {
+        console.error("Novel not loaded for generating new chapter.");
+        set({ generationLoading: false });
+        return;
+    }
+
+    // 在生成新章节前，主动检查并扩展大纲
+    await expandPlotOutline(currentNovel);
+    
+    // 重新获取最新的 novel 数据，因为它可能已被 expandPlotOutline 更新
+    const updatedNovel = await db.novels.get(novelId);
+    if (!updatedNovel) {
+      console.error("Failed to re-fetch novel after outline expansion.");
+      set({ generationLoading: false });
+      return;
+    }
+
+    if (!currentNovelIndex) {
+      console.error("Novel index not loaded.");
       set({ generationLoading: false });
       return;
     }
@@ -553,7 +610,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     await db.novels.update(novelId, {
       chapterCount: currentNovel.chapterCount + 1,
       wordCount: currentNovel.wordCount + content.length,
-      expansionCount: currentNovel.expansionCount + 1,
       plotClueCount: (currentNovel.plotClueCount || 0) + newClues.length,
       updatedAt: new Date(),
     });
@@ -581,8 +637,91 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   },
   deleteNovel: async (id) => {
     await db.novels.delete(id);
+    await db.chapters.where('novelId').equals(id).delete();
+    await db.characters.where('novelId').equals(id).delete();
+    await db.plotClues.where('novelId').equals(id).delete();
     set((state) => ({
       novels: state.novels.filter((novel) => novel.id !== id),
     }));
   },
-})); 
+  recordExpansion: async (novelId: number) => {
+    const novel = await db.novels.get(novelId);
+    if (novel) {
+        await db.novels.update(novelId, {
+            expansionCount: novel.expansionCount + 1,
+            updatedAt: new Date(),
+        });
+        await get().fetchNovelDetails(novelId);
+    }
+  },
+}));
+
+const expandPlotOutline = async (novel: Novel) => {
+    const { getState } = useNovelStore;
+    const { activeConfigId } = useAIConfigStore.getState();
+    const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
+
+    if (!activeConfig || !activeConfig.apiKey || !novel.plotOutline) {
+        console.warn("无法扩展大纲：缺少有效配置或现有大纲。");
+        return;
+    }
+
+    const currentChapterCount = novel.chapterCount;
+    const detailedChaptersInOutline = countDetailedChaptersInOutline(novel.plotOutline);
+
+    console.log(`扩展检查：当前章节 ${currentChapterCount}, 大纲中章节 ${detailedChaptersInOutline}`);
+
+    if (detailedChaptersInOutline >= novel.totalChapterGoal) {
+        console.log("大纲已完成，无需扩展。");
+        return;
+    }
+
+    if (detailedChaptersInOutline - currentChapterCount < OUTLINE_EXPAND_THRESHOLD) {
+        toast.info("AI正在思考后续情节，请稍候...");
+        console.log("触发大纲扩展...");
+
+        const openai = new OpenAI({
+            apiKey: activeConfig.apiKey,
+            baseURL: activeConfig.apiBaseUrl || undefined,
+            dangerouslyAllowBrowser: true,
+        });
+
+        const expansionPrompt = `
+          你是一位正在续写自己史诗级作品《${novel.name}》的小说家。
+          
+          这是我们共同确定的、贯穿整个故事的宏观篇章规划和已有的详细大纲：
+          ---
+          ${novel.plotOutline}
+          ---
+          任务:
+          我们已经完成了前 ${currentChapterCount} 章的创作。现在，请你基于已有的宏观规划和剧情，为故事紧接着生成从第 ${detailedChaptersInOutline + 1} 章到第 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 章的详细剧情摘要。
+          
+          请确保新的细纲与前面的剧情无缝衔接，并稳步推进核心情节。
+          请只返回新增的这 ${OUTLINE_EXPAND_CHUNK_SIZE} 章细纲，格式为"第X章: [剧情摘要]"，不要重复任何已有内容或添加额外解释。
+        `;
+
+        try {
+            const response = await openai.chat.completions.create({
+                model: activeConfig.model,
+                messages: [{ role: 'user', content: expansionPrompt }],
+                temperature: 0.6,
+            });
+
+            const newOutlinePart = response.choices[0].message.content;
+            if (newOutlinePart) {
+                const updatedOutline = `${novel.plotOutline}\n${newOutlinePart.trim()}`;
+                await db.novels.update(novel.id!, { plotOutline: updatedOutline });
+                // 更新 Zustand store 中的 currentNovel
+                const currentNovel = getState().currentNovel;
+                if (currentNovel && currentNovel.id === novel.id) {
+                    getState().fetchNovelDetails(novel.id!);
+                }
+                toast.success("AI已构思好新的情节！");
+                console.log("大纲扩展成功！");
+            }
+        } catch (error) {
+            console.error("扩展大纲失败:", error);
+            toast.error("AI构思后续情节时遇到了点麻烦...");
+        }
+    }
+}; 
