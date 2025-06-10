@@ -31,7 +31,7 @@ export const CreationStatsCard = () => {
                 <StatItem icon={Scale} label="总字数" value={novel.wordCount.toLocaleString()} unit="字" />
                 <StatItem icon={Clock} label="预计阅读" value={Math.ceil(novel.wordCount / 500)} unit="分钟" />
                 <StatItem icon={BookOpen} label="平均章节字数" value={averageWordsPerChapter.toLocaleString()} unit="字" />
-                <StatItem icon={PlusSquare} label="扩写次数" value={novel.expansionCount} unit="次" />
+                <StatItem icon={PlusSquare} label="扩写次数" value={novel.expansionCount ?? 0} unit="次" />
             </CardContent>
         </Card>
     );

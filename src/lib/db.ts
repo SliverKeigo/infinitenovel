@@ -56,6 +56,14 @@ export class InfiniteNovelDatabase extends Dexie {
       plotClues: '++id, novelId',
     });
 
+    this.version(3).upgrade(async (tx) => {
+      await tx.table('novels').toCollection().modify((novel) => {
+        if (novel.expansionCount === undefined) {
+          novel.expansionCount = 0;
+        }
+      });
+    });
+
     this.on('populate', this.populate);
   }
 

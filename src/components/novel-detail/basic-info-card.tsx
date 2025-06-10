@@ -47,7 +47,7 @@ export const BasicInfoCard = () => {
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-muted-foreground">目标章节</span>
-          <span className="font-semibold">{currentNovel.totalChapterGoal} 章</span>
+          <span className="font-semibold">{currentNovel.totalChapterGoal ?? 0} 章</span>
         </div>
          <div className="flex flex-col gap-1">
           <span className="text-muted-foreground">当前状态</span>
