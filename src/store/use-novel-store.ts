@@ -412,34 +412,79 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
     console.log("Active config:", activeConfig);
     
-    let finalUserPrompt: string;
-    let ragQueryText: string;
+    // Agent 模式 (Batch Generation) -> 此处逻辑重构
+    const currentChapterNumber = chapters.length + 1;
+    const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
 
-    if (userPrompt && userPrompt.trim()) {
-      // 手动模式
-      finalUserPrompt = userPrompt;
-      ragQueryText = userPrompt;
-    } else {
-      // Agent 模式 (Batch Generation)
-      const currentChapterNumber = chapters.length + 1;
-      const outlineLines = plotOutline.split('\n');
-      const chapterOutline = outlineLines.find(line => line.startsWith(`第${currentChapterNumber}章:`)) || `续写故事，推进情节发展。`;
+    // 提取本章大纲
+    const chapterOutlineRegex = new RegExp(`^第${currentChapterNumber}章:\\s*(.*)`, 'm');
+    const chapterOutlineMatch = updatedNovel.plotOutline?.match(chapterOutlineRegex);
+    const currentChapterOutline = chapterOutlineMatch ? chapterOutlineMatch[1] : '请根据总大纲和上一章结尾，自由发挥，合理推进情节。';
+    
+    // RAG 查询文本
+    const ragQueryText = `本章大纲: ${currentChapterOutline}\n用户额外要求: ${userPrompt || '无'}`;
+    
+    // RAG - 检索
+    const promptEmbedding = await EmbeddingPipeline.embed(ragQueryText);
+    const searchResults = currentNovelIndex.search(new Float32Array(promptEmbedding[0]), 5);
+    
+    // RAG - 增强上下文
+    const ragContextText = searchResults.neighbors.map(neighbor => {
+      const originalDoc = currentNovelDocuments.find(doc => doc.id === neighbor.id);
+      return originalDoc 
+        ? `相关信息：\n标题: ${originalDoc.title}\n内容: ${originalDoc.text}`
+        : '';
+    }).filter(Boolean).join('\n\n---\n\n');
 
-      if (chapters.length === 0) {
-        // 生成第一章
-        finalUserPrompt = `你是一位专业的小说家，请根据以下设定和第一章的大纲，为小说《${currentNovel.name}》创作第一章的内容（约 ${settings.chapterWordCount} 字）。请直接开始正文，无需章节标题。\n\n- 类型: ${currentNovel.genre}\n- 风格: ${currentNovel.style}\n- 核心要求: ${currentNovel.specialRequirements || '无特殊要求'}\n- 第一章大纲: ${chapterOutline}`;
-        ragQueryText = `小说《${currentNovel.name}》的核心设定和第一章剧情: ${chapterOutline}`;
-      } else {
-        // 生成后续章节
-        const relevantChapters = chapters.slice(-settings.contextChapters);
-        const prevChaptersContext = relevantChapters.map(c => `第${c.chapterNumber}章摘要: ${c.summary || c.content.slice(0, 200)}`).join('\n');
-        finalUserPrompt = `你是一位专业的小说家，请紧接上一章的内容，根据本章大纲，为小说《${currentNovel.name}》续写第 ${currentChapterNumber} 章（约 ${settings.chapterWordCount} 字）。请保持故事的连贯性和一致性。\n\n- 先前章节概要:\n${prevChaptersContext}\n\n- 本章大纲: ${chapterOutline}`;
-        ragQueryText = `承接前文，续写 ${chapterOutline}`;
-      }
-    }
+    const allCharactersInfo = characters.map(c => `角色: ${c.name} - ${c.coreSetting}`).join('\n');
+    const allPlotCluesInfo = get().plotClues.map(p => `- ${p.title}`).join('\n');
 
-    console.log("Final user prompt:", finalUserPrompt);
-    console.log("RAG query text:", ragQueryText);
+    // 上一章的完整内容
+    const previousChapterContext = lastChapter
+      ? `---
+[上一章的完整内容]
+${lastChapter.content}
+---`
+      : '--- [这是第一章，请根据大纲开始新的故事。] ---';
+
+    // 构建最终的、统一的提示
+    const finalPrompt = `
+你是一位专业的小说家，你的任务是为小说《${currentNovel.name}》续写第 ${currentChapterNumber} 章。
+请直接开始创作，不要写任何总结、解释或提出问题。你的回答应该只有新章节的标题和内容。
+
+[小说信息]
+- 类型: ${currentNovel.genre}
+- 风格: ${currentNovel.style}
+- 核心要求: ${currentNovel.specialRequirements || '无特殊要求'}
+
+[总体剧情大纲]
+${plotOutline}
+
+[核心人物]
+${allCharactersInfo}
+
+[已知情节线索]
+${allPlotCluesInfo || '暂无，这是故事的开端。'}
+
+[为增强连贯性，检索到的相关信息]
+${ragContextText}
+
+${previousChapterContext}
+
+[本章任务]
+1.  **本章大纲**: ${currentChapterOutline}
+2.  **用户额外指令**: ${userPrompt || '无'}
+3.  **预估字数**: ${settings.chapterWordCount} 字左右。
+
+[重要指令]
+-   请严格按照[本章任务]中的大纲和指令进行创作。
+-   **必须紧密衔接上一章的结尾**，确保故事无缝过渡。
+-   **情节必须有实质性推进**，避免原地踏步或重复之前章节的思考和总结。
+-   **创造独特且有新意的章节结尾**，不要使用套路化的感慨或展望。
+-   **直接输出**: 在第一行提供本章的标题，然后换行，接着撰写新章节的正文内容。不要在标题前添加任何如"标题："或"第X章"等前缀。
+`;
+
+    console.log("Final prompt sent to AI:", finalPrompt);
 
     const openai = new OpenAI({
         apiKey: activeConfig.apiKey,
@@ -447,52 +492,8 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         dangerouslyAllowBrowser: true,
     });
 
-    console.log("OpenAI instance created");
-
-    // 2. RAG - 检索
-    const promptEmbedding = await EmbeddingPipeline.embed(ragQueryText);
-    const searchResults = currentNovelIndex.search(new Float32Array(promptEmbedding[0]), 5);
-    
-    // 3. RAG - 增强上下文
-    const contextText = searchResults.neighbors.map(neighbor => {
-      const originalDoc = currentNovelDocuments.find(doc => doc.id === neighbor.id);
-      return originalDoc 
-        ? `相关信息：\n标题: ${originalDoc.title}\n内容: ${originalDoc.text}`
-        : '';
-    }).filter(Boolean).join('\n\n---\n\n');
-
-    console.log("Context text:", contextText);
-    
-    const allCharactersInfo = characters.map(c => `角色: ${c.name} - ${c.coreSetting}`).join('\n');
-    const allPlotCluesInfo = get().plotClues.map(p => `- ${p.title}`).join('\n');
-
-    const finalPrompt = `
-      你是一位出色的小说家。请基于以下背景信息和用户指令，为小说《${currentNovel.name}》续写下一章。
-      风格: ${currentNovel.style}, 类型: ${currentNovel.genre}。
-      确保内容与下面的相关信息、人物设定和剧情大纲保持一致性和连贯性。
-
-      ---
-      [剧情大纲]
-      ${plotOutline}
-      ---
-      [核心人物]
-      ${allCharactersInfo}
-      ---
-      [已知情节线索]
-      ${allPlotCluesInfo || '暂无，这是故事的开端。'}
-      ---
-      [相关信息]
-      ${contextText}
-      ---
-      [用户指令]
-      ${finalUserPrompt}
-      ---
-      
-      请在第一行提供本章的标题，然后换行，接着撰写新章节的正文内容。不要在标题前添加"标题："或"第X章"等前缀。
-    `;
-
     try {
-      // 4. RAG - 生成
+      // RAG - 生成
       const response = await openai.chat.completions.create({
         model: activeConfig.model,
         messages: [{ role: 'user', content: finalPrompt }],

@@ -85,7 +85,10 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-red-500"
-                onSelect={() => onDelete(novel)}
+                onSelect={(e) => {
+                  e.stopPropagation();
+                  onDelete(novel);
+                }}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 <span>删除</span>
