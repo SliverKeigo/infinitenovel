@@ -12,6 +12,10 @@ export interface Chapter {
   title: string;
   /** 章节正文内容 */
   content: string;
+  /**
+   * 章节摘要（可选），可由AI生成或手动填写，用于快速回顾和RAG检索。
+   */
+  summary?: string;
   /** 章节字数 */
   wordCount: number;
   /** 章节状态 ('draft': 草稿, 'published': 已发布) */

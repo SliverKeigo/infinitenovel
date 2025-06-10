@@ -8,8 +8,14 @@ export interface Character {
   novelId: number;
   /** 人物名称 */
   name: string;
-  /** 人物描述或小传 */
-  description: string;
+  /** 人物核心设定（一句话描述） */
+  coreSetting: string;
+  /** 人物性格 */
+  personality: string;
+  /** 人物背景故事 */
+  backgroundStory: string;
+  /** 人物外貌描述 */
+  appearance: string;
   /** 人物头像的URL（可选） */
   avatar?: string;
   /** 创建时间 */

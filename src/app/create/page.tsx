@@ -63,8 +63,7 @@ const formSchema = z.object({
 
 export default function CreateNovelPage() {
   const router = useRouter();
-  const addNovel = useNovelStore((state) => state.addNovel);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const { addNovel, generateNovelChapters, generationTask } = useNovelStore();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -72,128 +71,143 @@ export default function CreateNovelPage() {
       name: '',
       genre: '',
       style: '',
-      totalChapterGoal: 50,
+      totalChapterGoal: 5,
       specialRequirements: '',
     },
   });
+  
+  const isGenerating = generationTask.isActive;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    // For now, we just enable the progress display without real logic
-    setIsGenerating(true);
-    
-    // The actual novel creation can be handled here in the future
-    // try {
-    //   await addNovel(values);
-    //   toast.success('小说创建成功！');
-    //   router.push('/manage');
-    // } catch (error) {
-    //     console.error("Failed to create novel:", error);
-    //     toast.error('小说创建失败');
-    // }
+    try {
+      toast.info("正在创建小说设定...");
+      const newNovelId = await addNovel(values);
+      if (newNovelId) {
+        toast.success("小说设定创建成功！正在启动生成引擎...");
+        await generateNovelChapters(newNovelId, values.totalChapterGoal);
+        // Generation is complete, now we can show a success message and a button to navigate
+      } else {
+        throw new Error('创建小说失败，未能获取到ID。');
+      }
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '未知错误';
+        console.error("Failed to create novel:", errorMessage);
+        toast.error(`创建失败: ${errorMessage}`);
+    }
   }
 
   return (
     <div className="container mx-auto grid grid-cols-1 lg:grid-cols-3 gap-12 py-10">
       <div className="lg:col-span-2">
-        <Card>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <CardHeader>
-                <CardTitle className="text-2xl">创作新小说</CardTitle>
-                <CardDescription>
-                  填写下面的信息，开始您的创作之旅。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>小说名称</FormLabel>
-                      <FormControl>
-                        <Input placeholder="例如：星际迷航：无限边疆" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="genre"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>题材类型</FormLabel>
-                        <FormControl>
-                          <Input placeholder="例如：科幻" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
+        {!isGenerating ? (
+            <Card>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                  <CardHeader>
+                    <CardTitle className="text-2xl">创作新小说</CardTitle>
+                    <CardDescription>
+                      填写下面的信息，开始您的创作之旅。
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <FormField
                       control={form.control}
-                      name="style"
+                      name="name"
                       render={({ field }) => (
-                          <FormItem>
-                              <FormLabel>写作风格</FormLabel>
-                              <FormControl>
-                                  <Input placeholder="例如：赛博朋克" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                          </FormItem>
+                        <FormItem>
+                          <FormLabel>小说名称</FormLabel>
+                          <FormControl>
+                            <Input placeholder="例如：星际迷航：无限边疆" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
                       )}
-                  />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="totalChapterGoal"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>目标章节数</FormLabel>
-                      <FormControl>
-                        <Input type="number" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        这是您计划完成的小说总章节数。
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="genre"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>题材类型</FormLabel>
+                            <FormControl>
+                              <Input placeholder="例如：科幻" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                          control={form.control}
+                          name="style"
+                          render={({ field }) => (
+                              <FormItem>
+                                  <FormLabel>写作风格</FormLabel>
+                                  <FormControl>
+                                      <Input placeholder="例如：赛博朋克" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                              </FormItem>
+                          )}
+                      />
+                    </div>
+                    <FormField
                       control={form.control}
-                      name="specialRequirements"
+                      name="totalChapterGoal"
                       render={({ field }) => (
-                          <FormItem>
-                              <FormLabel>特殊要求</FormLabel>
-                              <FormControl>
-                                  <Textarea
-                                      placeholder="请描述您对小说的特殊要求，如特定情节、人物设定等..."
-                                      className="resize-none"
-                                      rows={5}
-                                      {...field}
-                                  />
-                              </FormControl>
-                              <FormMessage />
-                          </FormItem>
+                        <FormItem>
+                          <FormLabel>目标章节数</FormLabel>
+                          <FormControl>
+                            <Input type="number" {...field} />
+                          </FormControl>
+                          <FormDescription>
+                            这是您计划完成的小说总章节数。
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
                       )}
-                  />
-              </CardContent>
-              <CardFooter className="flex justify-start">
-                <Button type="submit" disabled={isGenerating || form.formState.isSubmitting} size="lg">
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    {isGenerating ? "生成中..." : "开始生成"}
-                </Button>
-              </CardFooter>
-            </form>
-          </Form>
-        </Card>
+                    />
+                    <FormField
+                          control={form.control}
+                          name="specialRequirements"
+                          render={({ field }) => (
+                              <FormItem>
+                                  <FormLabel>特殊要求</FormLabel>
+                                  <FormControl>
+                                      <Textarea
+                                          placeholder="请描述您对小说的特殊要求，如特定情节、人物设定等..."
+                                          className="resize-none"
+                                          rows={5}
+                                          {...field}
+                                      />
+                                  </FormControl>
+                                  <FormMessage />
+                              </FormItem>
+                          )}
+                      />
+                  </CardContent>
+                  <CardFooter className="flex justify-start">
+                    <Button type="submit" disabled={form.formState.isSubmitting} size="lg">
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        开始生成
+                    </Button>
+                  </CardFooter>
+                </form>
+              </Form>
+            </Card>
+        ) : (
+            <div/> // Empty div while generating, the progress is on the right
+        )}
       </div>
       
       <div className="h-full">
-        {isGenerating && <GenerationProgress className="h-full" />}
+        <GenerationProgress
+            isActive={generationTask.isActive}
+            currentStep={generationTask.currentStep}
+            progress={generationTask.progress}
+            novelId={generationTask.novelId}
+            className="h-full" 
+        />
       </div>
     </div>
   );

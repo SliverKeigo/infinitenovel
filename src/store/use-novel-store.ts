@@ -52,7 +52,7 @@ interface NovelState {
   ) => Promise<void>;
   generateNovelChapters: (novelId: number, goal: number) => Promise<void>;
   saveGeneratedChapter: (novelId: number) => Promise<void>;
-  addNovel: (novel: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline'>) => Promise<number | undefined>;
+  addNovel: (novel: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline' | 'plotClueCount'>) => Promise<number | undefined>;
   deleteNovel: (id: number) => Promise<void>;
 }
 

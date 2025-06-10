@@ -16,6 +16,7 @@
 -   **🤖 多 Agents 协作架构**: 业界首创5大专业 Agent 协同：总编统筹、人物塑造、情节推进、一致性检查、智能扩展，实现任务协调与冲突仲裁。
 -   **🧠 智能记忆管理**: 统一知识库架构，智能检索关联，分层记忆压缩，实时冲突检测，确保长篇小说的记忆一致性。
 -   **🔍 深度一致性检查**: 多维度一致性分析：人物性格、行为模式、情节逻辑、时间线、世界观规则，并提供智能修复建议。
+-   **💡 本地优先的AI引擎**: 利用 [Transformers.js](https://huggingface.co/docs/transformers.js/index) 在浏览器端直接运行文本嵌入模型，并结合本地向量数据库 [Voy](https://github.com/voy-search/voy) 实现快速、私密的 RAG（检索增强生成）流程。
 
 ## 🛠️ 技术栈 (Tech Stack)
 
@@ -26,6 +27,8 @@
 -   **图标库**: [Lucide React](https://lucide.dev/)
 -   **客户端状态管理**: [Zustand](https://github.com/pmndrs/zustand)
 -   **客户端数据库**: [Dexie.js](https://dexie.org/) (IndexedDB Wrapper)
+-   **AI (本地嵌入)**: [@huggingface/transformers](https://huggingface.co/docs/transformers.js/index)
+-   **AI (本地向量搜索)**: [voy-search](https://github.com/voy-search/voy)
 
 ## ⚡ 本地运行 (Getting Started)
 
