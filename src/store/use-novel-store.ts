@@ -494,21 +494,31 @@ ${previousChapterContext}
 
     try {
       // RAG - 生成
-      const response = await openai.chat.completions.create({
+      const stream = await openai.chat.completions.create({
         model: activeConfig.model,
         messages: [{ role: 'user', content: finalPrompt }],
         temperature: settings.temperature,
         max_tokens: settings.maxTokens,
+        stream: true,
       });
 
-      console.log("OpenAI response:", response);
+      console.log("OpenAI stream initiated...");
 
-      const newChapterContent = response.choices[0].message.content;
+      let newChapterContent = '';
+      for await (const chunk of stream) {
+        const contentDelta = chunk.choices[0]?.delta?.content || '';
+        newChapterContent += contentDelta;
+        // 实时更新UI
+        set({ generatedContent: newChapterContent, generationLoading: true });
+      }
+
       if (!newChapterContent) {
         throw new Error("API did not return any content.");
       }
       
-      set({ generatedContent: newChapterContent, generationLoading: false });
+      console.log("Stream finished. Full content received.");
+      // The final content is already in the state, just mark loading as false.
+      set({ generationLoading: false });
 
     } catch (error: any) {
       console.error("Failed to generate new chapter with OpenAI:", error);

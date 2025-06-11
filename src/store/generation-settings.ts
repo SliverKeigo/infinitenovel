@@ -6,7 +6,7 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
   'Balanced Mode': {
     chapterWordCount: 3000,
     temperature: 0.7,
-    maxTokens: 2048,
+    maxTokens: 16384,
     maxCharacterCount: 5,
     characterCreativity: 0.6,
     contextChapters: 3,
@@ -14,7 +14,7 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
   'Creativity First': {
     chapterWordCount: 3000,
     temperature: 0.95,
-    maxTokens: 2048,
+    maxTokens: 16384,
     maxCharacterCount: 7,
     characterCreativity: 0.9,
     contextChapters: 2,
@@ -22,7 +22,7 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
   'Logic First': {
     chapterWordCount: 3000,
     temperature: 0.4,
-    maxTokens: 3072,
+    maxTokens: 16384,
     maxCharacterCount: 4,
     characterCreativity: 0.4,
     contextChapters: 5,
@@ -30,7 +30,7 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
   'Long-form Novel': {
     chapterWordCount: 4000,
     temperature: 0.65,
-    maxTokens: 8192,
+    maxTokens: 16384,
     maxCharacterCount: 10,
     characterCreativity: 0.5,
     contextChapters: 6,
@@ -38,7 +38,7 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
   'Short Story': {
     chapterWordCount: 2000,
     temperature: 0.8,
-    maxTokens: 1024,
+    maxTokens: 16384,
     maxCharacterCount: 3,
     characterCreativity: 0.7,
     contextChapters: 1,

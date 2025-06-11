@@ -41,13 +41,13 @@ const formSchema = z.object({
   }),
   genre: z.string().min(2, {
     message: '题材类型至少需要2个字符。',
-  }).max(20, {
-      message: '题材类型不能超过20个字符。'
+  }).max(100, {
+      message: '题材类型不能超过100个字符。'
   }),
   style: z.string().min(2, {
     message: '写作风格至少需要2个字符。',
-  }).max(20, {
-        message: '写作风格不能超过20个字符。'
+  }).max(100, {
+        message: '写作风格不能超过100个字符。'
   }),
   initialChapterGoal: z.coerce.number().int().positive({
     message: '初始章节数必须是一个正整数。'
@@ -70,7 +70,7 @@ const formSchema = z.object({
 
 export default function CreateNovelPage() {
   const router = useRouter();
-  const { addNovel, generateNovelChapters, generationTask } = useNovelStore();
+  const { addNovel, generateNovelChapters, generationTask, generatedContent } = useNovelStore();
   const [submittedValues, setSubmittedValues] = useState<z.infer<typeof formSchema> | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -224,55 +224,71 @@ export default function CreateNovelPage() {
               </Form>
             </Card>
         ) : (
-            submittedValues && (
-                <Card className="animate-fade-in">
-                    <CardHeader>
-                        <CardTitle className="flex items-center text-2xl">
-                            <Bot className="mr-3 h-8 w-8 text-primary" />
-                            正在为您构筑新世界...
-                        </CardTitle>
-                        <CardDescription>
-                            AI引擎已启动，正在根据您的蓝图生成初始世界。请稍候片刻。
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6 text-sm">
-                        <div className="flex items-center">
-                            <Book className="h-5 w-5 mr-4 text-muted-foreground" />
-                            <span className="font-semibold text-muted-foreground mr-2">小说名称:</span>
-                            <span>{submittedValues.name}</span>
-                        </div>
-                        <div className="flex items-center">
-                            <PencilRuler className="h-5 w-5 mr-4 text-muted-foreground" />
-                            <span className="font-semibold text-muted-foreground mr-2">题材类型:</span>
-                            <span>{submittedValues.genre}</span>
-                        </div>
-                        <div className="flex items-center">
-                            <Gem className="h-5 w-5 mr-4 text-muted-foreground" />
-                            <span className="font-semibold text-muted-foreground mr-2">写作风格:</span>
-                            <span>{submittedValues.style}</span>
-                        </div>
-                         <div className="flex items-center">
-                            <Workflow className="h-5 w-5 mr-4 text-muted-foreground" />
-                            <span className="font-semibold text-muted-foreground mr-2">初始章节:</span>
-                            <span>{submittedValues.initialChapterGoal} 章</span>
-                        </div>
-                        <div className="flex items-center">
-                            <Target className="h-5 w-5 mr-4 text-muted-foreground" />
-                            <span className="font-semibold text-muted-foreground mr-2">目标篇幅:</span>
-                            <span>{submittedValues.totalChapterGoal} 章</span>
-                        </div>
-                        {submittedValues.specialRequirements && (
-                            <div className="flex items-start">
-                                <Text className="h-5 w-5 mr-4 text-muted-foreground flex-shrink-0 mt-1" />
-                                <div>
-                                    <span className="font-semibold text-muted-foreground">核心设定:</span>
-                                    <p className="mt-1 leading-relaxed whitespace-pre-wrap">{submittedValues.specialRequirements}</p>
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )
+            <>
+              {submittedValues && (
+                  <Card className="animate-fade-in">
+                      <CardHeader>
+                          <CardTitle className="flex items-center text-2xl">
+                              <Bot className="mr-3 h-8 w-8 text-primary" />
+                              正在为您构筑新世界...
+                          </CardTitle>
+                          <CardDescription>
+                              AI引擎已启动，正在根据您的蓝图生成初始世界。请稍候片刻。
+                          </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-6 text-sm">
+                          <div className="flex items-center">
+                              <Book className="h-5 w-5 mr-4 text-muted-foreground" />
+                              <span className="font-semibold text-muted-foreground mr-2">小说名称:</span>
+                              <span>{submittedValues.name}</span>
+                          </div>
+                          <div className="flex items-center">
+                              <PencilRuler className="h-5 w-5 mr-4 text-muted-foreground" />
+                              <span className="font-semibold text-muted-foreground mr-2">题材类型:</span>
+                              <span>{submittedValues.genre}</span>
+                          </div>
+                          <div className="flex items-center">
+                              <Gem className="h-5 w-5 mr-4 text-muted-foreground" />
+                              <span className="font-semibold text-muted-foreground mr-2">写作风格:</span>
+                              <span>{submittedValues.style}</span>
+                          </div>
+                           <div className="flex items-center">
+                              <Workflow className="h-5 w-5 mr-4 text-muted-foreground" />
+                              <span className="font-semibold text-muted-foreground mr-2">初始章节:</span>
+                              <span>{submittedValues.initialChapterGoal} 章</span>
+                          </div>
+                          <div className="flex items-center">
+                              <Target className="h-5 w-5 mr-4 text-muted-foreground" />
+                              <span className="font-semibold text-muted-foreground mr-2">目标篇幅:</span>
+                              <span>{submittedValues.totalChapterGoal} 章</span>
+                          </div>
+                          {submittedValues.specialRequirements && (
+                              <div className="flex items-start">
+                                  <Text className="h-5 w-5 mr-4 text-muted-foreground flex-shrink-0 mt-1" />
+                                  <div>
+                                      <span className="font-semibold text-muted-foreground">核心设定:</span>
+                                      <p className="mt-1 leading-relaxed whitespace-pre-wrap">{submittedValues.specialRequirements}</p>
+                                  </div>
+                              </div>
+                          )}
+                      </CardContent>
+                  </Card>
+              )}
+
+              {generationTask.currentStep.includes("正在生成第") && generatedContent && (
+                  <Card className="mt-6 animate-fade-in">
+                      <CardHeader>
+                          <CardTitle>实时生成预览</CardTitle>
+                          <CardDescription>{generationTask.currentStep}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                          <div className="prose prose-sm dark:prose-invert max-h-[400px] overflow-y-auto rounded-md border p-4 bg-muted/50">
+                              <p className="whitespace-pre-wrap font-sans">{generatedContent}</p>
+                          </div>
+                      </CardContent>
+                  </Card>
+              )}
+            </>
         )}
       </div>
       

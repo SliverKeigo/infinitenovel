@@ -124,8 +124,8 @@ graph TD
     ```
 
 3.  **启动开发服务器**
-    ```bash
-    npm run dev
+```bash
+npm run dev
     ```
 
 4.  **打开浏览器**
