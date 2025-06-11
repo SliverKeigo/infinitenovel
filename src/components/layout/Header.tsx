@@ -7,7 +7,7 @@ import { useEffect } from 'react'
 import { EmbeddingPipeline } from '@/lib/embeddings'
 import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { BrainCircuit, CheckCircle, AlertTriangle, Loader } from 'lucide-react'
+import { BrainCircuit, CheckCircle, AlertTriangle, Loader, Database } from 'lucide-react'
 import Link from "next/link";
 import { siteConfig } from "@/config/site";
 import { Icons } from "@/components/icons";
@@ -79,6 +79,21 @@ export function Header() {
 
         <div className="flex flex-1 items-center justify-end space-x-4">
           <ModelStatusIndicator />
+          <TooltipProvider>
+              <Tooltip>
+                  <TooltipTrigger asChild>
+                      <Link href="/dev/db-viewer">
+                          <div className="h-9 w-9 inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground">
+                            <Database className="h-5 w-5" />
+                            <span className="sr-only">数据库浏览器</span>
+                          </div>
+                      </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                      <p>数据库浏览器</p>
+                  </TooltipContent>
+              </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
     </header>
