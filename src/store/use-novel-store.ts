@@ -551,6 +551,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       // Step 2: If content was generated, save it
       if (get().generatedContent) {
         await get().saveGeneratedChapter(novelId);
+        await get().recordExpansion(novelId);
         toast.success("新章节已生成并保存！");
       } else {
         // This case might happen if generation fails and content is null
