@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
-import { Inter } from 'next/font/google';
+import { Inter } from "next/font/google";
 import "./globals.css";
+import { Toaster } from "@/components/ui/sonner";
 import { Header } from "@/components/layout/Header";
-import { Toaster } from '@/components/ui/sonner';
+import { ClientProviders } from "@/components/layout/client-providers";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "无限小说 - AI驱动的创作平台",
-  description: "释放你的想象力，与AI共同谱写无限的故事。",
+  title: "无限小说家",
+  description: "您的专属AI小说创作助手",
 };
 
 export default function RootLayout({
@@ -17,11 +18,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <body className={inter.className}>
-        <Header />
-        <main className="container mx-auto">{children}</main>
-        <Toaster />
+        <ClientProviders>
+            <Header />
+            <main className="container mx-auto">{children}</main>
+            <Toaster />
+        </ClientProviders>
       </body>
     </html>
   );

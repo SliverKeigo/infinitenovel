@@ -11,11 +11,6 @@ export const BasicInfoCard = () => {
 
   if (!currentNovel) return null;
   
-  const getStatusBadge = (status: number, goal: number) => {
-    if (status >= goal) return <Badge variant="success">已完结</Badge>;
-    return <Badge variant="secondary">生成中</Badge>;
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -52,7 +47,7 @@ export const BasicInfoCard = () => {
          <div className="flex flex-col gap-1">
           <span className="text-muted-foreground">当前状态</span>
           <div className="font-semibold">
-              {getStatusBadge(currentNovel.chapterCount, currentNovel.totalChapterGoal)}
+              {currentNovel.chapterCount >= currentNovel.totalChapterGoal ? <Badge variant="success">已完结</Badge> : <Badge variant="secondary">生成中</Badge>}
           </div>
         </div>
       </CardContent>
