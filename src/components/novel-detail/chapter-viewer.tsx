@@ -48,7 +48,7 @@ export const ChapterViewer = ({ chapter, onClose }: ChapterViewerProps) => {
           <DialogTitle>{`第 ${chapter.chapterNumber} 章: ${chapter.title}`}</DialogTitle>
         </DialogHeader>
         <ScrollArea className="h-[70vh] rounded-md border p-4">
-           <p className="text-base leading-relaxed whitespace-pre-wrap font-serif">
+           <p className="text-base leading-relaxed whitespace-pre-wrap font-sans">
                {chapter.content}
            </p>
         </ScrollArea>
