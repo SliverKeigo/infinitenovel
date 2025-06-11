@@ -78,13 +78,13 @@ export default function DbViewerPage() {
         await deleteNovel(rowToDelete.id);
         toast.success(`小说及其所有关联数据已成功删除 (ID: ${rowToDelete.id})`);
       } else {
-        await db.table(selectedTable).delete(rowToDelete.id);
-        toast.success(`在表 [${selectedTable}] 中成功删除记录 ID: ${rowToDelete.id}`);
+      await db.table(selectedTable).delete(rowToDelete.id);
+      toast.success(`在表 [${selectedTable}] 中成功删除记录 ID: ${rowToDelete.id}`);
       }
       setSelectedRowIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(rowToDelete.id);
-        return newSet;
+          const newSet = new Set(prev);
+          newSet.delete(rowToDelete.id);
+          return newSet;
       });
       loadTableData(selectedTable); // Refresh data
     } catch (error) {
@@ -96,26 +96,26 @@ export default function DbViewerPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (!selectedTable || selectedRowIds.size === 0) return;
-    try {
-      const idsToDelete = Array.from(selectedRowIds);
+      if (!selectedTable || selectedRowIds.size === 0) return;
+      try {
+          const idsToDelete = Array.from(selectedRowIds);
       if (selectedTable === 'novels') {
         for (const id of idsToDelete) {
           await deleteNovel(id);
         }
         toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 本小说及其所有关联数据。`);
       } else {
-        await db.table(selectedTable).bulkDelete(idsToDelete);
-        toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 条记录。`);
+          await db.table(selectedTable).bulkDelete(idsToDelete);
+          toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 条记录。`);
       }
-      setSelectedRowIds(new Set());
-      loadTableData(selectedTable);
-    } catch (error) {
-      console.error('Failed to bulk delete records:', error);
-      toast.error(`批量删除记录失败: ${error}`);
-    } finally {
-      setIsBulkDeleteConfirmOpen(false);
-    }
+          setSelectedRowIds(new Set());
+          loadTableData(selectedTable);
+      } catch (error) {
+          console.error('Failed to bulk delete records:', error);
+          toast.error(`批量删除记录失败: ${error}`);
+      } finally {
+          setIsBulkDeleteConfirmOpen(false);
+      }
   };
 
   const handleSave = () => {

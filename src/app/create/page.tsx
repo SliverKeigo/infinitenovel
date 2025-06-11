@@ -127,7 +127,7 @@ export default function CreateNovelPage() {
                         <FormItem>
                           <FormLabel>小说名称</FormLabel>
                           <FormControl>
-                            <Input placeholder="例如：星际迷航：无限边疆" {...field} />
+                            <Input placeholder="例如：迷雾之都的守夜人" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -141,7 +141,7 @@ export default function CreateNovelPage() {
                           <FormItem>
                             <FormLabel>题材类型</FormLabel>
                             <FormControl>
-                              <Input placeholder="例如：科幻" {...field} />
+                              <Input placeholder="例如：煤气灯幻想、悬疑推理" {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -154,7 +154,7 @@ export default function CreateNovelPage() {
                               <FormItem>
                                   <FormLabel>写作风格</FormLabel>
                                   <FormControl>
-                                      <Input placeholder="例如：赛博朋克" {...field} />
+                                      <Input placeholder="例如：融合福尔摩斯与克苏鲁风格" {...field} />
                                   </FormControl>
                                   <FormMessage />
                               </FormItem>
