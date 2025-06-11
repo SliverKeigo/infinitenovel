@@ -14,64 +14,72 @@ export interface SettingsProfile extends GenerationSettings {
   name: string;
 }
 
+interface SerializedIndexData {
+    id: string;
+    title: string;
+    url: string;
+    embeddings: number[];
+}
+
+interface NovelVectorIndex {
+    id?: number;
+    novelId: number;
+    serializedIndex: SerializedIndexData[];
+}
+
 /**
  * 应用程序的 Dexie (IndexedDB) 数据库实例。
  * 负责管理所有本地存储的表。
  */
-export class InfiniteNovelDatabase extends Dexie {
-  /** AI 配置表 */
-  aiConfigs!: Table<AIConfig>;
-  /** 生成设置表，主键是数字 */
-  generationSettings!: Table<GenerationSettings, number>;
-  /** 小说信息表 */
+export class InfiniteNovelDB extends Dexie {
   novels!: Table<Novel>;
-  /** 章节内容表 */
   chapters!: Table<Chapter>;
-  /** 人物角色表 */
   characters!: Table<Character>;
-  /** 情节线索表 */
   plotClues!: Table<PlotClue>;
-  /** 小说向量索引表 */
-  novelVectorIndexes!: Table<SerializedVectorIndex>;
-  
-  // 注意：'settingsProfiles' 表似乎是多余的，如果它只是命名的 GenerationSettings。
-  // generation-settings.ts store 中的逻辑直接使用预设和单个设置对象。
-  // 我将暂时省略 'settingsProfiles' 以与现有的 store 逻辑保持一致。
-  // 如果命名配置文件是一个单独的功能，我们可以再把它加回来。
+  aiConfigs!: Table<AIConfig>;
+  generationSettings!: Table<GenerationSettings>;
+  novelVectorIndexes!: Table<NovelVectorIndex>;
 
   constructor() {
-    super('InfiniteNovelDatabase');
-
-    // 我们将所有 schema 定义合并到单个最终版本中，
-    // 以简化操作并避免复杂的升级功能。
+    super('InfiniteNovelDB_v2');
     this.version(1).stores({
+      novels: '++id, &name, genre, style, totalChapterGoal, wordCount, chapterCount, characterCount, plotClueCount, expansionCount, createdAt, updatedAt',
+      chapters: '++id, novelId, chapterNumber, title, status, wordCount, createdAt, updatedAt',
+      characters: '++id, novelId, name, status, createdAt, updatedAt',
+      plotClues: '++id, novelId, title, createdAt, updatedAt',
       aiConfigs: '++id, &name',
-      generationSettings: 'id', // ID 始终为 1
-      novels: '++id, name, genre, style, createdAt, updatedAt, totalChapterGoal, specialRequirements, expansionCount',
+      generationSettings: '++id',
+      novelVectorIndexes: '++id, novelId'
     });
-    
     this.version(2).stores({
-      aiConfigs: '++id, &name',
-      generationSettings: 'id', // ID 始终为 1
-      novels: '++id, name, genre, style, createdAt, updatedAt, totalChapterGoal, specialRequirements, expansionCount, plotOutline, plotClueCount',
-      chapters: '++id, novelId, chapterNumber',
-      characters: '++id, novelId',
-      plotClues: '++id, novelId',
+      novels: '++id, &name, genre, style, totalChapterGoal, wordCount, chapterCount, characterCount, plotClueCount, expansionCount, createdAt, updatedAt, specialRequirements',
+      chapters: '++id, novelId, chapterNumber, title, content, status, wordCount, summary, createdAt, updatedAt',
+      characters: '++id, novelId, name, coreSetting, personality, backgroundStory, isProtagonist, biography, relationships, status, createdAt, updatedAt',
+      plotClues: '++id, novelId, title, description, createdAt, updatedAt',
+    }).upgrade(tx => {
+       // 该升级是可选的，主要是为了确保旧数据有新字段的默认值
+      return tx.table('novels').toCollection().modify(novel => {
+        if (novel.specialRequirements === undefined) {
+          novel.specialRequirements = '';
+        }
+      });
     });
-
-    this.version(3).upgrade(async (tx) => {
-      await tx.table('novels').toCollection().modify((novel) => {
+    this.version(3).stores({}).upgrade(tx => {
+      return tx.table('novels').toCollection().modify(novel => {
         if (novel.expansionCount === undefined) {
           novel.expansionCount = 0;
         }
       });
     });
-
     this.version(4).stores({
-      novelVectorIndexes: 'novelId', // novelId is the primary key and corresponds to the novel's id
+        novels: '++id, &name, genre, style, totalChapterGoal, wordCount, chapterCount, characterCount, plotClueCount, expansionCount, createdAt, updatedAt, specialRequirements, storyConstitution',
+    }).upgrade(tx => {
+        return tx.table('novels').toCollection().modify(novel => {
+            if (novel.storyConstitution === undefined) {
+                novel.storyConstitution = '';
+            }
+        });
     });
-
-    this.on('populate', this.populate);
   }
 
   /**
@@ -114,4 +122,4 @@ export class InfiniteNovelDatabase extends Dexie {
   }
 }
 
-export const db = new InfiniteNovelDatabase();
+export const db = new InfiniteNovelDB();
