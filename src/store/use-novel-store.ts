@@ -56,13 +56,22 @@ interface NovelState {
   generationTask: GenerationTask;
   fetchNovels: () => Promise<void>;
   fetchNovelDetails: (id: number) => Promise<{ novel: Novel; chapters: Chapter[]; characters: Character[] } | null>;
-  buildNovelIndex: (id: number) => Promise<void>;
+  buildNovelIndex: (id: number, onSuccess?: () => void) => Promise<void>;
   generateNewChapter: (
     novelId: number, 
     context: {
       plotOutline: string;
       characters: Character[];
       settings: any; // Using 'any' for now, replace with GenerationSettings
+    },
+    userPrompt?: string
+  ) => Promise<void>;
+  generateAndSaveNewChapter: (
+    novelId: number,
+    context: {
+      plotOutline: string;
+      characters: Character[];
+      settings: any;
     },
     userPrompt?: string
   ) => Promise<void>;
@@ -121,7 +130,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       return null;
     }
   },
-  buildNovelIndex: async (id) => {
+  buildNovelIndex: async (id, onSuccess) => {
     set({ indexLoading: true, currentNovelIndex: null });
     try {
       const fetchedData = await get().fetchNovelDetails(id);
@@ -158,6 +167,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       if (documentsToIndex.length === 0) {
         set({ currentNovelIndex: new Voy(), indexLoading: false });
         console.warn("Building an empty index as there are no chapters or characters.");
+        onSuccess?.();
         return;
       }
 
@@ -173,6 +183,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       const newIndex = new Voy({ embeddings: dataForVoy });
       
       set({ currentNovelIndex: newIndex, indexLoading: false });
+      onSuccess?.();
 
     } catch (error: any) {
       console.error("Failed to build novel index:", error);
@@ -362,167 +373,194 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     }
   },
   generateNewChapter: async (novelId, context, userPrompt) => {
-    set({ generationLoading: true, generatedContent: null });
-    const { currentNovel, currentNovelIndex, currentNovelDocuments, chapters } = get();
-
-    if (!currentNovel) {
-        console.error("Novel not loaded for generating new chapter.");
-        set({ generationLoading: false });
-        return;
-    }
-
-    // 在生成新章节前，主动检查并扩展大纲
-    await expandPlotOutline(currentNovel);
+    // This function no longer manages generationLoading state.
+    // It's now handled by the caller, generateAndSaveNewChapter.
+    set({ generatedContent: null });
     
-    // 重新获取最新的 novel 数据，因为它可能已被 expandPlotOutline 更新
-    const updatedNovel = await db.novels.get(novelId);
-    if (!updatedNovel) {
-      console.error("Failed to re-fetch novel after outline expansion.");
-      set({ generationLoading: false });
-      return;
-    }
+    // This function will now return a promise that resolves when generation is complete.
+    return new Promise(async (resolve, reject) => {
+        const { currentNovel, currentNovelIndex, currentNovelDocuments, chapters } = get();
 
-    if (!currentNovelIndex) {
-      console.error("Novel index not loaded.");
-      set({ generationLoading: false });
-      return;
-    }
-    
-    const { plotOutline, characters, settings } = context;
+        if (!currentNovel) {
+            console.error("Novel not loaded for generating new chapter.");
+            return reject(new Error("Novel not loaded"));
+        }
 
-    console.log("Generating new chapter for novel ID:", novelId);
+        // 在生成新章节前，主动检查并扩展大纲
+        await expandPlotOutline(currentNovel);
+        
+        // 重新获取最新的 novel 数据，因为它可能已被 expandPlotOutline 更新
+        const updatedNovel = await db.novels.get(novelId);
+        if (!updatedNovel) {
+          console.error("Failed to re-fetch novel after outline expansion.");
+          return reject(new Error("Failed to re-fetch novel"));
+        }
 
-    // 1. 获取激活的AI配置
-    const { activeConfigId } = useAIConfigStore.getState();
+        if (!currentNovelIndex) {
+          console.error("Novel index not loaded.");
+          return reject(new Error("Novel index not loaded"));
+        }
+        
+        const { plotOutline, characters, settings } = context;
 
-    console.log("Active config ID:", activeConfigId);
+        // 1. 获取激活的AI配置
+        const { activeConfigId } = useAIConfigStore.getState();
 
-    if (!activeConfigId) {
-      // In batch generation mode, we don't show alerts
-      if (!get().generationTask.isActive) alert("请先设置并激活一个AI配置。");
-      set({ generationLoading: false });
-      return;
-    }
-    const activeConfig = await db.aiConfigs.get(activeConfigId);
-    if (!activeConfig || !activeConfig.apiKey) {
-      if (!get().generationTask.isActive) alert("激活的AI配置无效或缺少API密钥。");
-      set({ generationLoading: false });
-      return;
-    }
+        if (!activeConfigId) {
+          if (!get().generationTask.isActive) toast.error("请先设置并激活一个AI配置。");
+          return reject(new Error("No active AI config"));
+        }
+        const activeConfig = await db.aiConfigs.get(activeConfigId);
+        if (!activeConfig || !activeConfig.apiKey) {
+          if (!get().generationTask.isActive) toast.error("激活的AI配置无效或缺少API密钥。");
+          return reject(new Error("Invalid AI config or missing API key"));
+        }
 
-    console.log("Active config:", activeConfig);
-    
-    // Agent 模式 (Batch Generation) -> 此处逻辑重构
-    const currentChapterNumber = chapters.length + 1;
-    const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
+        console.log("Active config:", activeConfig);
+        
+        // Agent 模式 (Batch Generation) -> 此处逻辑重构
+        const currentChapterNumber = chapters.length + 1;
+        const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
 
-    // 提取本章大纲
-    const chapterOutlineRegex = new RegExp(`^第${currentChapterNumber}章:\\s*(.*)`, 'm');
-    const chapterOutlineMatch = updatedNovel.plotOutline?.match(chapterOutlineRegex);
-    const currentChapterOutline = chapterOutlineMatch ? chapterOutlineMatch[1] : '请根据总大纲和上一章结尾，自由发挥，合理推进情节。';
-    
-    // RAG 查询文本
-    const ragQueryText = `本章大纲: ${currentChapterOutline}\n用户额外要求: ${userPrompt || '无'}`;
-    
-    // RAG - 检索
-    const promptEmbedding = await EmbeddingPipeline.embed(ragQueryText);
-    const searchResults = currentNovelIndex.search(new Float32Array(promptEmbedding[0]), 5);
-    
-    // RAG - 增强上下文
-    const ragContextText = searchResults.neighbors.map(neighbor => {
-      const originalDoc = currentNovelDocuments.find(doc => doc.id === neighbor.id);
-      return originalDoc 
-        ? `相关信息：\n标题: ${originalDoc.title}\n内容: ${originalDoc.text}`
-        : '';
-    }).filter(Boolean).join('\n\n---\n\n');
+        // 提取本章大纲
+        const chapterOutlineRegex = new RegExp(`^第${currentChapterNumber}章:\\s*(.*)`, 'm');
+        const chapterOutlineMatch = updatedNovel.plotOutline?.match(chapterOutlineRegex);
+        const currentChapterOutline = chapterOutlineMatch ? chapterOutlineMatch[1] : '请根据总大纲和上一章结尾，自由发挥，合理推进情节。';
+        
+        // RAG 查询文本
+        const ragQueryText = `本章大纲: ${currentChapterOutline}\n用户额外要求: ${userPrompt || '无'}`;
+        
+        // RAG - 检索
+        const promptEmbedding = await EmbeddingPipeline.embed(ragQueryText);
+        const searchResults = currentNovelIndex.search(new Float32Array(promptEmbedding[0]), 5);
+        
+        // RAG - 增强上下文
+        const ragContextText = searchResults.neighbors.map(neighbor => {
+          const originalDoc = currentNovelDocuments.find(doc => doc.id === neighbor.id);
+          return originalDoc 
+            ? `相关信息：\n标题: ${originalDoc.title}\n内容: ${originalDoc.text}`
+            : '';
+        }).filter(Boolean).join('\n\n---\n\n');
 
-    const allCharactersInfo = characters.map(c => `角色: ${c.name} - ${c.coreSetting}`).join('\n');
-    const allPlotCluesInfo = get().plotClues.map(p => `- ${p.title}`).join('\n');
+        const allCharactersInfo = characters.map(c => `角色: ${c.name} - ${c.coreSetting}`).join('\n');
+        const allPlotCluesInfo = get().plotClues.map(p => `- ${p.title}`).join('\n');
 
-    // 上一章的完整内容
-    const previousChapterContext = lastChapter
-      ? `---
-[上一章的完整内容]
-${lastChapter.content}
----`
-      : '--- [这是第一章，请根据大纲开始新的故事。] ---';
+        // 上一章的完整内容
+        const previousChapterContext = lastChapter
+          ? `---
+    [上一章的完整内容]
+    ${lastChapter.content}
+    ---`
+          : '--- [这是第一章，请根据大纲开始新的故事。] ---';
 
-    // 构建最终的、统一的提示
-    const finalPrompt = `
-你是一位专业的小说家，你的任务是为小说《${currentNovel.name}》续写第 ${currentChapterNumber} 章。
-请直接开始创作，不要写任何总结、解释或提出问题。你的回答应该只有新章节的标题和内容。
+        // 构建最终的、统一的提示
+        const finalPrompt = `
+    你是一位专业的小说家，你的任务是为小说《${currentNovel.name}》续写第 ${currentChapterNumber} 章。
+    请直接开始创作，不要写任何总结、解释或提出问题。你的回答应该只有新章节的标题和内容。
 
-[小说信息]
-- 类型: ${currentNovel.genre}
-- 风格: ${currentNovel.style}
-- 核心要求: ${currentNovel.specialRequirements || '无特殊要求'}
+    [小说信息]
+    - 类型: ${currentNovel.genre}
+    - 风格: ${currentNovel.style}
+    - 核心要求: ${currentNovel.specialRequirements || '无特殊要求'}
 
-[总体剧情大纲]
-${plotOutline}
+    [总体剧情大纲]
+    ${plotOutline}
 
-[核心人物]
-${allCharactersInfo}
+    [核心人物]
+    ${allCharactersInfo}
 
-[已知情节线索]
-${allPlotCluesInfo || '暂无，这是故事的开端。'}
+    [已知情节线索]
+    ${allPlotCluesInfo || '暂无，这是故事的开端。'}
 
-[为增强连贯性，检索到的相关信息]
-${ragContextText}
+    [为增强连贯性，检索到的相关信息]
+    ${ragContextText}
 
-${previousChapterContext}
+    ${previousChapterContext}
 
-[本章任务]
-1.  **本章大纲**: ${currentChapterOutline}
-2.  **用户额外指令**: ${userPrompt || '无'}
-3.  **预估字数**: ${settings.chapterWordCount} 字左右。
+    [本章任务]
+    1.  **本章大纲**: ${currentChapterOutline}
+    2.  **用户额外指令**: ${userPrompt || '无'}
+    3.  **预估字数**: ${settings.chapterWordCount} 字左右。
 
-[重要指令]
--   请严格按照[本章任务]中的大纲和指令进行创作。
--   **必须紧密衔接上一章的结尾**，确保故事无缝过渡。
--   **情节必须有实质性推进**，避免原地踏步或重复之前章节的思考和总结。
--   **创造独特且有新意的章节结尾**，不要使用套路化的感慨或展望。
--   **直接输出**: 在第一行提供本章的标题，然后换行，接着撰写新章节的正文内容。不要在标题前添加任何如"标题："或"第X章"等前缀。
-`;
+    [重要指令]
+    -   请严格按照[本章任务]中的大纲和指令进行创作。
+    -   **必须紧密衔接上一章的结尾**，确保故事无缝过渡。
+    -   **情节必须有实质性推进**，避免原地踏步或重复之前章节的思考和总结。
+    -   **创造独特且有新意的章节结尾**，不要使用套路化的感慨或展望。
+    -   **直接输出**: 在第一行提供本章的标题，然后换行，接着撰写新章节的正文内容。不要在标题前添加任何如"标题："或"第X章"等前缀。
+    `;
 
-    console.log("Final prompt sent to AI:", finalPrompt);
+        console.log("Final prompt sent to AI:", finalPrompt);
 
-    const openai = new OpenAI({
-        apiKey: activeConfig.apiKey,
-        baseURL: activeConfig.apiBaseUrl || undefined,
-        dangerouslyAllowBrowser: true,
+        const openai = new OpenAI({
+            apiKey: activeConfig.apiKey,
+            baseURL: activeConfig.apiBaseUrl || undefined,
+            dangerouslyAllowBrowser: true,
+        });
+
+        try {
+          const SAFE_MAX_TOKENS = 8191;
+          let finalMaxTokens = settings.maxTokens;
+
+          if (settings.maxTokens >= SAFE_MAX_TOKENS) {
+            finalMaxTokens = SAFE_MAX_TOKENS;
+            toast.info(`'max_tokens' 设置过高 (≥ ${SAFE_MAX_TOKENS})`, {
+                description: `已自动调整为 ${finalMaxTokens} 以避免API错误。请检查您的AI生成设置。`,
+                duration: 8000
+            });
+          }
+
+          const stream = await openai.chat.completions.create({
+            model: activeConfig.model,
+            messages: [{ role: 'user', content: finalPrompt }],
+            temperature: settings.temperature,
+            max_tokens: finalMaxTokens,
+            stream: true,
+          });
+
+          console.log("OpenAI stream initiated...");
+
+          let newChapterContent = '';
+          for await (const chunk of stream) {
+            const contentDelta = chunk.choices[0]?.delta?.content || '';
+            newChapterContent += contentDelta;
+            set({ generatedContent: newChapterContent });
+          }
+          
+          if (!newChapterContent) {
+            throw new Error("API did not return any content.");
+          }
+          
+          console.log("Stream finished. Full content received.");
+          resolve();
+
+        } catch (error: any) {
+          console.error("Failed to generate new chapter with OpenAI:", error);
+          toast.error(`生成失败: ${error.message}`);
+          reject(error);
+        }
     });
-
+  },
+  generateAndSaveNewChapter: async (novelId, context, userPrompt) => {
+    // Set loading state for the whole process
+    set({ generationLoading: true, generatedContent: null });
     try {
-      // RAG - 生成
-      const stream = await openai.chat.completions.create({
-        model: activeConfig.model,
-        messages: [{ role: 'user', content: finalPrompt }],
-        temperature: settings.temperature,
-        max_tokens: settings.maxTokens,
-        stream: true,
-      });
+      // Step 1: Generate the new chapter content
+      await get().generateNewChapter(novelId, context, userPrompt);
 
-      console.log("OpenAI stream initiated...");
-
-      let newChapterContent = '';
-      for await (const chunk of stream) {
-        const contentDelta = chunk.choices[0]?.delta?.content || '';
-        newChapterContent += contentDelta;
-        // 实时更新UI
-        set({ generatedContent: newChapterContent, generationLoading: true });
+      // Step 2: If content was generated, save it
+      if (get().generatedContent) {
+        await get().saveGeneratedChapter(novelId);
+        toast.success("新章节已生成并保存！");
+      } else {
+        // This case might happen if generation fails and content is null
+        toast.warning("内容生成为空，未执行保存。");
       }
-
-      if (!newChapterContent) {
-        throw new Error("API did not return any content.");
-      }
-      
-      console.log("Stream finished. Full content received.");
-      // The final content is already in the state, just mark loading as false.
-      set({ generationLoading: false });
-
-    } catch (error: any) {
-      console.error("Failed to generate new chapter with OpenAI:", error);
-      alert(`生成失败: ${error.message}`);
+    } catch (error) {
+      // Error is already handled and toasted inside generateNewChapter
+      console.error("An error occurred during the generate-and-save process:", error);
+    } finally {
+      // Ensure loading is off, even if saving fails for some reason
       set({ generationLoading: false });
     }
   },

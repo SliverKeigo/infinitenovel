@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles, CheckCircle } from 'lucide-react';
 import { useGenerationSettingsStore } from "@/store/generation-settings";
+import { toast } from "sonner";
 
 interface ExpansionControlCenterProps {
   onClose: () => void;
@@ -20,22 +21,22 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
     characters,
     generationLoading,
     generatedContent,
-    generateNewChapter,
-    saveGeneratedChapter,
+    generateAndSaveNewChapter,
   } = useNovelStore();
   const { getSettings } = useGenerationSettingsStore();
+  const [isSuccessfullySaved, setIsSuccessfullySaved] = useState(false);
 
   const handleGenerate = async () => {
     const novelId = currentNovel?.id;
     if (!novelId || !currentNovel?.plotOutline) {
-        // Maybe show a toast notification that plot outline is required
-        return;
+      toast.error("缺少小说ID或故事大纲，无法生成。");
+      return;
     }
     
     const settings = await getSettings();
     if (!settings) {
-        // Maybe show a toast notification that settings are required
-        return;
+      toast.error("生成设置未找到，请在设置页面配置。");
+      return;
     }
 
     const context = {
@@ -44,18 +45,19 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
         settings: settings,
     };
     
-    generateNewChapter(novelId, context, userPrompt);
-  };
-
-  const handleSave = () => {
-    const novelId = currentNovel?.id;
-    if (!novelId) return;
-    saveGeneratedChapter(novelId).then(() => {
-      onClose(); // 保存成功后关闭控制中心
-    });
+    setIsSuccessfullySaved(false);
+    await generateAndSaveNewChapter(novelId, context, userPrompt);
+    // After generation and saving are complete, update the state
+    // We check generationLoading to ensure we only set success state when the process truly ends.
+    if (!useNovelStore.getState().generationLoading) {
+        setIsSuccessfullySaved(true);
+    }
   };
 
   const buttonText = userPrompt.trim() ? '根据我的要求生成' : '让 Agent 自动续写';
+
+  // This will re-render when the generation process is fully complete
+  const isProcessFinished = !generationLoading && isSuccessfullySaved;
 
   return (
     <Card className="border-primary/20 border-2 shadow-lg my-4">
@@ -71,32 +73,40 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
           value={userPrompt}
           onChange={(e) => setUserPrompt(e.target.value)}
           rows={5}
-          disabled={generationLoading}
+          disabled={generationLoading || isProcessFinished}
         />
-        <Button onClick={handleGenerate} disabled={generationLoading} className="w-full">
+        <Button onClick={handleGenerate} disabled={generationLoading || isProcessFinished} className="w-full">
           {generationLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              AI 思考中...
+              AI 思考中 (内容流式预览)...
             </>
+          ) : isProcessFinished ? (
+             <>
+                <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                已保存！
+             </>
           ) : (
             buttonText
           )}
         </Button>
         
-        {generatedContent && (
+        {generationLoading && generatedContent && (
             <Alert>
-                <AlertTitle>生成结果预览</AlertTitle>
+                <AlertTitle>实时生成预览</AlertTitle>
                 <AlertDescription className="mt-2">
                     <div className="max-h-60 overflow-y-auto rounded-md border bg-muted p-4 whitespace-pre-wrap font-sans">
                         {generatedContent}
                     </div>
-                    <div className="flex justify-end gap-2 mt-4">
-                         <Button variant="outline" onClick={onClose}>取消</Button>
-                         <Button onClick={handleSave}>接受并保存</Button>
-                    </div>
                 </AlertDescription>
             </Alert>
+        )}
+
+        {isProcessFinished && (
+             <div className="flex justify-end gap-2 mt-4">
+                 <Button onClick={onClose}>完成并关闭</Button>
+                 <Button onClick={() => setIsSuccessfullySaved(false)} variant="ghost">继续创作</Button>
+             </div>
         )}
       </CardContent>
     </Card>

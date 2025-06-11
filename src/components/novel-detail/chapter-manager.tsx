@@ -26,6 +26,26 @@ export const ChapterManager = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
+    const isEmbeddingModelReady = embeddingModelStatus === ModelLoadStatus.LOADED;
+    const isEmbeddingModelLoading = embeddingModelStatus === ModelLoadStatus.LOADING;
+    const isAnythingLoading = indexLoading || isEmbeddingModelLoading;
+
+    const handleToggleGeneration = () => {
+        const novelId = currentNovel?.id;
+        if (!novelId) return;
+
+        // If index doesn't exist, build it and then open the panel on success.
+        if (!currentNovelIndex && !isAnythingLoading) {
+            buildNovelIndex(novelId, () => {
+                setIsGenerating(true);
+            });
+            return;
+        }
+
+        // Otherwise, just toggle the panel.
+        setIsGenerating(prev => !prev);
+    };
+
     const filteredAndSortedChapters = useMemo(() => {
         return chapters
             .filter(chapter => 
@@ -39,21 +59,6 @@ export const ChapterManager = () => {
                 return b.chapterNumber - a.chapterNumber;
             });
     }, [chapters, searchTerm, sortOrder]);
-
-    const handleToggleGeneration = () => {
-        const novelId = currentNovel?.id;
-        if (!isGenerating && !currentNovelIndex && novelId) {
-            buildNovelIndex(novelId);
-            // Don't open the panel immediately, let the index build first.
-            // The user can click again once the index is ready.
-            return;
-        }
-        setIsGenerating(prev => !prev);
-    };
-    
-    const isEmbeddingModelReady = embeddingModelStatus === ModelLoadStatus.LOADED;
-    const isEmbeddingModelLoading = embeddingModelStatus === ModelLoadStatus.LOADING;
-    const isAnythingLoading = indexLoading || isEmbeddingModelLoading;
 
     return (
         <Card>
