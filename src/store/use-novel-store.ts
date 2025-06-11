@@ -11,6 +11,7 @@ import { useGenerationSettingsStore } from '@/store/generation-settings';
 import OpenAI from 'openai';
 import { log } from 'console';
 import { toast } from "sonner";
+import type { GenerationSettings } from '@/types/generation-settings';
 
 const INITIAL_CHAPTER_GENERATION_COUNT = 5;
 const OUTLINE_EXPAND_THRESHOLD = 3; // 当细纲剩余少于3章时触发扩展
@@ -279,27 +280,30 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       set({ generationTask: { ...get().generationTask, progress: 20, currentStep: '大纲创建完毕！' } });
 
       // --- STAGE 2: CREATE CHARACTERS ---
-      set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '正在根据大纲创建核心人物...' } });
+      set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '正在创建核心角色...' } });
 
-      const charactersPrompt = `
-        你是一位角色设计师。请根据以下小说设定和故事大纲，设计 ${settings.maxCharacterCount} 个核心角色。
-        - 小说名: 《${novel.name}》
-        - 设定: ${novel.genre}, ${novel.style}, ${novel.specialRequirements || '无'}
-        - 故事大纲:
-        ${plotOutline}
-        
-        请为每个角色提供姓名、核心设定、性格和背景故事。请确保角色与大纲紧密相关。
-        使用以下格式，并用"---"分隔每个角色：
-        姓名: [角色姓名]
-        核心设定: [角色的关键身份或能力]
-        性格: [角色的性格特点]
-        背景故事: [角色的背景简介]
-        ---
+      const characterPrompt = `
+        你是一位顶级角色设计师。基于下面的小说信息和故事大纲，设计出引人入胜的核心角色。
+        - 小说名称: 《${novel.name}》
+        - 小说类型: ${novel.genre}
+        - 故事大纲: ${plotOutline.substring(0, 2000)}...
+
+        请根据以上信息，为这部小说创建 5 个核心角色。
+
+        请严格按照下面的JSON格式输出，不要包含任何额外的解释或文本。每个角色都必须包含 name, coreSetting, personality, 和 backgroundStory 四个字段。
+        [
+          {
+            "name": "角色名",
+            "coreSetting": "一句话核心设定，例如'一个拥有神秘过去的退休星际战士'",
+            "personality": "角色的性格特点，用几个关键词描述",
+            "backgroundStory": "角色的背景故事简述"
+          }
+        ]
       `;
 
       const charactersResponse = await openai.chat.completions.create({
         model: activeConfig.model,
-        messages: [{ role: 'user', content: charactersPrompt }],
+        messages: [{ role: 'user', content: characterPrompt }],
         temperature: settings.characterCreativity,
       });
 
@@ -372,135 +376,141 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       });
     }
   },
-  generateNewChapter: async (novelId, context, userPrompt) => {
-    set({ generatedContent: null });
+  generateNewChapter: async (
+    novelId: number,
+    context: {
+      plotOutline: string;
+      characters: Character[];
+      settings: GenerationSettings;
+    },
+    userPrompt?: string
+  ) => {
+    set({ generationLoading: true, generatedContent: '' });
+
+    const { activeConfigId } = useAIConfigStore.getState();
+    if (!activeConfigId) throw new Error("没有激活的AI配置");
+    const activeConfig = await db.aiConfigs.get(activeConfigId);
+    if (!activeConfig || !activeConfig.apiKey) throw new Error("AI配置或API密钥无效");
+
+    const openai = new OpenAI({
+      apiKey: activeConfig.apiKey,
+      baseURL: activeConfig.apiBaseUrl,
+      dangerouslyAllowBrowser: true,
+    });
+
+    const { plotOutline, characters, settings } = context;
+    const {
+      segmentsPerChapter,
+      maxTokens,
+      temperature,
+      topP,
+      frequencyPenalty,
+      presencePenalty
+    } = settings;
+
+    // Safety check for maxTokens
+    if (maxTokens > 8191) {
+      toast.warning("Max Tokens 设置过高", {
+        description: "您的 Max Tokens 设置超过了8191，已自动调整为8191以防止API错误。",
+      });
+      settings.maxTokens = 8191;
+    }
     
-    try {
-        const { currentNovel, currentNovelIndex, currentNovelDocuments, chapters } = get();
+    const novel = get().currentNovel;
+    if (!novel) throw new Error("未找到当前小说");
 
-        if (!currentNovel) throw new Error("Novel not loaded");
+    const chapters = get().chapters;
+    const latestChapters = chapters.slice(-settings.contextChapters);
 
-        await expandPlotOutline(currentNovel);
-        
-        const updatedNovel = await db.novels.get(novelId);
-        if (!updatedNovel) throw new Error("Failed to re-fetch novel");
+    let accumulatedContent = "";
 
-        if (!currentNovelIndex) throw new Error("Novel index not loaded");
-        
-        const { plotOutline, characters, settings } = context;
-
-        const { activeConfigId } = useAIConfigStore.getState();
-        if (!activeConfigId) throw new Error("No active AI config");
-        
-        const activeConfig = await db.aiConfigs.get(activeConfigId);
-        if (!activeConfig || !activeConfig.apiKey) throw new Error("Invalid AI config or missing API key");
-
-        const currentChapterNumber = chapters.length + 1;
-        const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
-
-        const chapterOutlineRegex = new RegExp(`^第${currentChapterNumber}章:\\s*(.*)`, 'm');
-        const chapterOutlineMatch = updatedNovel.plotOutline?.match(chapterOutlineRegex);
-        const currentChapterOutline = chapterOutlineMatch ? chapterOutlineMatch[1] : '请根据总大纲和上一章结尾，自由发挥，合理推进情节。';
-        
-        const ragQueryText = `本章大纲: ${currentChapterOutline}\n用户额外要求: ${userPrompt || '无'}`;
-        
-        const promptEmbedding = await EmbeddingPipeline.embed(ragQueryText);
-        const searchResults = currentNovelIndex.search(new Float32Array(promptEmbedding[0]), 5);
-        
-        const ragContextText = searchResults.neighbors.map(neighbor => {
-          const originalDoc = currentNovelDocuments.find(doc => doc.id === neighbor.id);
-          return originalDoc 
-            ? `相关信息：\n标题: ${originalDoc.title}\n内容: ${originalDoc.text}`
-            : '';
-        }).filter(Boolean).join('\n\n---\n\n');
-
-        const allCharactersInfo = characters.map(c => `角色: ${c.name} - ${c.coreSetting}`).join('\n');
-        const allPlotCluesInfo = get().plotClues.map(p => `- ${p.title}`).join('\n');
-
-        const previousChapterContext = lastChapter
-          ? `---
-    [上一章的完整内容]
-    ${lastChapter.content}
-    ---`
-          : '--- [这是第一章，请根据大纲开始新的故事。] ---';
-
-        const finalPrompt = `
-    你是一位专业的小说家，你的任务是为小说《${currentNovel.name}》续写第 ${currentChapterNumber} 章。
-    请直接开始创作，不要写任何总结、解释或提出问题。你的回答应该只有新章节的标题和内容。
-
-    [小说信息]
-    - 类型: ${currentNovel.genre}
-    - 风格: ${currentNovel.style}
-    - 核心要求: ${currentNovel.specialRequirements || '无特殊要求'}
-
-    [总体剧情大纲]
-    ${plotOutline}
-
-    [核心人物]
-    ${allCharactersInfo}
-
-    [已知情节线索]
-    ${allPlotCluesInfo || '暂无，这是故事的开端。'}
-
-    [为增强连贯性，检索到的相关信息]
-    ${ragContextText}
-
-    ${previousChapterContext}
-
-    [本章任务]
-    1.  **本章大纲**: ${currentChapterOutline}
-    2.  **用户额外指令**: ${userPrompt || '无'}
-    3.  **预估字数**: ${settings.chapterWordCount} 字左右。
-
-    [重要指令]
-    -   请严格按照[本章任务]中的大纲和指令进行创作。
-    -   **必须紧密衔接上一章的结尾**，确保故事无缝过渡。
-    -   **情节必须有实质性推进**，避免原地踏步或重复之前章节的思考和总结。
-    -   **创造独特且有新意的章节结尾**，不要使用套路化的感慨或展望。
-    -   **直接输出**: 在第一行提供本章的标题，然后换行，接着撰写新章节的正文内容。不要在标题前添加任何如"标题："或"第X章"等前缀。
-    `;
-
-        const openai = new OpenAI({
-            apiKey: activeConfig.apiKey,
-            baseURL: activeConfig.apiBaseUrl || undefined,
-            dangerouslyAllowBrowser: true,
-        });
-
-        const SAFE_MAX_TOKENS = 8191;
-        let finalMaxTokens = settings.maxTokens;
-        if (settings.maxTokens >= SAFE_MAX_TOKENS) {
-          finalMaxTokens = SAFE_MAX_TOKENS;
-          toast.info(`'max_tokens' 设置过高 (≥ ${SAFE_MAX_TOKENS})`, {
-              description: `已自动调整为 ${finalMaxTokens} 以避免API错误。请检查您的AI生成设置。`,
-              duration: 8000
-          });
+    for (let i = 1; i <= segmentsPerChapter; i++) {
+      set({
+        generationTask: {
+          ...get().generationTask,
+          progress: 50 + (50 / segmentsPerChapter) * (i - 1),
+          currentStep: `正在生成章节内容 (片段 ${i}/${segmentsPerChapter})...`
         }
+      });
+      
+      const previousContentContext = accumulatedContent 
+        ? `到目前为止，本章已经写下的内容如下：\n"""\n${accumulatedContent}\n"""\n请你无缝地接续下去。`
+        : "你将要开始撰写本章的开篇。";
 
+      let systemPrompt: string;
+      if (i < segmentsPerChapter) {
+        systemPrompt = `你是一位经验丰富的小说家，写作风格是【${novel.style}】。${previousContentContext} 请继续撰写下一部分，确保情节连贯，并在一个自然的段落或对话结束时停下来，为后续内容留出空间。不要写完整章的结尾。`;
+      } else {
+        systemPrompt = `你是一位经验丰富的小说家，写作风格是【${novel.style}】。${previousContentContext} 请撰写本章的最后一部分，将当前的情节推向一个高潮或有力的收尾，可以是一个完整的场景结束，或留下一个引向下一章的悬念。`;
+      }
+      
+      const userMessageContent = `
+        ### 小说信息
+        - 小说名称: 《${novel.name}》
+        - 类型: ${novel.genre}
+        - 特殊要求: ${novel.specialRequirements}
+
+        ### 整体剧情大纲
+        ${plotOutline}
+
+        ### 核心角色列表
+        ${characters.map(c => `- ${c.name}: ${c.coreSetting}`).join('\n')}
+
+        ### 最近章节回顾
+        ${latestChapters.map(c => `第${c.chapterNumber}章 "${c.title}": ${c.summary || c.content.substring(0, 200)}...`).join('\n\n')}
+
+        ${userPrompt ? `### 用户本次特别指令\n${userPrompt}\n` : ''}
+
+        请根据以上所有信息，继续你的创作。确保只输出纯粹的小说内容，不要包含任何标题、章节编号或解释性的文字。
+      `;
+      
+      try {
         const stream = await openai.chat.completions.create({
           model: activeConfig.model,
-          messages: [{ role: 'user', content: finalPrompt }],
-          temperature: settings.temperature,
-          max_tokens: finalMaxTokens,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessageContent },
+          ],
           stream: true,
+          max_tokens: maxTokens,
+          temperature,
+          top_p: topP,
+          frequency_penalty: frequencyPenalty,
+          presence_penalty: presencePenalty,
         });
 
-        let newChapterContent = '';
-        for await (const chunk of stream) {
-          const contentDelta = chunk.choices[0]?.delta?.content || '';
-          newChapterContent += contentDelta;
-          set({ generatedContent: newChapterContent });
+        // Add segment separator
+        if (i > 1) {
+            set(state => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
         }
         
-        if (!newChapterContent) {
-          throw new Error("API did not return any content.");
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          set(state => ({ generatedContent: (state.generatedContent || "") + content }));
         }
-    } catch (error: any) {
-        toast.error(`生成失败: ${error.message || '未知错误'}`);
-        // Re-throw the error so the calling function (generateAndSaveNewChapter) can catch it.
+
+        // Update accumulated content after a segment is fully generated
+        accumulatedContent = get().generatedContent || "";
+
+      } catch (error) {
+        console.error('OpenAI API call failed:', error);
+        set({ generationLoading: false, generationTask: { ...get().generationTask, currentStep: "生成失败" } });
+        // Re-throw the error to be caught by the calling function
         throw error;
+      }
     }
+    
+    set({ generationLoading: false, generationTask: { ...get().generationTask, progress: 100, currentStep: "章节生成完毕" } });
   },
-  generateAndSaveNewChapter: async (novelId, context, userPrompt) => {
+  generateAndSaveNewChapter: async (
+    novelId: number,
+    context: {
+      plotOutline: string;
+      characters: Character[];
+      settings: any;
+    },
+    userPrompt?: string
+  ) => {
     // Set loading state for the whole process
     set({ generationLoading: true, generatedContent: null });
     try {

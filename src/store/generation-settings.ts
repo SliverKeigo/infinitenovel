@@ -1,45 +1,67 @@
 import { create } from 'zustand';
 import { db } from '@/lib/db';
-import { GenerationSettings, PresetName, PRESET_NAMES } from '@/types/generation-settings';
+import { GenerationSettings, PresetName } from '@/types/generation-settings';
+
+const initialState: GenerationSettings = {
+  id: 1,
+  maxTokens: 4096,
+  segmentsPerChapter: 3,
+  temperature: 0.7,
+  topP: 1,
+  frequencyPenalty: 0,
+  presencePenalty: 0.2,
+  characterCreativity: 0.6,
+  contextChapters: 3,
+};
 
 const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
-  'Balanced Mode': {
-    chapterWordCount: 3000,
+  'Default': {
+    maxTokens: 4096,
+    segmentsPerChapter: 3,
     temperature: 0.7,
-    maxTokens: 16384,
-    maxCharacterCount: 5,
+    topP: 1,
+    frequencyPenalty: 0.2,
+    presencePenalty: 0.2,
     characterCreativity: 0.6,
     contextChapters: 3,
   },
   'Creativity First': {
-    chapterWordCount: 3000,
-    temperature: 0.95,
-    maxTokens: 16384,
-    maxCharacterCount: 7,
+    maxTokens: 4096,
+    segmentsPerChapter: 3,
+    temperature: 0.9,
+    topP: 1,
+    frequencyPenalty: 0,
+    presencePenalty: 0.5,
     characterCreativity: 0.9,
     contextChapters: 2,
   },
   'Logic First': {
-    chapterWordCount: 3000,
+    maxTokens: 8000,
+    segmentsPerChapter: 2,
     temperature: 0.4,
-    maxTokens: 16384,
-    maxCharacterCount: 4,
+    topP: 0.9,
+    frequencyPenalty: 0.3,
+    presencePenalty: 0.3,
     characterCreativity: 0.4,
     contextChapters: 5,
   },
   'Long-form Novel': {
-    chapterWordCount: 4000,
-    temperature: 0.65,
-    maxTokens: 16384,
-    maxCharacterCount: 10,
+    maxTokens: 8191,
+    segmentsPerChapter: 4,
+    temperature: 0.75,
+    topP: 1,
+    frequencyPenalty: 0.1,
+    presencePenalty: 0.1,
     characterCreativity: 0.5,
     contextChapters: 6,
   },
   'Short Story': {
-    chapterWordCount: 2000,
+    maxTokens: 4096,
+    segmentsPerChapter: 2,
     temperature: 0.8,
-    maxTokens: 16384,
-    maxCharacterCount: 3,
+    topP: 1,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
     characterCreativity: 0.7,
     contextChapters: 1,
   },
@@ -53,7 +75,7 @@ interface GenerationSettingsStore {
 
 export const useGenerationSettingsStore = create<GenerationSettingsStore>((set) => ({
   updateSettings: async (settings) => {
-    const existingSettings = await db.generationSettings.get(1) || defaultSettings;
+    const existingSettings = await db.generationSettings.get(1) || initialState;
     await db.generationSettings.put({ ...existingSettings, ...settings, id: 1 });
   },
   applyPreset: async (presetName) => {
@@ -66,7 +88,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsStore>((set) 
     const settings = await db.generationSettings.get(1);
     if (!settings) {
         // If no settings exist, initialize with the default preset
-        const defaultPreset = presets['Balanced Mode'];
+        const defaultPreset = presets['Default'];
         await db.generationSettings.put({ ...defaultPreset, id: 1 });
         return { ...defaultPreset, id: 1 };
     }
@@ -74,4 +96,4 @@ export const useGenerationSettingsStore = create<GenerationSettingsStore>((set) 
   }
 }));
 
-export const defaultSettings = presets['Balanced Mode']; 
+export const defaultSettings = presets['Default']; 

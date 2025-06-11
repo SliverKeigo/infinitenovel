@@ -1,5 +1,5 @@
 export const PRESET_NAMES = [
-  'Balanced Mode',
+  'Default',
   'Creativity First',
   'Logic First',
   'Long-form Novel',
@@ -9,11 +9,13 @@ export const PRESET_NAMES = [
 export type PresetName = typeof PRESET_NAMES[number];
 
 export interface GenerationSettings {
-  id?: 1; // Singleton ID
-  chapterWordCount: number;
-  temperature: number;
+  id: number;
   maxTokens: number;
-  maxCharacterCount: number;
+  segmentsPerChapter: number;
+  temperature: number;
+  topP: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
   characterCreativity: number;
   contextChapters: number;
 } 

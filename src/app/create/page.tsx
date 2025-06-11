@@ -41,13 +41,13 @@ const formSchema = z.object({
   }),
   genre: z.string().min(2, {
     message: '题材类型至少需要2个字符。',
-  }).max(100, {
-      message: '题材类型不能超过100个字符。'
+  }).max(500, {
+      message: '题材类型不能超过500个字符。'
   }),
   style: z.string().min(2, {
     message: '写作风格至少需要2个字符。',
-  }).max(100, {
-        message: '写作风格不能超过100个字符。'
+  }).max(500, {
+        message: '写作风格不能超过500个字符。'
   }),
   initialChapterGoal: z.coerce.number().int().positive({
     message: '初始章节数必须是一个正整数。'
