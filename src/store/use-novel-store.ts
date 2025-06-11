@@ -373,68 +373,40 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     }
   },
   generateNewChapter: async (novelId, context, userPrompt) => {
-    // This function no longer manages generationLoading state.
-    // It's now handled by the caller, generateAndSaveNewChapter.
     set({ generatedContent: null });
     
-    // This function will now return a promise that resolves when generation is complete.
-    return new Promise(async (resolve, reject) => {
+    try {
         const { currentNovel, currentNovelIndex, currentNovelDocuments, chapters } = get();
 
-        if (!currentNovel) {
-            console.error("Novel not loaded for generating new chapter.");
-            return reject(new Error("Novel not loaded"));
-        }
+        if (!currentNovel) throw new Error("Novel not loaded");
 
-        // 在生成新章节前，主动检查并扩展大纲
         await expandPlotOutline(currentNovel);
         
-        // 重新获取最新的 novel 数据，因为它可能已被 expandPlotOutline 更新
         const updatedNovel = await db.novels.get(novelId);
-        if (!updatedNovel) {
-          console.error("Failed to re-fetch novel after outline expansion.");
-          return reject(new Error("Failed to re-fetch novel"));
-        }
+        if (!updatedNovel) throw new Error("Failed to re-fetch novel");
 
-        if (!currentNovelIndex) {
-          console.error("Novel index not loaded.");
-          return reject(new Error("Novel index not loaded"));
-        }
+        if (!currentNovelIndex) throw new Error("Novel index not loaded");
         
         const { plotOutline, characters, settings } = context;
 
-        // 1. 获取激活的AI配置
         const { activeConfigId } = useAIConfigStore.getState();
-
-        if (!activeConfigId) {
-          if (!get().generationTask.isActive) toast.error("请先设置并激活一个AI配置。");
-          return reject(new Error("No active AI config"));
-        }
-        const activeConfig = await db.aiConfigs.get(activeConfigId);
-        if (!activeConfig || !activeConfig.apiKey) {
-          if (!get().generationTask.isActive) toast.error("激活的AI配置无效或缺少API密钥。");
-          return reject(new Error("Invalid AI config or missing API key"));
-        }
-
-        console.log("Active config:", activeConfig);
+        if (!activeConfigId) throw new Error("No active AI config");
         
-        // Agent 模式 (Batch Generation) -> 此处逻辑重构
+        const activeConfig = await db.aiConfigs.get(activeConfigId);
+        if (!activeConfig || !activeConfig.apiKey) throw new Error("Invalid AI config or missing API key");
+
         const currentChapterNumber = chapters.length + 1;
         const lastChapter = chapters.length > 0 ? chapters[chapters.length - 1] : null;
 
-        // 提取本章大纲
         const chapterOutlineRegex = new RegExp(`^第${currentChapterNumber}章:\\s*(.*)`, 'm');
         const chapterOutlineMatch = updatedNovel.plotOutline?.match(chapterOutlineRegex);
         const currentChapterOutline = chapterOutlineMatch ? chapterOutlineMatch[1] : '请根据总大纲和上一章结尾，自由发挥，合理推进情节。';
         
-        // RAG 查询文本
         const ragQueryText = `本章大纲: ${currentChapterOutline}\n用户额外要求: ${userPrompt || '无'}`;
         
-        // RAG - 检索
         const promptEmbedding = await EmbeddingPipeline.embed(ragQueryText);
         const searchResults = currentNovelIndex.search(new Float32Array(promptEmbedding[0]), 5);
         
-        // RAG - 增强上下文
         const ragContextText = searchResults.neighbors.map(neighbor => {
           const originalDoc = currentNovelDocuments.find(doc => doc.id === neighbor.id);
           return originalDoc 
@@ -445,7 +417,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         const allCharactersInfo = characters.map(c => `角色: ${c.name} - ${c.coreSetting}`).join('\n');
         const allPlotCluesInfo = get().plotClues.map(p => `- ${p.title}`).join('\n');
 
-        // 上一章的完整内容
         const previousChapterContext = lastChapter
           ? `---
     [上一章的完整内容]
@@ -453,7 +424,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     ---`
           : '--- [这是第一章，请根据大纲开始新的故事。] ---';
 
-        // 构建最终的、统一的提示
         const finalPrompt = `
     你是一位专业的小说家，你的任务是为小说《${currentNovel.name}》续写第 ${currentChapterNumber} 章。
     请直接开始创作，不要写任何总结、解释或提出问题。你的回答应该只有新章节的标题和内容。
@@ -490,56 +460,45 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     -   **直接输出**: 在第一行提供本章的标题，然后换行，接着撰写新章节的正文内容。不要在标题前添加任何如"标题："或"第X章"等前缀。
     `;
 
-        console.log("Final prompt sent to AI:", finalPrompt);
-
         const openai = new OpenAI({
             apiKey: activeConfig.apiKey,
             baseURL: activeConfig.apiBaseUrl || undefined,
             dangerouslyAllowBrowser: true,
         });
 
-        try {
-          const SAFE_MAX_TOKENS = 8191;
-          let finalMaxTokens = settings.maxTokens;
-
-          if (settings.maxTokens >= SAFE_MAX_TOKENS) {
-            finalMaxTokens = SAFE_MAX_TOKENS;
-            toast.info(`'max_tokens' 设置过高 (≥ ${SAFE_MAX_TOKENS})`, {
-                description: `已自动调整为 ${finalMaxTokens} 以避免API错误。请检查您的AI生成设置。`,
-                duration: 8000
-            });
-          }
-
-          const stream = await openai.chat.completions.create({
-            model: activeConfig.model,
-            messages: [{ role: 'user', content: finalPrompt }],
-            temperature: settings.temperature,
-            max_tokens: finalMaxTokens,
-            stream: true,
+        const SAFE_MAX_TOKENS = 8191;
+        let finalMaxTokens = settings.maxTokens;
+        if (settings.maxTokens >= SAFE_MAX_TOKENS) {
+          finalMaxTokens = SAFE_MAX_TOKENS;
+          toast.info(`'max_tokens' 设置过高 (≥ ${SAFE_MAX_TOKENS})`, {
+              description: `已自动调整为 ${finalMaxTokens} 以避免API错误。请检查您的AI生成设置。`,
+              duration: 8000
           });
-
-          console.log("OpenAI stream initiated...");
-
-          let newChapterContent = '';
-          for await (const chunk of stream) {
-            const contentDelta = chunk.choices[0]?.delta?.content || '';
-            newChapterContent += contentDelta;
-            set({ generatedContent: newChapterContent });
-          }
-          
-          if (!newChapterContent) {
-            throw new Error("API did not return any content.");
-          }
-          
-          console.log("Stream finished. Full content received.");
-          resolve();
-
-        } catch (error: any) {
-          console.error("Failed to generate new chapter with OpenAI:", error);
-          toast.error(`生成失败: ${error.message}`);
-          reject(error);
         }
-    });
+
+        const stream = await openai.chat.completions.create({
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: finalPrompt }],
+          temperature: settings.temperature,
+          max_tokens: finalMaxTokens,
+          stream: true,
+        });
+
+        let newChapterContent = '';
+        for await (const chunk of stream) {
+          const contentDelta = chunk.choices[0]?.delta?.content || '';
+          newChapterContent += contentDelta;
+          set({ generatedContent: newChapterContent });
+        }
+        
+        if (!newChapterContent) {
+          throw new Error("API did not return any content.");
+        }
+    } catch (error: any) {
+        toast.error(`生成失败: ${error.message || '未知错误'}`);
+        // Re-throw the error so the calling function (generateAndSaveNewChapter) can catch it.
+        throw error;
+    }
   },
   generateAndSaveNewChapter: async (novelId, context, userPrompt) => {
     // Set loading state for the whole process
