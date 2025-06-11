@@ -307,6 +307,32 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       await db.novels.update(novelId, { plotOutline });
       set({ generationTask: { ...get().generationTask, progress: 20, currentStep: '大纲创建完毕！' } });
 
+      // --- STAGE 1.5: CREATE NOVEL DESCRIPTION ---
+      set({ generationTask: { ...get().generationTask, progress: 22, currentStep: '正在生成小说简介...' } });
+      const descriptionPrompt = `
+        你是一位卓越的营销文案专家。请根据以下小说的核心信息，为其创作一段 150-250 字的精彩简介。
+        这段简介应该引人入胜，能够吸引读者，让他们渴望立即开始阅读。请突出故事的核心冲突、独特设定和悬念。
+        
+        - 小说名称: 《${novel.name}》
+        - 小说类型: ${novel.genre}
+        - 写作风格: ${novel.style}
+        - 故事大纲: ${plotOutline.substring(0, 1500)}...
+        
+        请直接输出简介内容，不要包含任何额外的标题或解释。
+      `;
+
+      const descriptionResponse = await openai.chat.completions.create({
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: descriptionPrompt }],
+        temperature: settings.temperature,
+      });
+
+      const description = descriptionResponse.choices[0].message.content;
+      if (description) {
+        await db.novels.update(novelId, { description });
+      }
+      set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '简介已生成！' } });
+
       // --- STAGE 2: CREATE CHARACTERS ---
       set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '正在创建核心角色...' } });
 
@@ -370,7 +396,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         await db.novels.update(novelId, { characterCount: newCharacters.length });
         set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '核心人物创建完毕！' } });
       } else {
-        // 如果没有生成任何角色，这可能是一个问题，但我们允许流程继续，而不是抛出错误
         set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '未生成核心人物，继续...' } });
       }
 
@@ -731,6 +756,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       expansionCount: 0,
       plotOutline: '',
       plotClueCount: 0,
+      description: '',
       createdAt: new Date(),
       updatedAt: new Date(),
       specialRequirements: novelData.specialRequirements || '',

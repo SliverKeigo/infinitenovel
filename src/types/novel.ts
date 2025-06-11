@@ -24,6 +24,8 @@ export interface Novel {
   plotOutline?: string;
   /** 包含的情节线索数量 */
   plotClueCount: number;
+  /** 小说简介 */
+  description?: string;
   /** 用户的特殊要求或备注 */
   specialRequirements?: string;
   /** 创建时间 */

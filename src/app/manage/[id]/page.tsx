@@ -10,6 +10,7 @@ import { ChapterManager } from '@/components/novel-detail/chapter-manager';
 import { CharacterManager } from '@/components/novel-detail/character-manager';
 import { PlotClueManager } from '@/components/novel-detail/plot-clue-manager';
 import { KeyStats } from "@/components/novel-detail/key-stats";
+import { NovelDescriptionCard } from "@/components/novel-detail/novel-description-card";
 
 export default function NovelDetailPage() {
   const params = useParams();
@@ -68,6 +69,8 @@ export default function NovelDetailPage() {
           </div>
           
           <KeyStats />
+
+          <NovelDescriptionCard />
 
           {/* 主体布局网格 */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
