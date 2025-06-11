@@ -291,15 +291,17 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
         请根据以上信息，为这部小说创建 5 个核心角色。
 
-        请严格按照下面的JSON格式输出，不要包含任何额外的解释或文本。每个角色都必须包含 name, coreSetting, personality, 和 backgroundStory 四个字段。
-        [
-          {
-            "name": "角色名",
-            "coreSetting": "一句话核心设定，例如'一个拥有神秘过去的退休星际战士'",
-            "personality": "角色的性格特点，用几个关键词描述",
-            "backgroundStory": "角色的背景故事简述"
-          }
-        ]
+        请严格按照下面的JSON格式输出，返回一个包含 "characters" 键的JSON对象。不要包含任何额外的解释或文本。
+        {
+          "characters": [
+            {
+              "name": "角色名",
+              "coreSetting": "一句话核心设定，例如'一个拥有神秘过去的退休星际战士'",
+              "personality": "角色的性格特点，用几个关键词描述",
+              "backgroundStory": "角色的背景故事简述"
+            }
+          ]
+        }
       `;
 
       const charactersResponse = await openai.chat.completions.create({
@@ -348,10 +350,12 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       // --- STAGE 3: GENERATE CHAPTERS ---
       const chaptersToGenerateCount = Math.min(goal, initialChapterGoal);
       const chaptersToGenerate = Array.from({ length: chaptersToGenerateCount }, (_, i) => i);
-      const allCharacters = await db.characters.where('novelId').equals(novelId).toArray();
-      const generationContext = { plotOutline, characters: allCharacters, settings };
-
+      
       for (const i of chaptersToGenerate) {
+        // 在每次循环开始时获取最新的上下文
+        const allCharacters = await db.characters.where('novelId').equals(novelId).toArray();
+        const generationContext = { plotOutline, characters: allCharacters, settings };
+
         const chapterProgress = 40 + ((i + 1) / chaptersToGenerateCount) * 60;
         set({
           generationTask: {
@@ -421,18 +425,21 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       temperature,
       topP,
       frequencyPenalty,
-      presencePenalty
+      presencePenalty,
+      contextChapters = 3
     } = settings;
     
     const novel = get().currentNovel;
     if (!novel) throw new Error("未找到当前小说");
 
     const chapters = get().chapters;
-    const latestChapters = chapters.slice(-segmentsPerChapter);
+    const latestChapters = chapters.slice(-contextChapters); // 使用正确的变量
 
     let accumulatedContent = "";
 
     for (let i = 1; i <= segmentsPerChapter; i++) {
+      console.log(`[诊断] 正在生成章节内容 (片段 ${i}/${segmentsPerChapter})...`);
+
       set({
         generationTask: {
           ...get().generationTask,
@@ -472,7 +479,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         请根据以上所有信息，继续你的创作。确保只输出纯粹的小说内容，不要包含任何标题、章节编号或解释性的文字。
       `;
       
-      console.log("[诊断] 准备发送给 OpenAI 的用户消息:", userMessageContent);
 
       try {
         const stream = await openai.chat.completions.create({
@@ -497,7 +503,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         }
         
         for await (const chunk of stream) {
-          console.log("[诊断] 收到数据块(chunk):", chunk);
           const content = chunk.choices[0]?.delta?.content || "";
           set(state => ({ generatedContent: (state.generatedContent || "") + content }));
         }
@@ -515,7 +520,8 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       }
     }
     
-    set({ generationLoading: false, generationTask: { ...get().generationTask, progress: 100, currentStep: "章节生成完毕" } });
+    // 不再这里更新总体进度，只更新加载状态
+    set({ generationLoading: false });
   },
   generateAndSaveNewChapter: async (
     novelId: number,
