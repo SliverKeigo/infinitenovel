@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { Trash2, FilePenLine, Database, ChevronRight } from 'lucide-react';
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useNovelStore } from '@/store/use-novel-store';
 
 export default function DbViewerPage() {
   const [tables, setTables] = useState<string[]>([]);
@@ -37,6 +38,8 @@ export default function DbViewerPage() {
   const [rowToDelete, setRowToDelete] = useState<any | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<any>>(new Set());
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
+
+  const deleteNovel = useNovelStore((state) => state.deleteNovel);
 
   useEffect(() => {
     const tableNames = db.tables.map((table) => table.name);
@@ -71,12 +74,17 @@ export default function DbViewerPage() {
   const handleDelete = async () => {
     if (!rowToDelete || !selectedTable) return;
     try {
-      await db.table(selectedTable).delete(rowToDelete.id);
-      toast.success(`在表 [${selectedTable}] 中成功删除记录 ID: ${rowToDelete.id}`);
+      if (selectedTable === 'novels') {
+        await deleteNovel(rowToDelete.id);
+        toast.success(`小说及其所有关联数据已成功删除 (ID: ${rowToDelete.id})`);
+      } else {
+        await db.table(selectedTable).delete(rowToDelete.id);
+        toast.success(`在表 [${selectedTable}] 中成功删除记录 ID: ${rowToDelete.id}`);
+      }
       setSelectedRowIds(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(rowToDelete.id);
-          return newSet;
+        const newSet = new Set(prev);
+        newSet.delete(rowToDelete.id);
+        return newSet;
       });
       loadTableData(selectedTable); // Refresh data
     } catch (error) {
@@ -88,19 +96,26 @@ export default function DbViewerPage() {
   };
 
   const handleBulkDelete = async () => {
-      if (!selectedTable || selectedRowIds.size === 0) return;
-      try {
-          const idsToDelete = Array.from(selectedRowIds);
-          await db.table(selectedTable).bulkDelete(idsToDelete);
-          toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 条记录。`);
-          setSelectedRowIds(new Set());
-          loadTableData(selectedTable);
-      } catch (error) {
-          console.error('Failed to bulk delete records:', error);
-          toast.error(`批量删除记录失败: ${error}`);
-      } finally {
-          setIsBulkDeleteConfirmOpen(false);
+    if (!selectedTable || selectedRowIds.size === 0) return;
+    try {
+      const idsToDelete = Array.from(selectedRowIds);
+      if (selectedTable === 'novels') {
+        for (const id of idsToDelete) {
+          await deleteNovel(id);
+        }
+        toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 本小说及其所有关联数据。`);
+      } else {
+        await db.table(selectedTable).bulkDelete(idsToDelete);
+        toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 条记录。`);
       }
+      setSelectedRowIds(new Set());
+      loadTableData(selectedTable);
+    } catch (error) {
+      console.error('Failed to bulk delete records:', error);
+      toast.error(`批量删除记录失败: ${error}`);
+    } finally {
+      setIsBulkDeleteConfirmOpen(false);
+    }
   };
 
   const handleSave = () => {
