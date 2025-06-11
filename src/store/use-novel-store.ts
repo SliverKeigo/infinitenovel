@@ -81,6 +81,7 @@ interface NovelState {
   addNovel: (novel: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline' | 'plotClueCount'>) => Promise<number | undefined>;
   deleteNovel: (id: number) => Promise<void>;
   recordExpansion: (novelId: number) => Promise<void>;
+  expandPlotOutlineIfNeeded: (novelId: number) => Promise<void>;
 }
 
 export const useNovelStore = create<NovelState>((set, get) => ({
@@ -238,7 +239,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
 
           请分两步完成：
-          1.  **宏观篇章规划**: 请将这 ${goal} 章的宏大故事划分成 5 到 8 个主要的"篇章"或"卷"。为每个篇章命名，并提供一个 100-200 字的剧情梗概，描述该阶段的核心冲突、主角成长和关键转折点。
+          1.  **宏观篇章规划**: 请将这 ${goal} 章的宏大故事划分成 3 到 5 个主要的"篇章"或"卷"。为每个篇章命名，并提供一个 100-200 字的剧情梗概，描述该阶段的核心冲突、主角成长和关键转折点。
           2.  **开篇章节细纲**: 在完成宏观规划后，请为故事最开始的 ${initialChapterGoal} 章提供逐章的、更加详细的剧情摘要（每章约 50-100 字）。
 
           请确保两部分内容都在一次响应中完成，并且格式清晰。先输出所有宏观篇章，然后另起一段输出开篇的章节细纲。
@@ -304,35 +305,45 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       const charactersResponse = await openai.chat.completions.create({
         model: activeConfig.model,
         messages: [{ role: 'user', content: characterPrompt }],
+        response_format: { type: "json_object" },
         temperature: settings.characterCreativity,
       });
 
       const charactersText = charactersResponse.choices[0].message.content;
       if (!charactersText) throw new Error("未能生成人物。");
 
-      const characterBlocks = charactersText.split('---').filter(b => b.trim());
-      const newCharacters: Omit<Character, 'id'>[] = characterBlocks.map(block => {
-          const nameMatch = block.match(/姓名:\s*(.*)/);
-          const coreSettingMatch = block.match(/核心设定:\s*(.*)/);
-          const personalityMatch = block.match(/性格:\s*(.*)/);
-          const backgroundStoryMatch = block.match(/背景故事:\s*([\s\S]*)/);
-          return {
-              novelId: novelId,
-              name: nameMatch ? nameMatch[1].trim() : '未知',
-              coreSetting: coreSettingMatch ? coreSettingMatch[1].trim() : '',
-              personality: personalityMatch ? personalityMatch[1].trim() : '',
-              backgroundStory: backgroundStoryMatch ? backgroundStoryMatch[1].trim() : '',
-              appearance: '', // Can be generated later or left empty
-              relationships: '',
-              status: 'active',
-              createdAt: new Date(),
-              updatedAt: new Date()
-          };
-      });
+      let newCharacters: Omit<Character, 'id'>[] = [];
+      try {
+        const parsedCharacters = JSON.parse(charactersText);
+        const charactersData = parsedCharacters.characters || [];
+        
+        if (Array.isArray(charactersData)) {
+            newCharacters = charactersData.map((char: any) => ({
+                novelId: novelId,
+                name: char.name || '未知姓名',
+                coreSetting: char.coreSetting || '无核心设定',
+                personality: char.personality || '未知性格',
+                backgroundStory: char.backgroundStory || '无背景故事',
+                appearance: '',
+                relationships: '',
+                status: 'active',
+                createdAt: new Date(),
+                updatedAt: new Date()
+            }));
+        }
+      } catch (e) {
+        console.error("解析AI生成的角色JSON失败:", e);
+        throw new Error("AI返回了无效的角色数据格式。");
+      }
 
-      await db.characters.bulkAdd(newCharacters as Character[]);
-      await db.novels.update(novelId, { characterCount: newCharacters.length });
-      set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '核心人物创建完毕！' } });
+      if (newCharacters.length > 0) {
+        await db.characters.bulkAdd(newCharacters as Character[]);
+        await db.novels.update(novelId, { characterCount: newCharacters.length });
+        set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '核心人物创建完毕！' } });
+      } else {
+        // 如果没有生成任何角色，这可能是一个问题，但我们允许流程继续，而不是抛出错误
+        set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '未生成核心人物，继续...' } });
+      }
 
       // --- STAGE 3: GENERATE CHAPTERS ---
       const chaptersToGenerateCount = Math.min(goal, initialChapterGoal);
@@ -350,7 +361,10 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           },
         });
         
+        console.log(`[诊断] 准备为第 ${i + 1} 章构建索引...`);
         await get().buildNovelIndex(novelId);
+        console.log(`[诊断] 第 ${i + 1} 章索引构建完成。即将生成内容...`);
+
         await get().generateNewChapter(novelId, generationContext);
         await get().saveGeneratedChapter(novelId);
       }
@@ -387,6 +401,8 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   ) => {
     set({ generationLoading: true, generatedContent: '' });
 
+    console.log("[诊断] 进入 generateNewChapter 函数。");
+
     const { activeConfigId } = useAIConfigStore.getState();
     if (!activeConfigId) throw new Error("没有激活的AI配置");
     const activeConfig = await db.aiConfigs.get(activeConfigId);
@@ -400,27 +416,19 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
     const { plotOutline, characters, settings } = context;
     const {
-      segmentsPerChapter,
+      segmentsPerChapter = 3,
       maxTokens,
       temperature,
       topP,
       frequencyPenalty,
       presencePenalty
     } = settings;
-
-    // Safety check for maxTokens
-    if (maxTokens > 8191) {
-      toast.warning("Max Tokens 设置过高", {
-        description: "您的 Max Tokens 设置超过了8191，已自动调整为8191以防止API错误。",
-      });
-      settings.maxTokens = 8191;
-    }
     
     const novel = get().currentNovel;
     if (!novel) throw new Error("未找到当前小说");
 
     const chapters = get().chapters;
-    const latestChapters = chapters.slice(-settings.contextChapters);
+    const latestChapters = chapters.slice(-segmentsPerChapter);
 
     let accumulatedContent = "";
 
@@ -464,6 +472,8 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         请根据以上所有信息，继续你的创作。确保只输出纯粹的小说内容，不要包含任何标题、章节编号或解释性的文字。
       `;
       
+      console.log("[诊断] 准备发送给 OpenAI 的用户消息:", userMessageContent);
+
       try {
         const stream = await openai.chat.completions.create({
           model: activeConfig.model,
@@ -479,15 +489,20 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           presence_penalty: presencePenalty,
         });
 
+        console.log("[诊断] 已成功创建 OpenAI stream，准备接收数据...");
+
         // Add segment separator
         if (i > 1) {
             set(state => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
         }
         
         for await (const chunk of stream) {
+          console.log("[诊断] 收到数据块(chunk):", chunk);
           const content = chunk.choices[0]?.delta?.content || "";
           set(state => ({ generatedContent: (state.generatedContent || "") + content }));
         }
+
+        console.log("[诊断] OpenAI stream 处理结束。");
 
         // Update accumulated content after a segment is fully generated
         accumulatedContent = get().generatedContent || "";
@@ -521,6 +536,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       if (get().generatedContent) {
         await get().saveGeneratedChapter(novelId);
         await get().recordExpansion(novelId);
+        await get().expandPlotOutlineIfNeeded(novelId);
         toast.success("新章节已生成并保存！");
       } else {
         // This case might happen if generation fails and content is null
@@ -709,15 +725,13 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         await get().fetchNovelDetails(novelId);
     }
   },
-}));
-
-const expandPlotOutline = async (novel: Novel) => {
-    const { getState } = useNovelStore;
+  expandPlotOutlineIfNeeded: async (novelId: number) => {
     const { activeConfigId } = useAIConfigStore.getState();
     const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
+    const novel = await db.novels.get(novelId);
 
-    if (!activeConfig || !activeConfig.apiKey || !novel.plotOutline) {
-        console.warn("无法扩展大纲：缺少有效配置或现有大纲。");
+    if (!novel || !activeConfig || !activeConfig.apiKey || !novel.plotOutline) {
+        console.warn("无法扩展大纲：缺少小说、有效配置或现有大纲。");
         return;
     }
 
@@ -767,9 +781,9 @@ const expandPlotOutline = async (novel: Novel) => {
                 const updatedOutline = `${novel.plotOutline}\n${newOutlinePart.trim()}`;
                 await db.novels.update(novel.id!, { plotOutline: updatedOutline });
                 // 更新 Zustand store 中的 currentNovel
-                const currentNovel = getState().currentNovel;
+                const currentNovel = get().currentNovel;
                 if (currentNovel && currentNovel.id === novel.id) {
-                    getState().fetchNovelDetails(novel.id!);
+                    get().fetchNovelDetails(novel.id!);
                 }
                 toast.success("AI已构思好新的情节！");
                 console.log("大纲扩展成功！");
@@ -779,4 +793,5 @@ const expandPlotOutline = async (novel: Novel) => {
             toast.error("AI构思后续情节时遇到了点麻烦...");
         }
     }
-}; 
+  },
+})); 

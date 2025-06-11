@@ -20,7 +20,7 @@ class EmbeddingPipelineSingleton {
           setProgress(progress.progress);
         },
       }).then((pipe) => {
-        setStatus(ModelLoadStatus.LOADED);
+        setStatus(ModelLoadStatus.LOADED);  
         setProgress(100);
         return pipe as FeatureExtractionPipeline;
       }).catch(error => {
