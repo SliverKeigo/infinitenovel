@@ -14,19 +14,6 @@ export interface SettingsProfile extends GenerationSettings {
   name: string;
 }
 
-interface SerializedIndexData {
-    id: string;
-    title: string;
-    url: string;
-    embeddings: number[];
-}
-
-interface NovelVectorIndex {
-    id?: number;
-    novelId: number;
-    serializedIndex: SerializedIndexData[];
-}
-
 /**
  * 应用程序的 Dexie (IndexedDB) 数据库实例。
  * 负责管理所有本地存储的表。
@@ -38,7 +25,7 @@ export class InfiniteNovelDB extends Dexie {
   plotClues!: Table<PlotClue>;
   aiConfigs!: Table<AIConfig>;
   generationSettings!: Table<GenerationSettings>;
-  novelVectorIndexes!: Table<NovelVectorIndex>;
+  novelVectorIndexes!: Table<SerializedVectorIndex>;
 
   constructor() {
     super('InfiniteNovelDB_v2');
