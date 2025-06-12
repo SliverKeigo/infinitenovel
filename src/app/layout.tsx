@@ -21,9 +21,9 @@ export default function RootLayout({
     <html lang="zh-CN" suppressHydrationWarning>
       <body className={inter.className}>
         <ClientProviders>
-            <Header />
-            <main className="container mx-auto">{children}</main>
-            <Toaster />
+        <Header />
+        <main className="container mx-auto">{children}</main>
+        <Toaster />
         </ClientProviders>
       </body>
     </html>

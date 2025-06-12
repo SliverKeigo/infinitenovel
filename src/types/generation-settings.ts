@@ -17,5 +17,4 @@ export interface GenerationSettings {
   frequencyPenalty: number;
   presencePenalty: number;
   characterCreativity: number;
-  contextChapters: number;
 } 

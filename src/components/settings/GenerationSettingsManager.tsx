@@ -110,11 +110,6 @@ export function GenerationSettingsManager() {
                         <Slider value={[localSettings.segmentsPerChapter]} onValueChange={value => handleSliderChange('segmentsPerChapter', value)} min={1} max={10} step={1} />
                         <p className="text-sm text-muted-foreground">将一章分为多个片段生成，总字数 ≈ (片段数 × Token数)。</p>
                     </div>
-                     <div className="grid gap-2">
-                        <Label>上下文章节数: {localSettings.contextChapters}</Label>
-                        <Slider value={[localSettings.contextChapters]} onValueChange={value => handleSliderChange('contextChapters', value)} min={1} max={10} step={1} />
-                        <p className="text-sm text-muted-foreground">生成新章节时，作为上下文参考的前文章节数量。</p>
-                    </div>
                 </CardContent>
             </Card>
 

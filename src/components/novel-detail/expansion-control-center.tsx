@@ -16,13 +16,14 @@ interface ExpansionControlCenterProps {
 
 export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps) => {
   const [userPrompt, setUserPrompt] = useState('');
-  const {
-    currentNovel,
-    characters,
-    generationLoading,
-    generatedContent,
-    generateAndSaveNewChapter,
-  } = useNovelStore();
+  
+  // Zustand best practice: use atomic selectors to prevent unnecessary re-renders.
+  const currentNovel = useNovelStore(state => state.currentNovel);
+  const characters = useNovelStore(state => state.characters);
+  const generationLoading = useNovelStore(state => state.generationLoading);
+  const generatedContent = useNovelStore(state => state.generatedContent);
+  const generateAndSaveNewChapter = useNovelStore(state => state.generateAndSaveNewChapter);
+  
   const { getSettings } = useGenerationSettingsStore();
   const [isSuccessfullySaved, setIsSuccessfullySaved] = useState(false);
 
@@ -79,7 +80,7 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
           {generationLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              AI 思考中 (内容流式预览)...
+              AI 思考中...
             </>
           ) : isProcessFinished ? (
              <>

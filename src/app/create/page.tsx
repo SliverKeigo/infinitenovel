@@ -68,12 +68,90 @@ const formSchema = z.object({
   }).optional(),
 });
 
+type FormValues = z.infer<typeof formSchema>;
+
+// 1. GenerationView Component: Isolates high-frequency re-renders.
+const GenerationView = ({ submittedValues }: { submittedValues: FormValues }) => {
+    const generationTask = useNovelStore(state => state.generationTask);
+    const generatedContent = useNovelStore(state => state.generatedContent);
+
+    return (
+        <>
+            <Card className="animate-fade-in">
+                <CardHeader>
+                    <CardTitle className="flex items-center text-2xl">
+                        <Bot className="mr-3 h-8 w-8 text-primary" />
+                        正在为您构筑新世界...
+                    </CardTitle>
+                    <CardDescription>
+                        AI引擎已启动，正在根据您的蓝图生成初始世界。请稍候片刻。
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6 text-sm">
+                    <div className="flex items-center">
+                        <Book className="h-5 w-5 mr-4 text-muted-foreground" />
+                        <span className="font-semibold text-muted-foreground mr-2">小说名称:</span>
+                        <span>{submittedValues.name}</span>
+                    </div>
+                    <div className="flex items-center">
+                        <PencilRuler className="h-5 w-5 mr-4 text-muted-foreground" />
+                        <span className="font-semibold text-muted-foreground mr-2">题材类型:</span>
+                        <span>{submittedValues.genre}</span>
+                    </div>
+                    <div className="flex items-center">
+                        <Gem className="h-5 w-5 mr-4 text-muted-foreground" />
+                        <span className="font-semibold text-muted-foreground mr-2">写作风格:</span>
+                        <span>{submittedValues.style}</span>
+                    </div>
+                     <div className="flex items-center">
+                        <Workflow className="h-5 w-5 mr-4 text-muted-foreground" />
+                        <span className="font-semibold text-muted-foreground mr-2">初始章节:</span>
+                        <span>{submittedValues.initialChapterGoal} 章</span>
+                    </div>
+                    <div className="flex items-center">
+                        <Target className="h-5 w-5 mr-4 text-muted-foreground" />
+                        <span className="font-semibold text-muted-foreground mr-2">目标篇幅:</span>
+                        <span>{submittedValues.totalChapterGoal} 章</span>
+                    </div>
+                    {submittedValues.specialRequirements && (
+                        <div className="flex items-start">
+                            <Text className="h-5 w-5 mr-4 text-muted-foreground flex-shrink-0 mt-1" />
+                            <div>
+                                <span className="font-semibold text-muted-foreground">核心设定:</span>
+                                <p className="mt-1 leading-relaxed whitespace-pre-wrap">{submittedValues.specialRequirements}</p>
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {generationTask.currentStep.includes("生成第") && generatedContent && (
+                <Card className="mt-6 animate-fade-in">
+                    <CardHeader>
+                        <CardTitle>实时生成预览</CardTitle>
+                        <CardDescription>{generationTask.currentStep}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="prose prose-sm dark:prose-invert max-h-[400px] overflow-y-auto rounded-md border p-4 bg-muted/50">
+                            <p className="whitespace-pre-wrap font-sans">{generatedContent}</p>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+        </>
+    );
+}
+
 export default function CreateNovelPage() {
   const router = useRouter();
-  const { addNovel, generateNovelChapters, generationTask, generatedContent } = useNovelStore();
-  const [submittedValues, setSubmittedValues] = useState<z.infer<typeof formSchema> | null>(null);
+  // 2. Main component now only subscribes to what it strictly needs.
+  const addNovel = useNovelStore(state => state.addNovel);
+  const generateNovelChapters = useNovelStore(state => state.generateNovelChapters);
+  const isGenerating = useNovelStore(state => state.generationTask.isActive);
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const [submittedValues, setSubmittedValues] = useState<FormValues | null>(null);
+
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
@@ -84,10 +162,8 @@ export default function CreateNovelPage() {
       specialRequirements: '',
     },
   });
-  
-  const isGenerating = generationTask.isActive;
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: FormValues) {
     setSubmittedValues(values);
     try {
       toast.info("正在创建小说设定...");
@@ -95,7 +171,6 @@ export default function CreateNovelPage() {
       if (newNovelId) {
         toast.success("小说设定创建成功！正在启动生成引擎...");
         await generateNovelChapters(newNovelId, values.totalChapterGoal, values.initialChapterGoal);
-        // Generation is complete, now we can show a success message and a button to navigate
       } else {
         throw new Error('创建小说失败，未能获取到ID。');
       }
@@ -224,80 +299,19 @@ export default function CreateNovelPage() {
               </Form>
             </Card>
         ) : (
-            <>
-              {submittedValues && (
-                  <Card className="animate-fade-in">
-                      <CardHeader>
-                          <CardTitle className="flex items-center text-2xl">
-                              <Bot className="mr-3 h-8 w-8 text-primary" />
-                              正在为您构筑新世界...
-                          </CardTitle>
-                          <CardDescription>
-                              AI引擎已启动，正在根据您的蓝图生成初始世界。请稍候片刻。
-                          </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-6 text-sm">
-                          <div className="flex items-center">
-                              <Book className="h-5 w-5 mr-4 text-muted-foreground" />
-                              <span className="font-semibold text-muted-foreground mr-2">小说名称:</span>
-                              <span>{submittedValues.name}</span>
-                          </div>
-                          <div className="flex items-center">
-                              <PencilRuler className="h-5 w-5 mr-4 text-muted-foreground" />
-                              <span className="font-semibold text-muted-foreground mr-2">题材类型:</span>
-                              <span>{submittedValues.genre}</span>
-                          </div>
-                          <div className="flex items-center">
-                              <Gem className="h-5 w-5 mr-4 text-muted-foreground" />
-                              <span className="font-semibold text-muted-foreground mr-2">写作风格:</span>
-                              <span>{submittedValues.style}</span>
-                          </div>
-                           <div className="flex items-center">
-                              <Workflow className="h-5 w-5 mr-4 text-muted-foreground" />
-                              <span className="font-semibold text-muted-foreground mr-2">初始章节:</span>
-                              <span>{submittedValues.initialChapterGoal} 章</span>
-                          </div>
-                          <div className="flex items-center">
-                              <Target className="h-5 w-5 mr-4 text-muted-foreground" />
-                              <span className="font-semibold text-muted-foreground mr-2">目标篇幅:</span>
-                              <span>{submittedValues.totalChapterGoal} 章</span>
-                          </div>
-                          {submittedValues.specialRequirements && (
-                              <div className="flex items-start">
-                                  <Text className="h-5 w-5 mr-4 text-muted-foreground flex-shrink-0 mt-1" />
-                                  <div>
-                                      <span className="font-semibold text-muted-foreground">核心设定:</span>
-                                      <p className="mt-1 leading-relaxed whitespace-pre-wrap">{submittedValues.specialRequirements}</p>
-                                  </div>
-                              </div>
-                          )}
-                      </CardContent>
-                  </Card>
-              )}
-
-              {generationTask.currentStep.includes("正在生成第") && generatedContent && (
-                  <Card className="mt-6 animate-fade-in">
-                      <CardHeader>
-                          <CardTitle>实时生成预览</CardTitle>
-                          <CardDescription>{generationTask.currentStep}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                          <div className="prose prose-sm dark:prose-invert max-h-[400px] overflow-y-auto rounded-md border p-4 bg-muted/50">
-                              <p className="whitespace-pre-wrap font-sans">{generatedContent}</p>
-                          </div>
-                      </CardContent>
-                  </Card>
-              )}
-            </>
+             <>
+                {submittedValues && <GenerationView submittedValues={submittedValues} />}
+             </>
         )}
       </div>
       
       <div className="h-full">
+        {/* GenerationProgress is already optimized to use selectors internally */}
         <GenerationProgress
-            isActive={generationTask.isActive}
-            currentStep={generationTask.currentStep}
-            progress={generationTask.progress}
-            novelId={generationTask.novelId}
+            isActive={isGenerating}
+            novelId={useNovelStore(state => state.generationTask.novelId)}
+            currentStep={useNovelStore(state => state.generationTask.currentStep)}
+            progress={useNovelStore(state => state.generationTask.progress)}
             className="h-full" 
         />
       </div>

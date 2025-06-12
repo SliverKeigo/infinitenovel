@@ -47,25 +47,40 @@ const getChapterOutline = (outline: string, chapterNumber: number): string | nul
  * @throws 如果找不到或无法解析JSON，则抛出错误
  */
 const parseJsonFromAiResponse = (content: string): any => {
-    // 移除包裹的markdown代码块（支持json, ```json, ''', ``` 等）
-    const cleanedContent = content.replace(/^```(?:json)?\s*|```\s*$/g, '');
+  // 1. 规范化标点符号：将全角标点替换为半角标点，并将内容中的引号转义
+  const normalizedContent = content
+    .replace(/｛/g, '{')
+    .replace(/｝/g, '}')
+    .replace(/：/g, ':')
+    .replace(/，/g, ',')
+    .replace(/“/g, '\\"') // Convert to escaped quote
+    .replace(/”/g, '\\"') // Convert to escaped quote
+    .replace(/‘/g, '\\"') // Convert to escaped quote
+    .replace(/’/g, '\\"') // Convert to escaped quote
 
-    // 尝试直接解析清理后的内容
-    try {
-        return JSON.parse(cleanedContent);
-    } catch (e) {
-        // 如果失败，尝试从内容中提取第一个有效的JSON对象
-        const jsonMatch = cleanedContent.match(/{\s*["\w\s-]*\s*:\s*[\s\S]*}/);
-        if (jsonMatch && jsonMatch[0]) {
-            try {
-                return JSON.parse(jsonMatch[0]);
-            } catch (finalError) {
-                console.error("Failed to parse extracted JSON:", finalError);
-                throw new Error(`AI返回了无效的JSON格式，即使在清理和提取后也无法解析: ${content}`);
-            }
-        }
+  // 2. 移除包裹的markdown代码块
+  const cleanedContent = normalizedContent.replace(/^```(?:json)?\s*|```\s*$/g, '');
+
+  // 3. 尝试直接解析清理后的内容
+  try {
+    return JSON.parse(cleanedContent);
+  } catch (e) {
+    // 如果失败，尝试从内容中提取第一个有效的JSON对象
+    // This is a more robust way to extract JSON from a string that might have leading/trailing text.
+    const firstBracket = cleanedContent.indexOf('{');
+    const lastBracket = cleanedContent.lastIndexOf('}');
+
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      const jsonString = cleanedContent.substring(firstBracket, lastBracket + 1);
+      try {
+        return JSON.parse(jsonString);
+      } catch (finalError) {
+        console.error("Failed to parse extracted JSON:", finalError);
+        throw new Error(`AI返回了无效的JSON格式，即使在清理和提取后也无法解析: ${content}`);
+      }
     }
-    throw new Error(`在AI响应中未找到有效的JSON内容: ${content}`);
+  }
+  throw new Error(`在AI响应中未找到有效的JSON内容: ${content}`);
 };
 
 interface DocumentToIndex {
@@ -105,7 +120,8 @@ interface NovelState {
       characters: Character[];
       settings: any; // Using 'any' for now, replace with GenerationSettings
     },
-    userPrompt?: string
+    userPrompt: string | undefined,
+    chapterToGenerate: number,
   ) => Promise<void>;
   generateAndSaveNewChapter: (
     novelId: number,
@@ -150,7 +166,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   },
   fetchNovelDetails: async (id) => {
     console.time('fetchNovelDetails Execution');
-    set({ detailsLoading: true, currentNovel: null, chapters: [], characters: [], plotClues: [], currentNovelDocuments: [] });
+    set({ detailsLoading: true });
     try {
       console.time('数据库查询');
       const novel = await db.novels.get(id);
@@ -317,6 +333,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           2.  **开篇章节细纲**: 在完成宏观规划后，请为故事最开始的 ${initialChapterGoal} 章提供逐章的、更加详细的剧情摘要（每章约 50-100 字）。
 
           请确保两部分内容都在一次响应中完成，并且格式清晰。先输出所有宏观篇章，然后另起一段输出开篇的章节细纲。
+          重要提醒：你的唯一任务是生成逐章大纲。绝对禁止返回任何形式的小说简介或摘要。请严格、无条件地遵守"第X章: [内容]"的格式进行输出。
         `;
       } else {
         // For shorter stories, generate a direct chapter-by-chapter outline
@@ -333,6 +350,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           第1章: [剧情摘要]
           第2章: [剧情摘要]
           ...
+          重要提醒：你的唯一任务是生成逐章大纲。绝对禁止返回任何形式的小说简介或摘要。请严格、无条件地遵守"第X章: [内容]"的格式进行输出。
         `;
       }
 
@@ -455,7 +473,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         const allCharacters = await db.characters.where('novelId').equals(novelId).toArray();
         const generationContext = { plotOutline, characters: allCharacters, settings };
 
-        const chapterProgress = 40 + ((i + 1) / chaptersToGenerateCount) * 60;
+        const chapterProgress = 40 + (i / chaptersToGenerateCount) * 60;
         set({
           generationTask: {
             ...get().generationTask,
@@ -468,7 +486,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         await get().buildNovelIndex(novelId);
         console.log(`[诊断] 第 ${i + 1} 章索引构建完成。即将生成内容...`);
 
-        await get().generateNewChapter(novelId, generationContext);
+        await get().generateNewChapter(novelId, generationContext, undefined, i + 1);
         await get().saveGeneratedChapter(novelId);
       }
 
@@ -500,11 +518,12 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       characters: Character[];
       settings: GenerationSettings;
     },
-    userPrompt?: string
+    userPrompt: string | undefined,
+    chapterToGenerate: number,
   ) => {
-    set({ generationLoading: true, generatedContent: '' });
+    set({ generationLoading: true, generatedContent: "" });
 
-    console.log("[诊断] 进入 generateNewChapter 函数。");
+    console.log("[诊断] 进入 generateNewChapter (单次完整生成模式)。");
 
     const { activeConfigId } = useAIConfigStore.getState();
     if (!activeConfigId) throw new Error("没有激活的AI配置");
@@ -519,115 +538,148 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
     const { plotOutline, characters, settings } = context;
     const {
-      segmentsPerChapter = 3,
       maxTokens,
       temperature,
       topP,
       frequencyPenalty,
       presencePenalty,
-      contextChapters = 3
     } = settings;
 
     const novel = get().currentNovel;
     if (!novel) throw new Error("未找到当前小说");
 
     const { chapters, currentNovelIndex, currentNovelDocuments } = get();
-    const latestChapters = chapters.slice(-contextChapters);
 
-    // --- RAG 检索增强 ---
-    let retrievedContext = "";
-    const nextChapterNumber = (chapters[chapters.length - 1]?.chapterNumber || 0) + 1;
+    // --- RAG 检索增强 (用于章节解构) ---
+    const nextChapterNumber = chapterToGenerate;
     const chapterOutline = getChapterOutline(plotOutline, nextChapterNumber);
 
-    console.log(`[RAG] 正在为第 ${nextChapterNumber} 章生成内容。`);
-    if (chapterOutline) {
-      console.log(`[RAG] 获取到章节大纲: "${chapterOutline}"`);
-    } else {
-      console.warn(`[RAG] 未能为第 ${nextChapterNumber} 章找到剧情大纲。`);
-    }
-
-    if (currentNovelIndex && currentNovelDocuments.length > 0 && chapterOutline) {
-      try {
-        console.log('[RAG] 开始向量检索...');
-        const queryEmbedding = (await EmbeddingPipeline.embed([chapterOutline]))[0];
-        const searchResults = currentNovelIndex.search(queryEmbedding, 5);
-
-        // The result of search is an object with a 'neighbors' property containing the array of results.
-        const retrievedDocs = searchResults.neighbors
-          .map((result: { id: string }) => currentNovelDocuments.find((doc: DocumentToIndex) => doc.id === result.id))
-          .filter((doc): doc is DocumentToIndex => !!doc);
-
-        if (retrievedDocs.length > 0) {
-          retrievedContext = `
-### 相关背景资料（系统检索）
-以下是根据当前章节大纲从小说知识库中检索到的最相关信息，请在写作时参考：
-${retrievedDocs.map((doc: DocumentToIndex) => `- ${doc.title}: ${doc.text.substring(0, 150)}...`).join('\n')}
+    // --- 上下文三明治策略 (重新引入) ---
+    let previousChapterContext = "";
+    const latestChapter = chapters[chapters.length - 1];
+    if (latestChapter && latestChapter.content) {
+      const start = latestChapter.content.substring(0, 500);
+      const end = latestChapter.content.substring(Math.max(0, latestChapter.content.length - 1500));
+      previousChapterContext = `
+为了确保情节的绝对连贯，以下是上一章的开头和结尾的关键部分，你必须在此基础上进行续写：
+**上一章开头:**
+\`\`\`
+${start}...
+\`\`\`
+**上一章结尾:**
+\`\`\`
+...${end}
+\`\`\`
 `;
-          console.log(`[RAG] 成功检索到 ${retrievedDocs.length} 条相关信息。`);
-        } else {
-          console.log('[RAG] 未检索到相关信息。');
-        }
-      } catch (e) {
-        console.error('[RAG] 向量检索失败:', e);
-      }
     }
-    // --- RAG 结束 ---
 
+    console.log(`[章节解构] 正在为第 ${nextChapterNumber} 章生成场景规划。`);
+    if (!chapterOutline) {
+      const errorMsg = `未能为第 ${nextChapterNumber} 章找到剧情大纲，无法进行章节解构。`;
+      console.warn(`[章节解构] ${errorMsg}`);
+      toast.error(errorMsg);
+      set({ generationLoading: false });
+      return;
+    }
+
+    // 步骤 1: 章节解构，获取标题和场景列表
+    let chapterTitle = "";
+    let chapterScenes: string[] = [];
+
+    try {
+      const decompositionPrompt = `
+你是一个经验丰富的小说编剧。你的任务是为一部小说创作具体的章节。
+核心任务：为《${novel.name}》的第 ${nextChapterNumber} 章进行规划。
+
+${previousChapterContext}
+
+本章的核心剧情摘要如下：
+---
+${chapterOutline}
+---
+请根据以上所有信息，完成以下两件事：
+1.  为本章起一个引人入胜的标题。
+2.  将本章的故事情节分解成 ${settings.segmentsPerChapter} 个连贯的、循序渐进的场景（Scene）。每个场景请用一句话简要描述。
+
+请严格按照以下JSON格式返回，不要包含任何额外的解释或Markdown标记：
+{
+  "title": "章节标题",
+  "scenes": [
+    "场景1的简要描述",
+    "场景2的简要描述",
+    "场景3的简要描述"
+  ]
+}
+        `;
+
+      const decompResponse = await openai.chat.completions.create({
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: decompositionPrompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.5,
+      });
+
+      const decompResult = parseJsonFromAiResponse(decompResponse.choices[0].message.content || "");
+      chapterTitle = decompResult.title;
+      chapterScenes = decompResult.scenes;
+
+      if (!chapterTitle || !chapterScenes || chapterScenes.length === 0) {
+        throw new Error("AI未能返回有效的章节标题或场景列表。");
+      }
+      console.log(`[章节解构] 成功规划出 ${chapterScenes.length} 个场景。`);
+
+    } catch (e) {
+      console.error("[章节解构] 失败:", e);
+      toast.error(`章节规划失败: ${e instanceof Error ? e.message : '未知错误'}`);
+      set({ generationLoading: false });
+      return;
+    }
+
+    // 步骤 2: 逐场景生成内容
     let accumulatedContent = "";
+    let completedScenesContent = "";
 
-    for (let i = 1; i <= segmentsPerChapter; i++) {
-      console.log(`[诊断] 正在生成章节内容 (片段 ${i}/${segmentsPerChapter})...`);
+    set({ generatedContent: "" }); // 清空预览
 
+    for (let i = 0; i < chapterScenes.length; i++) {
+      const sceneDescription = chapterScenes[i];
       set({
         generationTask: {
           ...get().generationTask,
-          progress: 50 + (50 / segmentsPerChapter) * (i - 1),
-          currentStep: `正在生成章节内容 (片段 ${i}/${segmentsPerChapter})...`
-        }
+          currentStep: `生成第 ${nextChapterNumber} 章 - 场景 ${i + 1}/${chapterScenes.length}: ${sceneDescription}`,
+        },
       });
 
-      const previousContentContext = accumulatedContent
-        ? `到目前为止，本章已经写下的内容如下：\n"""\n${accumulatedContent}\n"""\n请你无缝地接续下去。`
-        : "你将要开始撰写本章的开篇。";
+      const targetTotalWords = 3000;
+      const scenesCount = settings.segmentsPerChapter > 0 ? settings.segmentsPerChapter : 3; // Fallback to 3 scenes
+      const wordsPerSceneLower = Math.round((targetTotalWords / scenesCount) * 0.85);
+      const wordsPerSceneUpper = Math.round((targetTotalWords / scenesCount) * 1.15);
 
-      let systemPrompt: string;
-      if (i < segmentsPerChapter) {
-        systemPrompt = `你是一位经验丰富的小说家，写作风格是【${novel.style}】。${previousContentContext} 请继续撰写下一部分，确保情节连贯，并在一个自然的段落或对话结束时停下来，为后续内容留出空间。不要写完整章的结尾。`;
-      } else {
-        systemPrompt = `你是一位经验丰富的小说家，写作风格是【${novel.style}】。${previousContentContext} 请撰写本章的最后一部分，将当前的情节推向一个高潮或有力的收尾，可以是一个完整的场景结束，或留下一个引向下一章的悬念。`;
-      }
+      const scenePrompt = `
+你是一位顶级小说家，正在创作《${novel.name}》的第 ${nextChapterNumber} 章，标题是"${chapterTitle}"。
+你的写作风格是：【${novel.style}】。
 
-      const userMessageContent = `
-        ### 小说信息
-        - 小说名称: 《${novel.name}》
-        - 类型: ${novel.genre}
-        - 特殊要求: ${novel.specialRequirements}
+${previousChapterContext}
 
-        ### 整体剧情大纲
-        ${plotOutline}
+${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地接续下去：\n---\n${completedScenesContent}\n---` : '你将要开始撰写本章的开篇。'}
 
-        ### 核心角色列表
-        ${characters.map(c => `- ${c.name}: ${c.coreSetting}`).join('\n')}
+当前场景的核心任务是：
+**${sceneDescription}**
 
-        ### 最近章节回顾
-        ${latestChapters.map(c => `第${c.chapterNumber}章 "${c.title}": ${c.summary || c.content.substring(0, 200)}...`).join('\n\n')}
-
-        ${retrievedContext}
-
-        ${userPrompt ? `### 用户本次特别指令\n${userPrompt}\n` : ''}
-
-        请根据以上所有信息，继续你的创作。确保只输出纯粹的小说内容，不要包含任何标题、章节编号或解释性的文字。
-      `;
-
+请你围绕这个核心任务，创作一段${wordsPerSceneLower}到${wordsPerSceneUpper}字左右的、情节丰富、文笔细腻的场景内容。
+请只输出纯粹的小说正文，不要包含任何标题、场景编号或解释性文字。
+        `;
 
       try {
+        if (i > 0) {
+          // 在每个新场景开始前，为UI内容和内部累积内容都加上换行符
+          set(state => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
+        }
+
         const stream = await openai.chat.completions.create({
           model: activeConfig.model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userMessageContent },
-          ],
-          stream: true,
+          messages: [{ role: 'user', content: scenePrompt }],
+          stream: true, // 开启流式传输
           max_tokens: maxTokens,
           temperature,
           top_p: topP,
@@ -635,33 +687,30 @@ ${retrievedDocs.map((doc: DocumentToIndex) => `- ${doc.title}: ${doc.text.substr
           presence_penalty: presencePenalty,
         });
 
-        console.log("[诊断] 已成功创建 OpenAI stream，准备接收数据...");
-
-        // Add segment separator
-        if (i > 1) {
-          set(state => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
-        }
-
+        let currentSceneContent = "";
         for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content || "";
-          set(state => ({ generatedContent: (state.generatedContent || "") + content }));
+          const token = chunk.choices[0]?.delta?.content || "";
+          if (token) {
+            set(state => ({ generatedContent: (state.generatedContent || "") + token }));
+            currentSceneContent += token;
+          }
         }
-
-        console.log("[诊断] OpenAI stream 处理结束。");
-
-        // Update accumulated content after a segment is fully generated
-        accumulatedContent = get().generatedContent || "";
+        // 当前场景流式结束后，将其完整内容更新到内部累积器中
+        completedScenesContent += (i > 0 ? "\n\n" : "") + currentSceneContent;
 
       } catch (error) {
-        console.error('OpenAI API call failed:', error);
-        set({ generationLoading: false, generationTask: { ...get().generationTask, currentStep: "生成失败" } });
-        // Re-throw the error to be caught by the calling function
-        throw error;
+        console.error(`[场景生成] 场景 ${i + 1} 失败:`, error);
+        toast.error(`生成场景 ${i + 1} 时出错，章节生成中止。`);
+        set({ generationLoading: false });
+        return;
       }
     }
 
-    // 不再这里更新总体进度，只更新加载状态
-    set({ generationLoading: false });
+    // 步骤 3: 整合最终结果
+    // 此刻 generatedContent 已经包含了完整的、流式生成的所有章节正文
+    const finalBody = get().generatedContent || "";
+    const finalContent = `${chapterTitle}\n|||CHAPTER_SEPARATOR|||\n${finalBody}`;
+    set({ generatedContent: finalContent, generationLoading: false });
   },
   generateAndSaveNewChapter: async (
     novelId: number,
@@ -672,27 +721,44 @@ ${retrievedDocs.map((doc: DocumentToIndex) => `- ${doc.title}: ${doc.text.substr
     },
     userPrompt?: string
   ) => {
-    // Set loading state for the whole process
     set({ generationLoading: true, generatedContent: null });
     try {
-      // Step 1: Generate the new chapter content
-      await get().generateNewChapter(novelId, context, userPrompt);
+      // 步骤 1: 检查并扩展大纲
+      await get().expandPlotOutlineIfNeeded(novelId);
 
-      // Step 2: If content was generated, save it
+      // 步骤 2: 获取最新上下文（因为大纲可能已更新）
+      const currentNovel = get().currentNovel;
+      const characters = get().characters;
+      const settings = await useGenerationSettingsStore.getState().getSettings();
+
+      if (!currentNovel || !currentNovel.plotOutline || !settings) {
+        toast.error("续写失败：无法获取必要的小说信息或设置。");
+        set({ generationLoading: false });
+        return;
+      }
+
+      const context = {
+        plotOutline: currentNovel.plotOutline,
+        characters: characters,
+        settings: settings,
+      };
+
+      // 步骤 3: 生成新章节内容
+      const nextChapterNumber = (get().chapters.length || 0) + 1;
+      await get().generateNewChapter(novelId, context, userPrompt, nextChapterNumber);
+
+      // 步骤 4: 保存生成的章节
       if (get().generatedContent) {
         await get().saveGeneratedChapter(novelId);
         await get().recordExpansion(novelId);
-        await get().expandPlotOutlineIfNeeded(novelId);
         toast.success("新章节已生成并保存！");
       } else {
-        // This case might happen if generation fails and content is null
         toast.warning("内容生成为空，未执行保存。");
       }
     } catch (error) {
-      // Error is already handled and toasted inside generateNewChapter
       console.error("An error occurred during the generate-and-save process:", error);
+      toast.error(`续写章节时发生错误: ${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
-      // Ensure loading is off, even if saving fails for some reason
       set({ generationLoading: false });
     }
   },
@@ -700,17 +766,36 @@ ${retrievedDocs.map((doc: DocumentToIndex) => `- ${doc.title}: ${doc.text.substr
     const { generatedContent, chapters, currentNovel, characters } = get();
     if (!generatedContent || !currentNovel) return;
 
-    // --- Step 0: Parse Title and Content ---
-    let title = `第 ${(chapters[chapters.length - 1]?.chapterNumber || 0) + 1} 章`;
-    let content = generatedContent;
-    const firstNewlineIndex = generatedContent.indexOf('\n');
+    // --- Step 0: Parse Title and Content from separator ---
+    let title: string;
+    let content: string;
+    const separator = '|||CHAPTER_SEPARATOR|||';
+    const parts = generatedContent.split(separator);
 
-    if (firstNewlineIndex !== -1) {
-      const potentialTitle = generatedContent.substring(0, firstNewlineIndex).trim();
-      if (potentialTitle.length > 0 && potentialTitle.length < 50) {
-        title = potentialTitle;
-        content = generatedContent.substring(firstNewlineIndex + 1).trim();
+    if (parts.length >= 2) {
+      title = parts[0].trim();
+      content = parts[1].trim();
+    } else {
+      // 智能回退逻辑
+      console.warn("Separator not found. Activating smart fallback.");
+      const lines = generatedContent.split('\n');
+      const potentialTitle = lines[0].trim();
+
+      if (potentialTitle && lines.length > 1) {
+        title = `${potentialTitle} (兼容模式)`;
+        content = lines.slice(1).join('\n').trim();
+        toast.info("AI未完全遵守格式，已通过兼容模式成功解析。");
+      } else {
+        // 最终兜底
+        toast.error("AI返回格式完全无法识别，章节保存失败。");
+        title = `第 ${(chapters[chapters.length - 1]?.chapterNumber || 0) + 1} 章 (格式严重错误)`;
+        content = generatedContent;
       }
+    }
+
+    if (!content) {
+      toast.error("AI返回的内容为空，无法保存。");
+      return;
     }
 
     // --- Step 1: Save the new chapter text first ---
@@ -734,6 +819,12 @@ ${retrievedDocs.map((doc: DocumentToIndex) => `- ${doc.title}: ${doc.text.substr
     try {
       const { activeConfigId } = useAIConfigStore.getState();
       const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
+
+      // 子任务状态上报
+      const currentTask = get().generationTask;
+      if (currentTask.isActive) {
+        set({ generationTask: { ...currentTask, currentStep: '正在分析新角色与线索...' } });
+      }
 
       if (activeConfig && activeConfig.apiKey) {
         const openai = new OpenAI({
@@ -930,7 +1021,7 @@ ${retrievedDocs.map((doc: DocumentToIndex) => `- ${doc.title}: ${doc.text.substr
           // 更新 Zustand store 中的 currentNovel
           const currentNovel = get().currentNovel;
           if (currentNovel && currentNovel.id === novel.id) {
-            get().fetchNovelDetails(novel.id!);
+            await get().fetchNovelDetails(novel.id!);
           }
           toast.success("AI已构思好新的情节！");
           console.log("大纲扩展成功！");

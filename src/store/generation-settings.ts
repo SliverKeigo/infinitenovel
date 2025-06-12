@@ -11,7 +11,6 @@ const initialState: GenerationSettings = {
   frequencyPenalty: 0,
   presencePenalty: 0.2,
   characterCreativity: 0.6,
-  contextChapters: 3,
 };
 
 const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
@@ -23,7 +22,6 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
     frequencyPenalty: 0.2,
     presencePenalty: 0.2,
     characterCreativity: 0.6,
-    contextChapters: 3,
   },
   'Creativity First': {
     maxTokens: 4096,
@@ -33,7 +31,6 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
     frequencyPenalty: 0,
     presencePenalty: 0.5,
     characterCreativity: 0.9,
-    contextChapters: 2,
   },
   'Logic First': {
     maxTokens: 8000,
@@ -43,7 +40,6 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
     frequencyPenalty: 0.3,
     presencePenalty: 0.3,
     characterCreativity: 0.4,
-    contextChapters: 5,
   },
   'Long-form Novel': {
     maxTokens: 8191,
@@ -53,7 +49,6 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
     frequencyPenalty: 0.1,
     presencePenalty: 0.1,
     characterCreativity: 0.5,
-    contextChapters: 6,
   },
   'Short Story': {
     maxTokens: 4096,
@@ -63,7 +58,6 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
     frequencyPenalty: 0,
     presencePenalty: 0,
     characterCreativity: 0.7,
-    contextChapters: 1,
   },
 };
 
