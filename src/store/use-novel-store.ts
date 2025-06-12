@@ -9,7 +9,6 @@ import { EmbeddingPipeline } from '@/lib/embeddings';
 import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
 import OpenAI from 'openai';
-import { log } from 'console';
 import { toast } from "sonner";
 import type { GenerationSettings } from '@/types/generation-settings';
 
@@ -39,6 +38,34 @@ const getChapterOutline = (outline: string, chapterNumber: number): string | nul
   const regex = new RegExp(`第\\s*${chapterNumber}\\s*章:?([\\s\\S]*?)(?=\\n*第\\s*\\d+\\s*章:|$)`, 'i');
   const match = outline.match(regex);
   return match && match[1] ? match[1].trim() : null;
+};
+
+/**
+ * 从AI返回的可能包含Markdown代码块的字符串中安全地解析JSON。
+ * @param content - AI返回的原始字符串
+ * @returns 解析后的JavaScript对象
+ * @throws 如果找不到或无法解析JSON，则抛出错误
+ */
+const parseJsonFromAiResponse = (content: string): any => {
+    // 移除包裹的markdown代码块（支持json, ```json, ''', ``` 等）
+    const cleanedContent = content.replace(/^```(?:json)?\s*|```\s*$/g, '');
+
+    // 尝试直接解析清理后的内容
+    try {
+        return JSON.parse(cleanedContent);
+    } catch (e) {
+        // 如果失败，尝试从内容中提取第一个有效的JSON对象
+        const jsonMatch = cleanedContent.match(/{\s*["\w\s-]*\s*:\s*[\s\S]*}/);
+        if (jsonMatch && jsonMatch[0]) {
+            try {
+                return JSON.parse(jsonMatch[0]);
+            } catch (finalError) {
+                console.error("Failed to parse extracted JSON:", finalError);
+                throw new Error(`AI返回了无效的JSON格式，即使在清理和提取后也无法解析: ${content}`);
+            }
+        }
+    }
+    throw new Error(`在AI响应中未找到有效的JSON内容: ${content}`);
 };
 
 interface DocumentToIndex {
@@ -389,7 +416,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
       let newCharacters: Omit<Character, 'id'>[] = [];
       try {
-        const parsedCharacters = JSON.parse(charactersText);
+        const parsedCharacters = parseJsonFromAiResponse(charactersText);
         const charactersData = parsedCharacters.characters || [];
 
         if (Array.isArray(charactersData)) {
@@ -750,7 +777,7 @@ ${retrievedDocs.map((doc: DocumentToIndex) => `- ${doc.title}: ${doc.text.substr
 
         const responseContent = analysisResponse.choices[0].message.content;
         if (responseContent) {
-          const parsedJson = JSON.parse(responseContent);
+          const parsedJson = parseJsonFromAiResponse(responseContent);
           const extractedCharacters = parsedJson.newCharacters || [];
           const extractedClues = parsedJson.newPlotClues || [];
 
