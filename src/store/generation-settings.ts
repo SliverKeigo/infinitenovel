@@ -70,7 +70,8 @@ const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
 interface GenerationSettingsStore {
   updateSettings: (settings: Partial<Omit<GenerationSettings, 'id'>>) => Promise<void>;
   applyPreset: (presetName: PresetName) => Promise<void>;
-  getSettings: () => Promise<GenerationSettings | undefined>;
+  getSettings: () => Promise<GenerationSettings>;
+  initializeSettings: () => Promise<void>;
 }
 
 export const useGenerationSettingsStore = create<GenerationSettingsStore>((set) => ({
@@ -87,12 +88,16 @@ export const useGenerationSettingsStore = create<GenerationSettingsStore>((set) 
   getSettings: async () => {
     const settings = await db.generationSettings.get(1);
     if (!settings) {
-        // If no settings exist, initialize with the default preset
-        const defaultPreset = presets['Default'];
-        await db.generationSettings.put({ ...defaultPreset, id: 1 });
-        return { ...defaultPreset, id: 1 };
+      return { ...presets['Default'], id: 1 };
     }
     return settings;
+  },
+  initializeSettings: async () => {
+    const settings = await db.generationSettings.get(1);
+    if (!settings) {
+      console.log('未找到生成设置，正在初始化为默认值...');
+      await db.generationSettings.put({ ...presets['Default'], id: 1 });
+    }
   }
 }));
 

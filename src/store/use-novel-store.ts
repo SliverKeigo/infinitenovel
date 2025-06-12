@@ -109,21 +109,26 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     set({ novels, loading: false });
   },
   fetchNovelDetails: async (id) => {
+    console.time('fetchNovelDetails Execution');
     set({ detailsLoading: true, currentNovel: null, chapters: [], characters: [], plotClues: [], currentNovelDocuments: [] });
     try {
+      console.time('数据库查询');
       const novel = await db.novels.get(id);
       if (!novel) throw new Error('Novel not found');
 
       const chapters = await db.chapters.where('novelId').equals(id).sortBy('chapterNumber');
       const characters = await db.characters.where('novelId').equals(id).toArray();
       const plotClues = await db.plotClues.where('novelId').equals(id).toArray();
+      const savedIndexRecord = await db.novelVectorIndexes.get({ novelId: id });
+      console.timeEnd('数据库查询');
 
       // 新增：尝试加载已保存的向量索引
-      const savedIndexRecord = await db.novelVectorIndexes.get({ novelId: id });
       let voyIndex: Voy | null = null;
       if (savedIndexRecord && savedIndexRecord.indexDump) {
         try {
+          console.time('向量索引反序列化');
           voyIndex = Voy.deserialize(savedIndexRecord.indexDump);
+          console.timeEnd('向量索引反序列化');
           console.log(`成功为小说ID ${id} 加载了已保存的向量索引。`);
         } catch (e) {
           console.error(`为小说ID ${id} 加载向量索引失败:`, e);
@@ -143,6 +148,8 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       console.error("Failed to fetch novel details:", error);
       set({ detailsLoading: false });
       return null;
+    } finally {
+      console.timeEnd('fetchNovelDetails Execution');
     }
   },
   buildNovelIndex: async (id, onSuccess) => {

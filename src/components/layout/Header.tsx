@@ -3,8 +3,8 @@
 import { usePathname } from 'next/navigation'
 import { MainNav } from '@/components/layout/main-nav'
 import { useAppStatusStore, ModelLoadStatus } from '@/store/use-app-status-store'
-import { useEffect } from 'react'
-import { EmbeddingPipeline } from '@/lib/embeddings'
+import { useModelLoader } from '@/hooks/use-model-loader'
+import { useSettingsInitializer } from '@/hooks/use-settings-initializer'
 import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { BrainCircuit, CheckCircle, AlertTriangle, Loader, Database } from 'lucide-react'
@@ -55,11 +55,8 @@ const ModelStatusIndicator = () => {
 
 export function Header() {
   const pathname = usePathname()
-
-  useEffect(() => {
-    // 组件挂载时触发模型加载
-    EmbeddingPipeline.getInstance()
-  }, [])
+  useModelLoader()
+  useSettingsInitializer()
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

@@ -1,3 +1,6 @@
+"use client"
+
+import { useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import {
@@ -10,6 +13,7 @@ import {
 import { CheckCircle2, PenSquare, Library, Cpu } from "lucide-react";
 
 export default function Home() {
+
   return (
     <main className="container mx-auto p-4 flex flex-col items-center text-center">
       <div className="mt-20 max-w-2xl">
