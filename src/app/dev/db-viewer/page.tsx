@@ -28,6 +28,13 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useNovelStore } from '@/store/use-novel-store';
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -41,8 +48,11 @@ export default function DbViewerPage() {
   const [rowToDelete, setRowToDelete] = useState<any | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<any>>(new Set());
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
-  const [filterQuery, setFilterQuery] = useState('');
+  const [filterColumn, setFilterColumn] = useState<string | null>(null);
+  const [filterOperator, setFilterOperator] = useState('contains');
+  const [filterValue, setFilterValue] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState('1');
   
   const deleteNovel = useNovelStore((state) => state.deleteNovel);
 
@@ -51,16 +61,54 @@ export default function DbViewerPage() {
     setTables(tableNames);
   }, []);
 
+  useEffect(() => {
+    setPageInput(String(currentPage));
+  }, [currentPage]);
+
   const filteredData = useMemo(() => {
-    if (!filterQuery) {
+    if (!filterColumn || !filterValue) {
       return fullTableData;
     }
     return fullTableData.filter((row) => {
-      return Object.values(row).some((value) =>
-        String(value).toLowerCase().includes(filterQuery.toLowerCase())
-      );
+      const cellValue = row[filterColumn];
+      const lowerCaseFilterValue = filterValue.toLowerCase();
+
+      if (cellValue === null || typeof cellValue === 'undefined') {
+        return false;
+      }
+
+      const stringCellValue = String(cellValue).toLowerCase();
+
+      switch (filterOperator) {
+        case 'contains':
+          return stringCellValue.includes(lowerCaseFilterValue);
+        case 'not_contains':
+          return !stringCellValue.includes(lowerCaseFilterValue);
+        case 'equals':
+          if (!isNaN(Number(filterValue)) && !isNaN(Number(cellValue))) {
+            return Number(cellValue) === Number(filterValue);
+          }
+          return stringCellValue === lowerCaseFilterValue;
+        case 'not_equals':
+          if (!isNaN(Number(filterValue)) && !isNaN(Number(cellValue))) {
+            return Number(cellValue) !== Number(filterValue);
+          }
+          return stringCellValue !== lowerCaseFilterValue;
+        case 'gt':
+          if (!isNaN(Number(filterValue)) && !isNaN(Number(cellValue))) {
+            return Number(cellValue) > Number(filterValue);
+          }
+          return false;
+        case 'lt':
+          if (!isNaN(Number(filterValue)) && !isNaN(Number(cellValue))) {
+            return Number(cellValue) < Number(filterValue);
+          }
+          return false;
+        default:
+          return true;
+      }
     });
-  }, [fullTableData, filterQuery]);
+  }, [fullTableData, filterColumn, filterOperator, filterValue]);
 
   const totalPages = useMemo(() => {
     return Math.ceil(filteredData.length / ITEMS_PER_PAGE);
@@ -71,11 +119,16 @@ export default function DbViewerPage() {
     return filteredData.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredData, currentPage]);
 
+  const resetFilters = () => {
+    setFilterColumn(null);
+    setFilterOperator('contains');
+    setFilterValue('');
+    setCurrentPage(1);
+  };
 
   const loadTableData = async (tableName: string) => {
     setSelectedTable(tableName);
-    setFilterQuery('');
-    setCurrentPage(1);
+    resetFilters();
     setSelectedRowIds(new Set());
     try {
       const data = await db.table(tableName).toArray();
@@ -88,6 +141,8 @@ export default function DbViewerPage() {
     } catch (error) {
       console.error(`Failed to load data for table ${tableName}:`, error);
       toast.error(`加载表 [${tableName}] 数据失败`);
+    } finally {
+      setRowToDelete(null);
     }
   };
 
@@ -175,6 +230,16 @@ export default function DbViewerPage() {
     }
   };
 
+  const handlePageJump = () => {
+    const pageNum = parseInt(pageInput, 10);
+    if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
+      setCurrentPage(pageNum);
+    } else {
+      toast.error(`请输入一个介于 1 和 ${totalPages} 之间的有效页码`);
+      setPageInput(String(currentPage)); // Reset to current page
+    }
+  };
+
   const renderCell = (item: any, column: string) => {
     const value = item[column];
     if (typeof value === 'object' && value !== null) {
@@ -223,16 +288,41 @@ export default function DbViewerPage() {
                 </Button>
               )}
             </div>
-             <div className="mb-4">
+             <div className="flex items-center space-x-2 mb-4">
+                <Select
+                    value={filterColumn || ''}
+                    onValueChange={(value) => setFilterColumn(value === 'null' ? null : value)}
+                    disabled={columns.length === 0}
+                >
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="选择字段" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="null">-- 选择字段 --</SelectItem>
+                        {columns.map(col => <SelectItem key={col} value={col}>{col}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+                <Select value={filterOperator} onValueChange={setFilterOperator} disabled={!filterColumn}>
+                    <SelectTrigger className="w-[150px]">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="contains">包含</SelectItem>
+                        <SelectItem value="not_contains">不包含</SelectItem>
+                        <SelectItem value="equals">等于 (=)</SelectItem>
+                        <SelectItem value="not_equals">不等于 (!=)</SelectItem>
+                        <SelectItem value="gt">大于 (&gt;)</SelectItem>
+                        <SelectItem value="lt">小于 (&lt;)</SelectItem>
+                    </SelectContent>
+                </Select>
                 <Input
-                    placeholder={`在 ${selectedTable} 表中筛选...`}
-                    value={filterQuery}
-                    onChange={(e) => {
-                        setFilterQuery(e.target.value);
-                        setCurrentPage(1);
-                    }}
+                    placeholder="输入筛选值..."
+                    value={filterValue}
+                    onChange={(e) => setFilterValue(e.target.value)}
                     className="w-full"
+                    disabled={!filterColumn}
                 />
+                <Button onClick={resetFilters} variant="outline">清除</Button>
             </div>
             <Card>
               <div className="overflow-x-auto">
@@ -287,7 +377,7 @@ export default function DbViewerPage() {
 
              <div className="flex items-center justify-end space-x-2 py-4">
                 <span className="text-sm text-muted-foreground">
-                    第 {currentPage} / {totalPages} 页
+                    第 {currentPage} / {totalPages > 0 ? totalPages : 1} 页
                 </span>
                 <Button
                     variant="outline"
@@ -297,6 +387,21 @@ export default function DbViewerPage() {
                 >
                     上一页
                 </Button>
+                 <div className="flex items-center space-x-1">
+                    <Input
+                        type="number"
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                handlePageJump();
+                            }
+                        }}
+                        className="w-16 h-9 text-center"
+                        disabled={totalPages <= 1}
+                    />
+                    <Button size="sm" onClick={handlePageJump} disabled={totalPages <= 1}>跳转</Button>
+                </div>
                 <Button
                     variant="outline"
                     size="sm"
