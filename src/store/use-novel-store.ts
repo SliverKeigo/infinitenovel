@@ -23,9 +23,22 @@ const OUTLINE_EXPAND_CHUNK_SIZE = 10; // 每次扩展10章的细纲
  * @returns 详细章节的数量
  */
 const countDetailedChaptersInOutline = (outline: string): number => {
-    const detailedChapterRegex = /第\d+章:/g;
-    const matches = outline.match(detailedChapterRegex);
-    return matches ? matches.length : 0;
+  const detailedChapterRegex = /第\d+章:/g;
+  const matches = outline.match(detailedChapterRegex);
+  return matches ? matches.length : 0;
+};
+
+/**
+ * 从完整大纲中提取特定章节的剧情摘要
+ * @param outline - 剧情大纲字符串
+ * @param chapterNumber - 目标章节编号
+ * @returns 特定章节的剧情摘要，如果找不到则返回 null
+ */
+const getChapterOutline = (outline: string, chapterNumber: number): string | null => {
+  // 正则表达式匹配 "第X章:" 或 "第 X 章:"，并捕获之后直到下一个 "第X章:" 或字符串结尾的所有内容。
+  const regex = new RegExp(`第\\s*${chapterNumber}\\s*章:?([\\s\\S]*?)(?=\\n*第\\s*\\d+\\s*章:|$)`, 'i');
+  const match = outline.match(regex);
+  return match && match[1] ? match[1].trim() : null;
 };
 
 interface DocumentToIndex {
@@ -59,7 +72,7 @@ interface NovelState {
   fetchNovelDetails: (id: number) => Promise<{ novel: Novel; chapters: Chapter[]; characters: Character[] } | null>;
   buildNovelIndex: (id: number, onSuccess?: () => void) => Promise<void>;
   generateNewChapter: (
-    novelId: number, 
+    novelId: number,
     context: {
       plotOutline: string;
       characters: Character[];
@@ -156,32 +169,32 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     set({ indexLoading: true, currentNovelIndex: null });
     try {
       const fetchedData = await get().fetchNovelDetails(id);
-      
+
       if (!fetchedData) {
         throw new Error('Failed to fetch novel data for indexing.');
       }
 
       const { chapters, characters } = fetchedData;
       const plotClues = await db.plotClues.where('novelId').equals(id).toArray();
-      
+
       const documentsToIndex: DocumentToIndex[] = [];
-      
+
       chapters.forEach(c => documentsToIndex.push({
-          id: `chapter-${c.id}`,
-          title: `第${c.chapterNumber}章`,
-          text: c.summary || c.content.substring(0, 500)
+        id: `chapter-${c.id}`,
+        title: `第${c.chapterNumber}章`,
+        text: c.summary || c.content.substring(0, 500)
       }));
 
       characters.forEach(c => documentsToIndex.push({
-          id: `character-${c.id}`,
-          title: c.name,
-          text: `姓名: ${c.name}, 核心设定: ${c.coreSetting}, 性格: ${c.personality}, 背景: ${c.backgroundStory}`
+        id: `character-${c.id}`,
+        title: c.name,
+        text: `姓名: ${c.name}, 核心设定: ${c.coreSetting}, 性格: ${c.personality}, 背景: ${c.backgroundStory}`
       }));
 
       plotClues.forEach(p => documentsToIndex.push({
-          id: `plot-${p.id}`,
-          title: p.title,
-          text: p.description
+        id: `plot-${p.id}`,
+        title: p.title,
+        text: p.description
       }));
 
       set({ currentNovelDocuments: documentsToIndex });
@@ -194,7 +207,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       }
 
       const embeddings = await EmbeddingPipeline.embed(documentsToIndex.map(d => d.text));
-      
+
       const dataForVoy = documentsToIndex.map((doc, i) => ({
         id: doc.id,
         title: doc.title,
@@ -203,7 +216,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       }));
 
       const newIndex = new Voy({ embeddings: dataForVoy });
-      
+
       set({ currentNovelIndex: newIndex, indexLoading: false });
 
       // 新增：将新创建的索引持久化到数据库
@@ -215,7 +228,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           indexDump: serializedIndex,
         });
         console.log(`成功为小说ID ${id} 保存了向量索引。`);
-      } catch(e) {
+      } catch (e) {
         console.error(`为小说ID ${id} 保存向量索引失败:`, e);
       }
 
@@ -242,7 +255,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       if (!settings) {
         throw new Error("生成设置未找到，请先在设置页面配置。");
       }
-      
+
       const { activeConfigId } = useAIConfigStore.getState();
       if (!activeConfigId) {
         throw new Error("没有激活的AI配置，请先在AI配置页面选择。");
@@ -259,7 +272,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
       // --- STAGE 1: CREATE PLOT OUTLINE ---
       set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '正在创建故事大纲...' } });
-      
+
       const OUTLINE_THRESHOLD = 50;
       let outlinePrompt: string;
 
@@ -295,17 +308,17 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           ...
         `;
       }
-      
+
       const openai = new OpenAI({
-          apiKey: activeConfig.apiKey,
-          baseURL: activeConfig.apiBaseUrl || undefined,
-          dangerouslyAllowBrowser: true,
+        apiKey: activeConfig.apiKey,
+        baseURL: activeConfig.apiBaseUrl || undefined,
+        dangerouslyAllowBrowser: true,
       });
 
       const outlineResponse = await openai.chat.completions.create({
-          model: activeConfig.model,
-          messages: [{ role: 'user', content: outlinePrompt }],
-          temperature: settings.temperature,
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: outlinePrompt }],
+        temperature: settings.temperature,
       });
 
       const plotOutline = outlineResponse.choices[0].message.content;
@@ -378,20 +391,20 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       try {
         const parsedCharacters = JSON.parse(charactersText);
         const charactersData = parsedCharacters.characters || [];
-        
+
         if (Array.isArray(charactersData)) {
-            newCharacters = charactersData.map((char: any) => ({
-                novelId: novelId,
-                name: char.name || '未知姓名',
-                coreSetting: char.coreSetting || '无核心设定',
-                personality: char.personality || '未知性格',
-                backgroundStory: char.backgroundStory || '无背景故事',
-                appearance: '',
-                relationships: '',
-                status: 'active',
-                createdAt: new Date(),
-                updatedAt: new Date()
-            }));
+          newCharacters = charactersData.map((char: any) => ({
+            novelId: novelId,
+            name: char.name || '未知姓名',
+            coreSetting: char.coreSetting || '无核心设定',
+            personality: char.personality || '未知性格',
+            backgroundStory: char.backgroundStory || '无背景故事',
+            appearance: '',
+            relationships: '',
+            status: 'active',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }));
         }
       } catch (e) {
         console.error("解析AI生成的角色JSON失败:", e);
@@ -409,7 +422,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       // --- STAGE 3: GENERATE CHAPTERS ---
       const chaptersToGenerateCount = Math.min(goal, initialChapterGoal);
       const chaptersToGenerate = Array.from({ length: chaptersToGenerateCount }, (_, i) => i);
-      
+
       for (const i of chaptersToGenerate) {
         // 在每次循环开始时获取最新的上下文
         const allCharacters = await db.characters.where('novelId').equals(novelId).toArray();
@@ -423,7 +436,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
             currentStep: `正在生成第 ${i + 1} / ${chaptersToGenerateCount} 章...`,
           },
         });
-        
+
         console.log(`[诊断] 准备为第 ${i + 1} 章构建索引...`);
         await get().buildNovelIndex(novelId);
         console.log(`[诊断] 第 ${i + 1} 章索引构建完成。即将生成内容...`);
@@ -487,12 +500,51 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       presencePenalty,
       contextChapters = 3
     } = settings;
-    
+
     const novel = get().currentNovel;
     if (!novel) throw new Error("未找到当前小说");
 
-    const chapters = get().chapters;
-    const latestChapters = chapters.slice(-contextChapters); // 使用正确的变量
+    const { chapters, currentNovelIndex, currentNovelDocuments } = get();
+    const latestChapters = chapters.slice(-contextChapters);
+
+    // --- RAG 检索增强 ---
+    let retrievedContext = "";
+    const nextChapterNumber = (chapters[chapters.length - 1]?.chapterNumber || 0) + 1;
+    const chapterOutline = getChapterOutline(plotOutline, nextChapterNumber);
+
+    console.log(`[RAG] 正在为第 ${nextChapterNumber} 章生成内容。`);
+    if (chapterOutline) {
+      console.log(`[RAG] 获取到章节大纲: "${chapterOutline}"`);
+    } else {
+      console.warn(`[RAG] 未能为第 ${nextChapterNumber} 章找到剧情大纲。`);
+    }
+
+    if (currentNovelIndex && currentNovelDocuments.length > 0 && chapterOutline) {
+      try {
+        console.log('[RAG] 开始向量检索...');
+        const queryEmbedding = (await EmbeddingPipeline.embed([chapterOutline]))[0];
+        const searchResults = currentNovelIndex.search(queryEmbedding, 5);
+
+        // The result of search is an object with a 'neighbors' property containing the array of results.
+        const retrievedDocs = searchResults.neighbors
+          .map((result: { id: string }) => currentNovelDocuments.find((doc: DocumentToIndex) => doc.id === result.id))
+          .filter((doc): doc is DocumentToIndex => !!doc);
+
+        if (retrievedDocs.length > 0) {
+          retrievedContext = `
+### 相关背景资料（系统检索）
+以下是根据当前章节大纲从小说知识库中检索到的最相关信息，请在写作时参考：
+${retrievedDocs.map((doc: DocumentToIndex) => `- ${doc.title}: ${doc.text.substring(0, 150)}...`).join('\n')}
+`;
+          console.log(`[RAG] 成功检索到 ${retrievedDocs.length} 条相关信息。`);
+        } else {
+          console.log('[RAG] 未检索到相关信息。');
+        }
+      } catch (e) {
+        console.error('[RAG] 向量检索失败:', e);
+      }
+    }
+    // --- RAG 结束 ---
 
     let accumulatedContent = "";
 
@@ -506,8 +558,8 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           currentStep: `正在生成章节内容 (片段 ${i}/${segmentsPerChapter})...`
         }
       });
-      
-      const previousContentContext = accumulatedContent 
+
+      const previousContentContext = accumulatedContent
         ? `到目前为止，本章已经写下的内容如下：\n"""\n${accumulatedContent}\n"""\n请你无缝地接续下去。`
         : "你将要开始撰写本章的开篇。";
 
@@ -517,7 +569,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       } else {
         systemPrompt = `你是一位经验丰富的小说家，写作风格是【${novel.style}】。${previousContentContext} 请撰写本章的最后一部分，将当前的情节推向一个高潮或有力的收尾，可以是一个完整的场景结束，或留下一个引向下一章的悬念。`;
       }
-      
+
       const userMessageContent = `
         ### 小说信息
         - 小说名称: 《${novel.name}》
@@ -533,11 +585,13 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         ### 最近章节回顾
         ${latestChapters.map(c => `第${c.chapterNumber}章 "${c.title}": ${c.summary || c.content.substring(0, 200)}...`).join('\n\n')}
 
+        ${retrievedContext}
+
         ${userPrompt ? `### 用户本次特别指令\n${userPrompt}\n` : ''}
 
         请根据以上所有信息，继续你的创作。确保只输出纯粹的小说内容，不要包含任何标题、章节编号或解释性的文字。
       `;
-      
+
 
       try {
         const stream = await openai.chat.completions.create({
@@ -558,9 +612,9 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
         // Add segment separator
         if (i > 1) {
-            set(state => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
+          set(state => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
         }
-        
+
         for await (const chunk of stream) {
           const content = chunk.choices[0]?.delta?.content || "";
           set(state => ({ generatedContent: (state.generatedContent || "") + content }));
@@ -578,7 +632,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         throw error;
       }
     }
-    
+
     // 不再这里更新总体进度，只更新加载状态
     set({ generationLoading: false });
   },
@@ -651,17 +705,17 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     let newCharacters: Omit<Character, "id">[] = [];
     let newClues: Omit<PlotClue, "id">[] = [];
     try {
-        const { activeConfigId } = useAIConfigStore.getState();
-        const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
-        
-        if (activeConfig && activeConfig.apiKey) {
-            const openai = new OpenAI({
-                apiKey: activeConfig.apiKey,
-                baseURL: activeConfig.apiBaseUrl || undefined,
-                dangerouslyAllowBrowser: true,
-            });
+      const { activeConfigId } = useAIConfigStore.getState();
+      const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
 
-            const analysisPrompt = `
+      if (activeConfig && activeConfig.apiKey) {
+        const openai = new OpenAI({
+          apiKey: activeConfig.apiKey,
+          baseURL: activeConfig.apiBaseUrl || undefined,
+          dangerouslyAllowBrowser: true,
+        });
+
+        const analysisPrompt = `
               你是一位目光如炬的文学分析师和图书管理员。
 
               已知信息:
@@ -686,58 +740,58 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
               请严格按照此 JSON 格式返回，不要添加任何额外的解释或 Markdown 标记。
             `;
-            
-            const analysisResponse = await openai.chat.completions.create({
-                model: activeConfig.model,
-                messages: [{ role: 'user', content: analysisPrompt }],
-                response_format: { type: "json_object" },
-                temperature: 0.3,
-            });
 
-            const responseContent = analysisResponse.choices[0].message.content;
-            if (responseContent) {
-                const parsedJson = JSON.parse(responseContent);
-                const extractedCharacters = parsedJson.newCharacters || [];
-                const extractedClues = parsedJson.newPlotClues || [];
+        const analysisResponse = await openai.chat.completions.create({
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: analysisPrompt }],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+        });
 
-                if (Array.isArray(extractedCharacters)) {
-                    newCharacters = extractedCharacters.map((char: any) => ({
-                        novelId,
-                        name: char.name || '未知姓名',
-                        coreSetting: char.coreSetting || '无设定',
-                        personality: '',
-                        backgroundStory: char.initialRelationship ? `初次登场关系：${char.initialRelationship}` : '',
-                        appearance: '',
-                        relationships: '',
-                        status: 'active',
-                        createdAt: new Date(),
-                        updatedAt: new Date(),
-                    }));
-                }
+        const responseContent = analysisResponse.choices[0].message.content;
+        if (responseContent) {
+          const parsedJson = JSON.parse(responseContent);
+          const extractedCharacters = parsedJson.newCharacters || [];
+          const extractedClues = parsedJson.newPlotClues || [];
 
-                if (Array.isArray(extractedClues)) {
-                    newClues = extractedClues.map((clue: any) => ({
-                        novelId,
-                        title: clue.title || '无标题线索',
-                        description: clue.description || '无描述',
-                        createdAt: new Date(),
-                        updatedAt: new Date(),
-                    }));
-                }
-                
-                if (newCharacters.length > 0) {
-                    toast.success(`发现了 ${newCharacters.length} 位新角色！`);
-                    await db.characters.bulkAdd(newCharacters as Character[]);
-                }
-                if (newClues.length > 0) {
-                    toast.success(`发现了 ${newClues.length} 条新线索！`);
-                    await db.plotClues.bulkAdd(newClues as PlotClue[]);
-                }
-            }
+          if (Array.isArray(extractedCharacters)) {
+            newCharacters = extractedCharacters.map((char: any) => ({
+              novelId,
+              name: char.name || '未知姓名',
+              coreSetting: char.coreSetting || '无设定',
+              personality: '',
+              backgroundStory: char.initialRelationship ? `初次登场关系：${char.initialRelationship}` : '',
+              appearance: '',
+              relationships: '',
+              status: 'active',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }));
+          }
+
+          if (Array.isArray(extractedClues)) {
+            newClues = extractedClues.map((clue: any) => ({
+              novelId,
+              title: clue.title || '无标题线索',
+              description: clue.description || '无描述',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }));
+          }
+
+          if (newCharacters.length > 0) {
+            toast.success(`发现了 ${newCharacters.length} 位新角色！`);
+            await db.characters.bulkAdd(newCharacters as Character[]);
+          }
+          if (newClues.length > 0) {
+            toast.success(`发现了 ${newClues.length} 条新线索！`);
+            await db.plotClues.bulkAdd(newClues as PlotClue[]);
+          }
         }
+      }
     } catch (error) {
-        console.error("Failed to analyze chapter for new elements:", error);
-        toast.error("分析新章节时出错，但章节已保存。");
+      console.error("Failed to analyze chapter for new elements:", error);
+      toast.error("分析新章节时出错，但章节已保存。");
     }
 
     // --- Step 3: Update novel statistics ---
@@ -784,11 +838,11 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   recordExpansion: async (novelId: number) => {
     const novel = await db.novels.get(novelId);
     if (novel) {
-        await db.novels.update(novelId, {
-            expansionCount: novel.expansionCount + 1,
-            updatedAt: new Date(),
-        });
-        await get().fetchNovelDetails(novelId);
+      await db.novels.update(novelId, {
+        expansionCount: novel.expansionCount + 1,
+        updatedAt: new Date(),
+      });
+      await get().fetchNovelDetails(novelId);
     }
   },
   expandPlotOutlineIfNeeded: async (novelId: number) => {
@@ -797,8 +851,8 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     const novel = await db.novels.get(novelId);
 
     if (!novel || !activeConfig || !activeConfig.apiKey || !novel.plotOutline) {
-        console.warn("无法扩展大纲：缺少小说、有效配置或现有大纲。");
-        return;
+      console.warn("无法扩展大纲：缺少小说、有效配置或现有大纲。");
+      return;
     }
 
     const currentChapterCount = novel.chapterCount;
@@ -807,21 +861,21 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     console.log(`扩展检查：当前章节 ${currentChapterCount}, 大纲中章节 ${detailedChaptersInOutline}`);
 
     if (detailedChaptersInOutline >= novel.totalChapterGoal) {
-        console.log("大纲已完成，无需扩展。");
-        return;
+      console.log("大纲已完成，无需扩展。");
+      return;
     }
 
     if (detailedChaptersInOutline - currentChapterCount < OUTLINE_EXPAND_THRESHOLD) {
-        toast.info("AI正在思考后续情节，请稍候...");
-        console.log("触发大纲扩展...");
+      toast.info("AI正在思考后续情节，请稍候...");
+      console.log("触发大纲扩展...");
 
-        const openai = new OpenAI({
-            apiKey: activeConfig.apiKey,
-            baseURL: activeConfig.apiBaseUrl || undefined,
-            dangerouslyAllowBrowser: true,
-        });
+      const openai = new OpenAI({
+        apiKey: activeConfig.apiKey,
+        baseURL: activeConfig.apiBaseUrl || undefined,
+        dangerouslyAllowBrowser: true,
+      });
 
-        const expansionPrompt = `
+      const expansionPrompt = `
           你是一位正在续写自己史诗级作品《${novel.name}》的小说家。
           
           这是我们共同确定的、贯穿整个故事的宏观篇章规划和已有的详细大纲：
@@ -835,29 +889,29 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           请只返回新增的这 ${OUTLINE_EXPAND_CHUNK_SIZE} 章细纲，格式为"第X章: [剧情摘要]"，不要重复任何已有内容或添加额外解释。
         `;
 
-        try {
-            const response = await openai.chat.completions.create({
-                model: activeConfig.model,
-                messages: [{ role: 'user', content: expansionPrompt }],
-                temperature: 0.6,
-            });
+      try {
+        const response = await openai.chat.completions.create({
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: expansionPrompt }],
+          temperature: 0.6,
+        });
 
-            const newOutlinePart = response.choices[0].message.content;
-            if (newOutlinePart) {
-                const updatedOutline = `${novel.plotOutline}\n${newOutlinePart.trim()}`;
-                await db.novels.update(novel.id!, { plotOutline: updatedOutline });
-                // 更新 Zustand store 中的 currentNovel
-                const currentNovel = get().currentNovel;
-                if (currentNovel && currentNovel.id === novel.id) {
-                    get().fetchNovelDetails(novel.id!);
-                }
-                toast.success("AI已构思好新的情节！");
-                console.log("大纲扩展成功！");
-            }
-        } catch (error) {
-            console.error("扩展大纲失败:", error);
-            toast.error("AI构思后续情节时遇到了点麻烦...");
+        const newOutlinePart = response.choices[0].message.content;
+        if (newOutlinePart) {
+          const updatedOutline = `${novel.plotOutline}\n${newOutlinePart.trim()}`;
+          await db.novels.update(novel.id!, { plotOutline: updatedOutline });
+          // 更新 Zustand store 中的 currentNovel
+          const currentNovel = get().currentNovel;
+          if (currentNovel && currentNovel.id === novel.id) {
+            get().fetchNovelDetails(novel.id!);
+          }
+          toast.success("AI已构思好新的情节！");
+          console.log("大纲扩展成功！");
         }
+      } catch (error) {
+        console.error("扩展大纲失败:", error);
+        toast.error("AI构思后续情节时遇到了点麻烦...");
+      }
     }
   },
 })); 
