@@ -68,7 +68,6 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
   const isProcessFinished = !generationLoading && (generationTask.currentStep.includes('完成') || generationTask.currentStep.includes('完毕') || generationTask.currentStep.includes('失败'));
 
   const getDisplayStep = (step: string): string => {
-    console.log('step', step);
     if (step && step.includes('场景')) {
       const chapterPart = step.split(' - ')[0];
       if (chapterPart) {

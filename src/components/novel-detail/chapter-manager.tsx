@@ -65,7 +65,6 @@ export const ChapterManager = () => {
     };
 
     const getDisplayStep = (step: string): string => {
-        console.log('step', step);
         if (step && step.includes('场景')) {
           const chapterPart = step.split(' - ')[0];
           if (chapterPart) {
