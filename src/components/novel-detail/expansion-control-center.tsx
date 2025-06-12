@@ -26,9 +26,10 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
   const generationTask = useNovelStore(state => state.generationTask);
   const generatedContent = useNovelStore(state => state.generatedContent);
   const generateChapters = useNovelStore(state => state.generateChapters);
+  const resetGenerationTask = useNovelStore(state => state.resetGenerationTask);
+  const forceExpandOutline = useNovelStore(state => state.forceExpandOutline);
   
   const { getSettings } = useGenerationSettingsStore();
-  const [isSuccessfullySaved, setIsSuccessfullySaved] = useState(false);
 
   const handleGenerate = async () => {
     const novelId = currentNovel?.id;
@@ -49,18 +50,32 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
         settings: settings,
     };
     
-    setIsSuccessfullySaved(false);
     await generateChapters(novelId, context, { chaptersToGenerate, userPrompt });
+  };
 
-    if (!useNovelStore.getState().generationLoading) {
-        setIsSuccessfullySaved(true);
+  const handleForceExpand = async () => {
+    const novelId = currentNovel?.id;
+    if (!novelId) {
+      toast.error("缺少小说ID，无法扩展大纲。");
+      return;
     }
+    await forceExpandOutline(novelId);
   };
 
   const buttonText = `让 Agent 自动续写 ${chaptersToGenerate > 1 ? `${chaptersToGenerate} 章` : ''}`.trim();
   const userPromptButtonText = `根据我的要求生成 ${chaptersToGenerate > 1 ? `${chaptersToGenerate} 章` : '新章节'}`.trim();
 
-  const isProcessFinished = !generationLoading && isSuccessfullySaved;
+  const isProcessFinished = !generationLoading && (generationTask.currentStep.includes('完成') || generationTask.currentStep.includes('完毕') || generationTask.currentStep.includes('失败'));
+
+  const getDisplayStep = (step: string): string => {
+    if (step && step.includes('场景')) {
+      const chapterPart = step.split(' - ')[0];
+      if (chapterPart) {
+        return `${chapterPart}...`;
+      }
+    }
+    return step;
+  };
 
   return (
     <Card className="border-primary/20 border-2 shadow-lg my-4">
@@ -71,13 +86,24 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Textarea
-          placeholder="请输入你对下一章的具体要求、情节走向或关键对话..."
-          value={userPrompt}
-          onChange={(e) => setUserPrompt(e.target.value)}
-          rows={5}
-          disabled={generationLoading || isProcessFinished}
-        />
+        <div className="flex items-center gap-2">
+          <Textarea
+            placeholder="请输入你对下一章的具体要求、情节走向或关键对话..."
+            value={userPrompt}
+            onChange={(e) => setUserPrompt(e.target.value)}
+            rows={5}
+            disabled={generationLoading || isProcessFinished}
+            className="flex-grow"
+          />
+          <Button 
+            onClick={handleForceExpand} 
+            disabled={generationLoading || isProcessFinished} 
+            variant="outline"
+            className="self-start"
+          >
+            修复大纲
+          </Button>
+        </div>
         <div className="flex items-center gap-4">
             <div className="w-24 flex-shrink-0">
                 <Label htmlFor="chapters-to-generate" className="text-sm font-medium">生成章数</Label>
@@ -95,7 +121,7 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
           {generationLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {generationTask.currentStep || 'AI 思考中...'}
+                  {getDisplayStep(generationTask.currentStep) || 'AI 思考中...'}
             </>
           ) : isProcessFinished ? (
              <>
@@ -122,7 +148,7 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
         {isProcessFinished && (
              <div className="flex justify-end gap-2 mt-4">
                  <Button onClick={onClose}>完成并关闭</Button>
-                 <Button onClick={() => { setUserPrompt(''); setIsSuccessfullySaved(false); }} variant="ghost">继续创作</Button>
+                 <Button onClick={() => { setUserPrompt(''); resetGenerationTask(); }} variant="ghost">继续创作</Button>
              </div>
         )}
       </CardContent>

@@ -58,7 +58,7 @@ const parseJsonFromAiResponse = (content: string): any => {
     const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```|(\{[\s\S]*\})/);
     let jsonString = match ? (match[1] || match[2]) : content;
     
-    jsonString = jsonString.replace(/[“”‘’]/g, '"');
+    jsonString = jsonString.replace(/[""]['']/g, '"');
 
     return JSON.parse(jsonString);
   } catch (e) {
@@ -141,7 +141,9 @@ interface NovelState {
   addNovel: (novel: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline' | 'plotClueCount'>) => Promise<number | undefined>;
   deleteNovel: (id: number) => Promise<void>;
   recordExpansion: (novelId: number) => Promise<void>;
-  expandPlotOutlineIfNeeded: (novelId: number) => Promise<void>;
+  expandPlotOutlineIfNeeded: (novelId: number, force?: boolean) => Promise<void>;
+  forceExpandOutline: (novelId: number) => Promise<void>;
+  resetGenerationTask: () => void;
 }
 
 export const useNovelStore = create<NovelState>((set, get) => ({
@@ -162,6 +164,17 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     progress: 0,
     currentStep: '空闲',
     novelId: null,
+  },
+  resetGenerationTask: () => {
+    set({
+      generationTask: {
+        isActive: false,
+        progress: 0,
+        currentStep: '空闲',
+        novelId: null,
+      },
+      generationLoading: false,
+    });
   },
   fetchNovels: async () => {
     set({ loading: true });
@@ -760,7 +773,19 @@ ${chapterOutline}
 
       const decompResult = parseJsonFromAiResponse(decompResponse.choices[0].message.content || "");
       chapterTitle = decompResult.title;
-      chapterScenes = decompResult.scenes;
+      const rawScenes = decompResult.scenes || [];
+
+      // Defensive parsing for scenes, as AI might return an array of objects instead of strings.
+      chapterScenes = rawScenes.map((scene: any) => {
+        if (typeof scene === 'string') {
+          return scene;
+        }
+        if (typeof scene === 'object' && scene !== null) {
+          // Check for common keys AI might use for the description.
+          return scene.scene || scene.description || scene.scene_description || scene.summary || null;
+        }
+        return null;
+      }).filter(Boolean) as string[];
 
       if (!chapterTitle || !chapterScenes || chapterScenes.length === 0) {
         throw new Error("AI未能返回有效的章节标题或场景列表。");
@@ -854,7 +879,7 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
     // 此刻 generatedContent 已经包含了完整的、流式生成的所有章节正文
     const finalBody = get().generatedContent || "";
     const finalContent = `${chapterTitle}\n|||CHAPTER_SEPARATOR|||\n${finalBody}`;
-    set({ generatedContent: finalContent, generationLoading: false });
+    set({ generatedContent: finalContent });
   },
   saveGeneratedChapter: async (novelId) => {
     const { generatedContent, chapters, currentNovel, characters } = get();
@@ -905,12 +930,17 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    await db.chapters.add(newChapter as Chapter);
+    const newChapterId = await db.chapters.add(newChapter as Chapter);
+    const savedChapter = { ...newChapter, id: newChapterId };
 
     // --- Step 2: Post-generation Analysis for new characters and plot clues ---
-    let newCharacters: Omit<Character, "id">[] = [];
-    let newClues: Omit<PlotClue, "id">[] = [];
+    let charactersWithIds: Character[] = [];
+    let cluesWithIds: PlotClue[] = [];
+
     try {
+      let newCharacters: Omit<Character, "id">[] = [];
+      let newClues: Omit<PlotClue, "id">[] = [];
+
       const { activeConfigId } = useAIConfigStore.getState();
       const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
 
@@ -994,31 +1024,37 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
 
           if (newCharacters.length > 0) {
             toast.success(`发现了 ${newCharacters.length} 位新角色！`);
-            await db.characters.bulkAdd(newCharacters as Character[]);
+            const addedCharIds = await db.characters.bulkAdd(newCharacters as Character[], { allKeys: true });
+            charactersWithIds = newCharacters.map((char, index) => ({
+              ...char,
+              id: addedCharIds[index],
+            })) as Character[];
           }
           if (newClues.length > 0) {
             toast.success(`发现了 ${newClues.length} 条新线索！`);
-            await db.plotClues.bulkAdd(newClues as PlotClue[]);
+            const addedClueIds = await db.plotClues.bulkAdd(newClues as PlotClue[], { allKeys: true });
+            cluesWithIds = newClues.map((clue, index) => ({
+              ...clue,
+              id: addedClueIds[index],
+            })) as PlotClue[];
           }
         }
       }
     } catch (error) {
-      console.error("Failed to analyze chapter for new elements:", error);
+      console.error("后处理分析失败：", error);
       toast.error("分析新章节时出错，但章节已保存。");
     }
 
-    // --- Step 3: Update novel statistics ---
-    await db.novels.update(novelId, {
-      chapterCount: currentNovel.chapterCount + 1,
-      wordCount: currentNovel.wordCount + content.length,
-      characterCount: (currentNovel.characterCount || 0) + newCharacters.length,
-      plotClueCount: (currentNovel.plotClueCount || 0) + newClues.length,
-      updatedAt: new Date(),
-    });
+    // --- Step 3: Optimistic state update ---
+    set(state => ({
+      chapters: [...state.chapters, savedChapter],
+      characters: [...state.characters, ...charactersWithIds],
+      plotClues: [...state.plotClues, ...cluesWithIds],
+      generatedContent: null, // 清理已保存的内容
+    }));
 
-    // --- Step 4: Refresh state ---
-    await get().fetchNovelDetails(novelId);
-    set({ generatedContent: null });
+    // --- Step 4: Final novel stats update ---
+    await get().recordExpansion(novelId);
   },
   addNovel: async (novelData) => {
     // novelData 的类型是 Omit<Novel, ...>，只包含Novel本身的属性
@@ -1058,7 +1094,7 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
       await get().fetchNovelDetails(novelId);
     }
   },
-  expandPlotOutlineIfNeeded: async (novelId: number) => {
+  expandPlotOutlineIfNeeded: async (novelId: number, force = false) => {
     const { activeConfigId } = useAIConfigStore.getState();
     const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
     const novel = await db.novels.get(novelId);
@@ -1078,7 +1114,7 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
       return;
     }
 
-    if (detailedChaptersInOutline - currentChapterCount < OUTLINE_EXPAND_THRESHOLD) {
+    if (force || detailedChaptersInOutline - currentChapterCount < OUTLINE_EXPAND_THRESHOLD) {
       toast.info("AI正在思考后续情节，请稍候...");
       console.log("触发大纲扩展...");
 
@@ -1125,6 +1161,18 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         console.error("扩展大纲失败:", error);
         toast.error("AI构思后续情节时遇到了点麻烦...");
       }
+    }
+  },
+  forceExpandOutline: async (novelId: number) => {
+    set({ generationLoading: true });
+    toast.info("正在强制扩展大纲...");
+    try {
+      await get().expandPlotOutlineIfNeeded(novelId, true);
+    } catch (error) {
+      console.error("强制扩展大纲失败:", error);
+      toast.error(`强制扩展大纲时出错: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      set({ generationLoading: false });
     }
   },
 }));
