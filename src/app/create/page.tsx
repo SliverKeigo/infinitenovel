@@ -162,7 +162,7 @@ export default function CreateNovelPage() {
       specialRequirements: '',
     },
   });
-
+  
   async function onSubmit(values: FormValues) {
     setSubmittedValues(values);
     try {
@@ -299,9 +299,9 @@ export default function CreateNovelPage() {
               </Form>
             </Card>
         ) : (
-             <>
+            <>
                 {submittedValues && <GenerationView submittedValues={submittedValues} />}
-             </>
+            </>
         )}
       </div>
       
