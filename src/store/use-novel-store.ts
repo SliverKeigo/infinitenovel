@@ -140,6 +140,7 @@ interface NovelState {
   saveGeneratedChapter: (novelId: number) => Promise<void>;
   addNovel: (novel: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline' | 'plotClueCount'>) => Promise<number | undefined>;
   deleteNovel: (id: number) => Promise<void>;
+  updateNovelStats: (novelId: number) => Promise<void>;
   recordExpansion: (novelId: number) => Promise<void>;
   expandPlotOutlineIfNeeded: (novelId: number, force?: boolean) => Promise<void>;
   forceExpandOutline: (novelId: number) => Promise<void>;
@@ -352,7 +353,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         // Step 4: Save the generated chapter.
         if (get().generatedContent) {
           await get().saveGeneratedChapter(novelId);
-          await get().recordExpansion(novelId); // This updates novel stats
         } else {
           toast.warning(`第 ${nextChapterNumber} 章内容生成为空，续写任务已中止。`);
           // Stop generating more chapters if one fails
@@ -361,6 +361,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       }
 
       if (get().generationTask.isActive) { // Check if it wasn't aborted
+        await get().recordExpansion(novelId); // Record one expansion for the whole batch.
         toast.success(`${chaptersToGenerate > 1 ? `全部 ${chaptersToGenerate} 个` : ''}新章节已生成完毕！`);
         set(state => ({
           generationTask: {
@@ -1053,8 +1054,8 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
       generatedContent: null, // 清理已保存的内容
     }));
 
-    // --- Step 4: Final novel stats update ---
-    await get().recordExpansion(novelId);
+    // --- Step 4: Final novel stats update in DB ---
+    await get().updateNovelStats(novelId);
   },
   addNovel: async (novelData) => {
     // novelData 的类型是 Omit<Novel, ...>，只包含Novel本身的属性
@@ -1083,6 +1084,27 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
     set((state) => ({
       novels: state.novels.filter((novel) => novel.id !== id),
     }));
+  },
+  updateNovelStats: async (novelId: number) => {
+    const novel = await db.novels.get(novelId);
+    if (!novel) return;
+
+    const chapters = await db.chapters.where('novelId').equals(novelId).toArray();
+    const characters = await db.characters.where('novelId').equals(novelId).toArray();
+    const plotClues = await db.plotClues.where('novelId').equals(novelId).toArray();
+
+    const totalWordCount = chapters.reduce((sum, chapter) => sum + (chapter.wordCount || 0), 0);
+
+    await db.novels.update(novelId, {
+      chapterCount: chapters.length,
+      characterCount: characters.length,
+      plotClueCount: plotClues.length,
+      wordCount: totalWordCount,
+      updatedAt: new Date(),
+    });
+
+    // After updating the source of truth, refresh the state
+    await get().fetchNovelDetails(novelId);
   },
   recordExpansion: async (novelId: number) => {
     const novel = await db.novels.get(novelId);

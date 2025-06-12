@@ -4,12 +4,13 @@ import { useMemo, useState } from 'react';
 import { useNovelStore } from "@/store/use-novel-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookMarked, PlusCircle, Loader2, ArrowUpNarrowWide, ArrowDownWideNarrow, Search, ChevronsDown, ChevronsUp } from "lucide-react";
+import { BookMarked, PlusCircle, Loader2, ArrowUpNarrowWide, ArrowDownWideNarrow, Search, ChevronsDown, ChevronsUp, BookOpen, RefreshCw } from "lucide-react";
 import { ExpansionControlCenter } from './expansion-control-center';
 import { useAppStatusStore, ModelLoadStatus } from '@/store/use-app-status-store';
 import { ChapterViewer } from './chapter-viewer';
 import { Chapter } from '@/types/chapter';
 import { Input } from '@/components/ui/input';
+import { toast } from "sonner";
 
 export const ChapterManager = () => {
     const { 
@@ -20,6 +21,7 @@ export const ChapterManager = () => {
         currentNovelIndex,
         generationLoading,
         generationTask,
+        updateNovelStats,
     } = useNovelStore();
     
     const { embeddingModelStatus, embeddingModelProgress } = useAppStatusStore();
@@ -27,6 +29,7 @@ export const ChapterManager = () => {
     const [viewingChapter, setViewingChapter] = useState<Chapter | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+    const [syncing, setSyncing] = useState(false);
 
     const isEmbeddingModelReady = embeddingModelStatus === ModelLoadStatus.LOADED;
     const isEmbeddingModelLoading = embeddingModelStatus === ModelLoadStatus.LOADING;
@@ -45,6 +48,32 @@ export const ChapterManager = () => {
 
         setShowControlCenter(prev => !prev);
     };
+
+    const handleSyncStats = async () => {
+        if (!currentNovel?.id) return;
+        setSyncing(true);
+        toast.info("正在从数据库同步最新统计数据...");
+        try {
+            await updateNovelStats(currentNovel.id);
+            toast.success("统计数据同步完成！");
+        } catch (error) {
+            toast.error("同步失败，请检查控制台获取更多信息。");
+            console.error("Failed to sync novel stats:", error);
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const getDisplayStep = (step: string): string => {
+        console.log('step', step);
+        if (step && step.includes('场景')) {
+          const chapterPart = step.split(' - ')[0];
+          if (chapterPart) {
+            return `${chapterPart}...`;
+          }
+        }
+        return step;
+      };
 
     const filteredAndSortedChapters = useMemo(() => {
         return chapters
@@ -65,7 +94,7 @@ export const ChapterManager = () => {
             <CardHeader>
                 <div className="flex flex-row items-center justify-between">
                     <CardTitle className="flex items-center gap-2">
-                        <BookMarked className="h-5 w-5 text-primary" />
+                        <BookOpen className="h-5 w-5" />
                         <span>章节管理</span>
                     </CardTitle>
                     <Button 
@@ -87,7 +116,7 @@ export const ChapterManager = () => {
                         ) : generationLoading ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                <span>{generationTask.currentStep || '续写中...'}</span>
+                                <span>{getDisplayStep(generationTask.currentStep) || '续写中...'}</span>
                             </>
                         ) : (
                         <>
@@ -95,6 +124,14 @@ export const ChapterManager = () => {
                             {showControlCenter ? '收起面板' : (currentNovelIndex ? '生成下一章' : '准备创作引擎')}
                         </>
                         )}
+                    </Button>
+                    <Button onClick={handleSyncStats} disabled={syncing} size="sm" variant="ghost">
+                        {syncing ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                        )}
+                        同步统计
                     </Button>
                 </div>
                 <div className="mt-4 flex items-center gap-2">
