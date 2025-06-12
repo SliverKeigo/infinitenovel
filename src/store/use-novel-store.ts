@@ -114,24 +114,27 @@ interface NovelState {
   fetchNovels: () => Promise<void>;
   fetchNovelDetails: (id: number) => Promise<{ novel: Novel; chapters: Chapter[]; characters: Character[] } | null>;
   buildNovelIndex: (id: number, onSuccess?: () => void) => Promise<void>;
+  generateChapters: (
+    novelId: number,
+    context: {
+      plotOutline: string;
+      characters: Character[];
+      settings: GenerationSettings;
+    },
+    options: {
+      chaptersToGenerate: number;
+      userPrompt?: string;
+    }
+  ) => Promise<void>;
   generateNewChapter: (
     novelId: number,
     context: {
       plotOutline: string;
       characters: Character[];
-      settings: any; // Using 'any' for now, replace with GenerationSettings
+      settings: GenerationSettings;
     },
     userPrompt: string | undefined,
     chapterToGenerate: number,
-  ) => Promise<void>;
-  generateAndSaveNewChapter: (
-    novelId: number,
-    context: {
-      plotOutline: string;
-      characters: Character[];
-      settings: any;
-    },
-    userPrompt?: string
   ) => Promise<void>;
   generateNovelChapters: (novelId: number, goal: number, initialChapterGoal?: number) => Promise<void>;
   saveGeneratedChapter: (novelId: number) => Promise<void>;
@@ -281,6 +284,94 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     } catch (error: any) {
       console.error("Failed to build novel index:", error);
       set({ indexLoading: false });
+    }
+  },
+  generateChapters: async (novelId, _context, { chaptersToGenerate, userPrompt }) => {
+    set({
+      generationTask: {
+        isActive: true,
+        progress: 0,
+        currentStep: `准备生成 ${chaptersToGenerate} 个新章节...`,
+        novelId,
+      },
+      generationLoading: true,
+      generatedContent: null, // Reset content view
+    });
+
+    try {
+      for (let i = 0; i < chaptersToGenerate; i++) {
+        const progress = (i / chaptersToGenerate) * 100;
+        // The number of the chapter we are about to generate
+        const nextChapterNumber = (get().chapters.length || 0) + 1;
+
+        set(state => ({
+          generationTask: {
+            ...state.generationTask,
+            progress: Math.floor(progress),
+            currentStep: `(第 ${i + 1}/${chaptersToGenerate} 章) 正在生成第 ${nextChapterNumber} 章...`
+          }
+        }));
+
+        // Only use the user prompt for the very first chapter of this batch
+        const promptForThisChapter = i === 0 ? userPrompt : undefined;
+
+        // Step 1: Check and expand plot outline if needed.
+        await get().expandPlotOutlineIfNeeded(novelId);
+
+        // Step 2: Refetch the latest context, as outline might have changed.
+        const currentNovel = get().currentNovel;
+        const characters = get().characters;
+        const settings = await useGenerationSettingsStore.getState().getSettings();
+
+        if (!currentNovel || !currentNovel.plotOutline || !settings) {
+          throw new Error("续写失败：无法获取必要的小说信息或设置。");
+        }
+
+        const currentContext = {
+          plotOutline: currentNovel.plotOutline,
+          characters: characters,
+          settings: settings,
+        };
+
+        // Step 3: Generate the new chapter content.
+        await get().generateNewChapter(novelId, currentContext, promptForThisChapter, nextChapterNumber);
+
+        // Step 4: Save the generated chapter.
+        if (get().generatedContent) {
+          await get().saveGeneratedChapter(novelId);
+          await get().recordExpansion(novelId); // This updates novel stats
+        } else {
+          toast.warning(`第 ${nextChapterNumber} 章内容生成为空，续写任务已中止。`);
+          // Stop generating more chapters if one fails
+          break;
+        }
+      }
+
+      if (get().generationTask.isActive) { // Check if it wasn't aborted
+        toast.success(`${chaptersToGenerate > 1 ? `全部 ${chaptersToGenerate} 个` : ''}新章节已生成完毕！`);
+        set(state => ({
+          generationTask: {
+            ...state.generationTask,
+            isActive: false,
+            progress: 100,
+            currentStep: '续写任务完成！'
+          }
+        }));
+      }
+
+    } catch (error) {
+      console.error("An error occurred during the chapter generation process:", error);
+      const errorMessage = error instanceof Error ? error.message : "未知错误";
+      toast.error(`续写章节时发生错误: ${errorMessage}`);
+      set(state => ({
+        generationTask: {
+          ...state.generationTask,
+          isActive: false,
+          currentStep: `续写失败: ${errorMessage}`,
+        },
+      }));
+    } finally {
+      set({ generationLoading: false });
     }
   },
   generateNovelChapters: async (novelId, goal, initialChapterGoal = 5) => {
@@ -765,87 +856,6 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
     const finalContent = `${chapterTitle}\n|||CHAPTER_SEPARATOR|||\n${finalBody}`;
     set({ generatedContent: finalContent, generationLoading: false });
   },
-  generateAndSaveNewChapter: async (
-    novelId: number,
-    context: {
-      plotOutline: string;
-      characters: Character[];
-      settings: any;
-    },
-    userPrompt?: string
-  ) => {
-    set({
-      generationTask: {
-        isActive: true,
-        progress: 0,
-        currentStep: '准备续写新章节...',
-        novelId,
-      },
-      generationLoading: true,
-      generatedContent: null,
-    });
-    try {
-      // 步骤 1: 检查并扩展大纲
-      await get().expandPlotOutlineIfNeeded(novelId);
-
-      // 步骤 2: 获取最新上下文（因为大纲可能已更新）
-      const currentNovel = get().currentNovel;
-      const characters = get().characters;
-      const settings = await useGenerationSettingsStore.getState().getSettings();
-
-      if (!currentNovel || !currentNovel.plotOutline || !settings) {
-        toast.error("续写失败：无法获取必要的小说信息或设置。");
-        set({ generationLoading: false });
-        return;
-      }
-
-      const context = {
-        plotOutline: currentNovel.plotOutline,
-        characters: characters,
-        settings: settings,
-      };
-
-      // 步骤 3: 生成新章节内容
-      const nextChapterNumber = (get().chapters.length || 0) + 1;
-      await get().generateNewChapter(novelId, context, userPrompt, nextChapterNumber);
-
-      // 步骤 4: 保存生成的章节
-      if (get().generatedContent) {
-        await get().saveGeneratedChapter(novelId);
-        await get().recordExpansion(novelId);
-        toast.success("新章节已生成并保存！");
-        set({
-          generationTask: {
-            isActive: false,
-            progress: 100,
-            currentStep: '新章节已成功生成并保存！',
-            novelId,
-          },
-        });
-      } else {
-        toast.warning("内容生成为空，未执行保存。");
-        set(state => ({
-          generationTask: {
-            ...state.generationTask,
-            isActive: false,
-            currentStep: '续写中止：AI未返回有效内容。',
-          },
-        }));
-      }
-    } catch (error) {
-      console.error("An error occurred during the generate-and-save process:", error);
-      toast.error(`续写章节时发生错误: ${error instanceof Error ? error.message : "未知错误"}`);
-      set(state => ({
-        generationTask: {
-          ...state.generationTask,
-          isActive: false,
-          currentStep: `续写失败: ${error instanceof Error ? error.message : "未知错误"}`,
-        },
-      }));
-    } finally {
-      set({ generationLoading: false });
-    }
-  },
   saveGeneratedChapter: async (novelId) => {
     const { generatedContent, chapters, currentNovel, characters } = get();
     if (!generatedContent || !currentNovel) return;
@@ -1117,4 +1127,4 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
       }
     }
   },
-})); 
+}));
