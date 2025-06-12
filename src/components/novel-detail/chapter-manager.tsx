@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useNovelStore } from "@/store/use-novel-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookMarked, PlusCircle, Loader2, ArrowUpNarrowWide, ArrowDownWideNarrow, Search } from "lucide-react";
+import { BookMarked, PlusCircle, Loader2, ArrowUpNarrowWide, ArrowDownWideNarrow, Search, ChevronsDown, ChevronsUp } from "lucide-react";
 import { ExpansionControlCenter } from './expansion-control-center';
 import { useAppStatusStore, ModelLoadStatus } from '@/store/use-app-status-store';
 import { ChapterViewer } from './chapter-viewer';
@@ -17,11 +17,13 @@ export const ChapterManager = () => {
         currentNovel, 
         buildNovelIndex, 
         indexLoading, 
-        currentNovelIndex 
+        currentNovelIndex,
+        generationLoading,
+        generationTask,
     } = useNovelStore();
     
     const { embeddingModelStatus, embeddingModelProgress } = useAppStatusStore();
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [showControlCenter, setShowControlCenter] = useState(false);
     const [viewingChapter, setViewingChapter] = useState<Chapter | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
@@ -30,20 +32,18 @@ export const ChapterManager = () => {
     const isEmbeddingModelLoading = embeddingModelStatus === ModelLoadStatus.LOADING;
     const isAnythingLoading = indexLoading || isEmbeddingModelLoading;
 
-    const handleToggleGeneration = () => {
+    const handleToggleControlCenter = () => {
         const novelId = currentNovel?.id;
         if (!novelId) return;
 
-        // If index doesn't exist, build it and then open the panel on success.
         if (!currentNovelIndex && !isAnythingLoading) {
             buildNovelIndex(novelId, () => {
-                setIsGenerating(true);
+                setShowControlCenter(true);
             });
             return;
         }
 
-        // Otherwise, just toggle the panel.
-        setIsGenerating(prev => !prev);
+        setShowControlCenter(prev => !prev);
     };
 
     const filteredAndSortedChapters = useMemo(() => {
@@ -71,8 +71,8 @@ export const ChapterManager = () => {
                     <Button 
                         variant="outline" 
                         size="sm" 
-                        onClick={handleToggleGeneration}
-                        disabled={isAnythingLoading}
+                        onClick={handleToggleControlCenter}
+                        disabled={isEmbeddingModelLoading || indexLoading}
                     >
                         {isEmbeddingModelLoading ? (
                             <>
@@ -84,10 +84,15 @@ export const ChapterManager = () => {
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 <span>构建索引...</span>
                             </>
+                        ) : generationLoading ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                <span>{generationTask.currentStep || '续写中...'}</span>
+                            </>
                         ) : (
                         <>
-                            <PlusCircle className="mr-2 h-4 w-4" />
-                            {isGenerating ? '收起面板' : (currentNovelIndex ? '生成下一章' : '准备创作引擎')}
+                            {showControlCenter ? <ChevronsUp className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                            {showControlCenter ? '收起面板' : (currentNovelIndex ? '生成下一章' : '准备创作引擎')}
                         </>
                         )}
                     </Button>
@@ -108,9 +113,9 @@ export const ChapterManager = () => {
                 </div>
             </CardHeader>
             <CardContent>
-                {isGenerating && <ExpansionControlCenter onClose={() => setIsGenerating(false)} />}
+                {showControlCenter && <ExpansionControlCenter onClose={() => setShowControlCenter(false)} />}
                 
-                {filteredAndSortedChapters.length === 0 && !isGenerating ? (
+                {filteredAndSortedChapters.length === 0 && !showControlCenter && !generationLoading ? (
                     <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted p-12 text-center">
                         {searchTerm ? (
                             <>
@@ -126,7 +131,7 @@ export const ChapterManager = () => {
                                 <h3 className="text-xl font-bold tracking-tight">还没有章节</h3>
                                 <p className="text-sm text-muted-foreground mt-2 mb-4">准备好开始创作你的第一章了吗？</p>
                                 <Button 
-                                    onClick={handleToggleGeneration}
+                                    onClick={handleToggleControlCenter}
                                     disabled={isAnythingLoading}
                                 >
                                 {isEmbeddingModelLoading ? (

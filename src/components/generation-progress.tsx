@@ -71,37 +71,42 @@ export function GenerationProgress({
       </CardHeader>
       <CardContent className="flex-grow space-y-4 flex flex-col justify-between">
         <div className="space-y-3">
-          {generationSteps.map((step) => {
-            const stepState = isCompleted ? 'completed' : progress >= step.progressThreshold ? 'active' : 'waiting';
+          {generationSteps.map((step, index) => {
+            const nextStepThreshold = generationSteps[index + 1]?.progressThreshold || 100;
+
+            const isStepActive = !isCompleted && progress >= step.progressThreshold && progress < nextStepThreshold;
+            const isStepCompleted = isCompleted || progress >= nextStepThreshold;
             
-            // Refine state for "生成章节"
-            const isActiveChapterGen = progress > 40 && progress < 100;
-            const finalState = step.name === '生成章节' && isActiveChapterGen ? 'active' : (progress >= step.progressThreshold && progress < 100 ? 'completed' : stepState);
-            const isCurrentActiveStep = step.name === '生成章节' ? isActiveChapterGen : !isCompleted && progress >= step.progressThreshold && progress < (generationSteps.find(s => s.progressThreshold > step.progressThreshold)?.progressThreshold || 100);
+            let status: 'waiting' | 'active' | 'completed' = 'waiting';
+            if (isStepActive) {
+                status = 'active';
+            } else if (isStepCompleted) {
+                status = 'completed';
+            }
 
             return (
                 <div
                     key={step.name}
                     className={cn(
                         'flex items-start gap-4 rounded-lg p-3 transition-colors',
-                        finalState === 'completed' && 'bg-green-50 text-green-800',
-                        isCurrentActiveStep && 'bg-blue-50 text-blue-800',
-                        finalState === 'waiting' && 'bg-muted/60'
+                        status === 'completed' && 'bg-green-50 text-green-800',
+                        status === 'active' && 'bg-blue-50 text-blue-800',
+                        status === 'waiting' && 'bg-muted/60'
                     )}
                 >
                     <div
                         className={cn(
                             'flex h-8 w-8 items-center justify-center rounded-full',
-                            finalState === 'completed' && 'bg-green-100',
-                            isCurrentActiveStep && 'bg-blue-100',
-                            finalState === 'waiting' && 'bg-background'
+                            status === 'completed' && 'bg-green-100',
+                            status === 'active' && 'bg-blue-100',
+                            status === 'waiting' && 'bg-background'
                         )}
                     >
-                         {finalState === 'completed' ? <CheckCircle2 className="h-5 w-5" /> : (isCurrentActiveStep ? <Loader2 className="h-5 w-5 animate-spin" /> : <CircleDashed className="h-5 w-5 text-muted-foreground" />)}
+                         {status === 'completed' ? <CheckCircle2 className="h-5 w-5" /> : (status === 'active' ? <Loader2 className="h-5 w-5 animate-spin" /> : <CircleDashed className="h-5 w-5 text-muted-foreground" />)}
                     </div>
                     <div>
                         <p className="font-semibold">{step.name}</p>
-                        <p className="text-sm">{isCurrentActiveStep ? currentStep : (finalState === 'completed' ? "已完成" : "等待中...")}</p>
+                        <p className="text-sm">{status === 'active' ? currentStep : (status === 'completed' ? "已完成" : "等待中...")}</p>
                     </div>
                 </div>
             )

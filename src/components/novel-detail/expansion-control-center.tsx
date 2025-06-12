@@ -9,6 +9,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Loader2, Sparkles, CheckCircle } from 'lucide-react';
 import { useGenerationSettingsStore } from "@/store/generation-settings";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface ExpansionControlCenterProps {
   onClose: () => void;
@@ -16,13 +18,14 @@ interface ExpansionControlCenterProps {
 
 export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps) => {
   const [userPrompt, setUserPrompt] = useState('');
-  
-  // Zustand best practice: use atomic selectors to prevent unnecessary re-renders.
+  const [chaptersToGenerate, setChaptersToGenerate] = useState(1);
+
   const currentNovel = useNovelStore(state => state.currentNovel);
   const characters = useNovelStore(state => state.characters);
   const generationLoading = useNovelStore(state => state.generationLoading);
+  const generationTask = useNovelStore(state => state.generationTask);
   const generatedContent = useNovelStore(state => state.generatedContent);
-  const generateAndSaveNewChapter = useNovelStore(state => state.generateAndSaveNewChapter);
+  const generateChapters = useNovelStore(state => state.generateChapters);
   
   const { getSettings } = useGenerationSettingsStore();
   const [isSuccessfullySaved, setIsSuccessfullySaved] = useState(false);
@@ -47,17 +50,16 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
     };
     
     setIsSuccessfullySaved(false);
-    await generateAndSaveNewChapter(novelId, context, userPrompt);
-    // After generation and saving are complete, update the state
-    // We check generationLoading to ensure we only set success state when the process truly ends.
+    await generateChapters(novelId, context, { chaptersToGenerate, userPrompt });
+
     if (!useNovelStore.getState().generationLoading) {
         setIsSuccessfullySaved(true);
     }
   };
 
-  const buttonText = userPrompt.trim() ? '根据我的要求生成' : '让 Agent 自动续写';
+  const buttonText = `让 Agent 自动续写 ${chaptersToGenerate > 1 ? `${chaptersToGenerate} 章` : ''}`.trim();
+  const userPromptButtonText = `根据我的要求生成 ${chaptersToGenerate > 1 ? `${chaptersToGenerate} 章` : '新章节'}`.trim();
 
-  // This will re-render when the generation process is fully complete
   const isProcessFinished = !generationLoading && isSuccessfullySaved;
 
   return (
@@ -76,11 +78,24 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
           rows={5}
           disabled={generationLoading || isProcessFinished}
         />
-        <Button onClick={handleGenerate} disabled={generationLoading || isProcessFinished} className="w-full">
+        <div className="flex items-center gap-4">
+            <div className="w-24 flex-shrink-0">
+                <Label htmlFor="chapters-to-generate" className="text-sm font-medium">生成章数</Label>
+                <Input
+                    id="chapters-to-generate"
+                    type="number"
+                    value={chaptersToGenerate}
+                    onChange={(e) => setChaptersToGenerate(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-full mt-1"
+                    disabled={generationLoading || isProcessFinished}
+                    min="1"
+                />
+            </div>
+            <Button onClick={handleGenerate} disabled={generationLoading || isProcessFinished} className="w-full mt-6">
           {generationLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              AI 思考中...
+                  {generationTask.currentStep || 'AI 思考中...'}
             </>
           ) : isProcessFinished ? (
              <>
@@ -88,9 +103,10 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
                 已保存！
              </>
           ) : (
-            buttonText
+                userPrompt.trim() ? userPromptButtonText : buttonText
           )}
         </Button>
+        </div>
         
         {generationLoading && generatedContent && (
             <Alert>
@@ -106,7 +122,7 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
         {isProcessFinished && (
              <div className="flex justify-end gap-2 mt-4">
                  <Button onClick={onClose}>完成并关闭</Button>
-                 <Button onClick={() => setIsSuccessfullySaved(false)} variant="ghost">继续创作</Button>
+                 <Button onClick={() => { setUserPrompt(''); setIsSuccessfullySaved(false); }} variant="ghost">继续创作</Button>
              </div>
         )}
       </CardContent>
