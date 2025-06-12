@@ -36,7 +36,7 @@ export class InfiniteNovelDB extends Dexie {
       plotClues: '++id, novelId, title, createdAt, updatedAt',
       aiConfigs: '++id, &name',
       generationSettings: '++id',
-      novelVectorIndexes: '++id, novelId'
+      novelVectorIndexes: '++id, novelId, indexDump'
     });
     this.version(2).stores({
       novels: '++id, &name, genre, style, totalChapterGoal, wordCount, chapterCount, characterCount, plotClueCount, expansionCount, createdAt, updatedAt, specialRequirements',
