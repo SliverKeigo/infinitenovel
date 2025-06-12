@@ -11,6 +11,7 @@ import { useGenerationSettingsStore } from '@/store/generation-settings';
 import OpenAI from 'openai';
 import { toast } from "sonner";
 import type { GenerationSettings } from '@/types/generation-settings';
+import { APIError } from 'openai/error';
 
 const INITIAL_CHAPTER_GENERATION_COUNT = 5;
 const OUTLINE_EXPAND_THRESHOLD = 3; // 当细纲剩余少于3章时触发扩展
@@ -47,40 +48,40 @@ const getChapterOutline = (outline: string, chapterNumber: number): string | nul
  * @throws 如果找不到或无法解析JSON，则抛出错误
  */
 const parseJsonFromAiResponse = (content: string): any => {
-  // 1. 规范化标点符号：将全角标点替换为半角标点，并将内容中的引号转义
-  const normalizedContent = content
-    .replace(/｛/g, '{')
-    .replace(/｝/g, '}')
-    .replace(/：/g, ':')
-    .replace(/，/g, ',')
-    .replace(/“/g, '\\"') // Convert to escaped quote
-    .replace(/”/g, '\\"') // Convert to escaped quote
-    .replace(/‘/g, '\\"') // Convert to escaped quote
-    .replace(/’/g, '\\"') // Convert to escaped quote
-
-  // 2. 移除包裹的markdown代码块
-  const cleanedContent = normalizedContent.replace(/^```(?:json)?\s*|```\s*$/g, '');
-
-  // 3. 尝试直接解析清理后的内容
   try {
-    return JSON.parse(cleanedContent);
+    return JSON.parse(content);
   } catch (e) {
-    // 如果失败，尝试从内容中提取第一个有效的JSON对象
-    // This is a more robust way to extract JSON from a string that might have leading/trailing text.
-    const firstBracket = cleanedContent.indexOf('{');
-    const lastBracket = cleanedContent.lastIndexOf('}');
+    console.warn("Direct JSON parsing failed, attempting fallback.", e);
+  }
 
-    if (firstBracket !== -1 && lastBracket > firstBracket) {
-      const jsonString = cleanedContent.substring(firstBracket, lastBracket + 1);
-      try {
-        return JSON.parse(jsonString);
-      } catch (finalError) {
-        console.error("Failed to parse extracted JSON:", finalError);
-        throw new Error(`AI返回了无效的JSON格式，即使在清理和提取后也无法解析: ${content}`);
-      }
+  try {
+    const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```|(\{[\s\S]*\})/);
+    let jsonString = match ? (match[1] || match[2]) : content;
+    
+    jsonString = jsonString.replace(/[“”‘’]/g, '"');
+
+    return JSON.parse(jsonString);
+  } catch (e) {
+    console.error("Fallback JSON parsing also failed. Original content:", content);
+    throw new Error(`AI返回了无效的JSON格式，即使在清理和提取后也无法解析。`);
+  }
+};
+
+/**
+ * 处理OpenAI API调用中的特定错误，特别是配置错误。
+ * @param error - 捕获到的错误对象
+ * @throws 如果是可识别的配置错误，则抛出新的、更清晰的错误；否则重新抛出原始错误。
+ */
+const handleOpenAIError = (error: any) => {
+  if (error instanceof APIError) {
+    const responseBody = error.error;
+    // 有时代理或错误的URL会返回一个HTML页面，而不是一个API错误
+    if (typeof responseBody === 'string' && responseBody.includes('You need to enable JavaScript to run this app')) {
+      throw new Error("API请求失败：配置的URL可能是一个Web页面而不是API端点，请检查您的AI配置。");
     }
   }
-  throw new Error(`在AI响应中未找到有效的JSON内容: ${content}`);
+  // 对于所有其他错误，按原样抛出
+  throw error;
 };
 
 interface DocumentToIndex {
@@ -316,43 +317,49 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       // --- STAGE 1: CREATE PLOT OUTLINE ---
       set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '正在创建故事大纲...' } });
 
-      const OUTLINE_THRESHOLD = 50;
-      let outlinePrompt: string;
+      const outlinePrompt = `
+        你是一位经验丰富的小说编辑和世界构建大师。请为一部名为《${novel.name}》的小说创作一个结构化、分阶段的故事大纲。
 
-      if (goal > OUTLINE_THRESHOLD) {
-        // For long stories, generate a hierarchical outline
-        outlinePrompt = `
-          你是一位经验丰富的小说编辑和世界构建大师。请为一部名为《${novel.name}》的宏大长篇小说创作一个分层的故事大纲。
-          - 小说类型: ${novel.genre}
-          - 写作风格: ${novel.style}
-          - 计划总章节数: ${goal}
-          - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
+        **核心信息:**
+        - 小说类型: ${novel.genre}
+        - 写作风格: ${novel.style}
+        - 计划总章节数: ${goal}
+        - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
 
-          请分两步完成：
-          1.  **宏观篇章规划**: 请将这 ${goal} 章的宏大故事划分成 3 到 5 个主要的"篇章"或"卷"。为每个篇章命名，并提供一个 100-200 字的剧情梗概，描述该阶段的核心冲突、主角成长和关键转折点。
-          2.  **开篇章节细纲**: 在完成宏观规划后，请为故事最开始的 ${initialChapterGoal} 章提供逐章的、更加详细的剧情摘要（每章约 50-100 字）。
+        **你的任务分为两部分：**
 
-          请确保两部分内容都在一次响应中完成，并且格式清晰。先输出所有宏观篇章，然后另起一段输出开篇的章节细纲。
-          重要提醒：你的唯一任务是生成逐章大纲。绝对禁止返回任何形式的小说简介或摘要。请严格、无条件地遵守"第X章: [内容]"的格式进行输出。
-        `;
-      } else {
-        // For shorter stories, generate a direct chapter-by-chapter outline
-        outlinePrompt = `
-          你是一位经验丰富的小说编辑。请为一部名为《${novel.name}》的小说创作一个详细的章节大纲。
-          - 小说类型: ${novel.genre}
-          - 写作风格: ${novel.style}
-          - 目标总章节数: ${goal}
-          - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
-          
-          请为从第1章到第${goal}章的每一章都提供一个简洁的剧情摘要。
-          请确保大纲的连贯性和完整性。直接开始输出第一章的大纲。
-          格式如下：
-          第1章: [剧情摘要]
-          第2章: [剧情摘要]
-          ...
-          重要提醒：你的唯一任务是生成逐章大纲。绝对禁止返回任何形式的小说简介或摘要。请严格、无条件地遵守"第X章: [内容]"的格式进行输出。
-        `;
-      }
+        **Part 1: 开篇详细剧情 (Chapter-by-Chapter)**
+        请为故事最开始的 ${initialChapterGoal} 章提供逐章的、较为详细的剧情摘要。
+        - **最高优先级指令:** 你的首要任务是仔细阅读上面的"核心设定与特殊要求"。如果其中描述了故事的开篇情节（如主角的来历、穿越过程等），那么你生成的"第1章"大纲必须严格按照这个情节来写。
+        - **叙事节奏指南:** 请放慢叙事节奏。每个章节的摘要只应包含一个核心的小事件或2-3个关键场景，而不是一个完整的情节弧线。学会将一个大事件拆分成多个章节来铺垫和展开。
+
+        **Part 2: 后续宏观规划 (Phased Outline)**
+        在完成开篇的详细剧情后，请根据你对小说类型（${novel.genre}）的理解，为剩余的章节设计一个更高层次的、分阶段的宏观叙事结构。
+        - 你需要将故事划分为几个大的部分或"幕"（例如：第一幕：起源与探索，第二幕：冲突升级，第三幕：决战与尾声）。
+        - 在每个部分下，简要描述这一阶段的核心目标、关键转折点和大致的剧情走向。
+        - **这部分不需要逐章展开**，而是提供一个清晰的、指导未来创作方向的路线图。
+
+        **输出格式要求:**
+        请严格按照以下格式输出，先是详细章节，然后是宏观规划。
+        
+        第1章: [剧情摘要]
+        第2章: [剧情摘要]
+        ...
+        第${initialChapterGoal}章: [剧情摘要]
+
+        ---
+        **宏观叙事规划**
+        ---
+        **第一幕: [幕标题] (大约章节范围)**
+        - [本幕核心剧情概述]
+        
+        **第二幕: [幕标题] (大约章节范围)**
+        - [本幕核心剧情概述]
+
+        ...
+
+        **重要提醒:** 你的唯一任务是生成大纲。绝对禁止返回任何形式的小说简介或摘要。
+      `;
 
       const openai = new OpenAI({
         apiKey: activeConfig.apiKey,
@@ -402,21 +409,34 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '正在创建核心角色...' } });
 
       const characterPrompt = `
-        你是一位顶级角色设计师。基于下面的小说信息和故事大纲，设计出引人入胜的核心角色。
+        你是一位顶级角色设计师。基于下面的小说信息和故事大纲，设计出核心角色。
         - 小说名称: 《${novel.name}》
         - 小说类型: ${novel.genre}
         - 故事大纲: ${plotOutline.substring(0, 2000)}...
 
-        请根据以上信息，为这部小说创建 5 个核心角色。
+        请根据以上信息，为这部小说创建 **1 个核心主角** 和 **2 个首批登场的配角**。这些角色应该与故事的开篇情节紧密相关。
 
         请严格按照下面的JSON格式输出，返回一个包含 "characters" 键的JSON对象。不要包含任何额外的解释或文本。
+        **JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
         {
           "characters": [
             {
-              "name": "角色名",
-              "coreSetting": "一句话核心设定，例如'一个拥有神秘过去的退休星际战士'",
+              "name": "主角姓名",
+              "coreSetting": "一句话核心设定（根据小说主题推断，例如'一个能与古物沟通的修复师'）",
               "personality": "角色的性格特点，用几个关键词描述",
-              "backgroundStory": "角色的背景故事简述"
+              "backgroundStory": "角色的背景故事简述，强调其与故事背景的联系"
+            },
+            {
+              "name": "配角1姓名",
+              "coreSetting": "配角1的核心设定（例如'一位带来神秘破损罗盘的古怪收藏家'）",
+              "personality": "配角1的性格",
+              "backgroundStory": "配角1的简要背景"
+            },
+            {
+              "name": "配角2姓名",
+              "coreSetting": "配角2的核心设定（例如'主角所在古玩街的竞争对手店主'）",
+              "personality": "配角2的性格",
+              "backgroundStory": "配角2的简要背景"
             }
           ]
         }
@@ -573,6 +593,20 @@ ${start}...
 `;
     }
 
+    // [新增] 强制规则申明
+    const mandatoryRules = (novel.genre.includes("日常") || novel.genre.includes("温馨") || novel.genre.includes("轻小说")) ? `
+【警告：本故事为温馨日常或轻小说题材，严禁出现宏大战斗、时空危机、政治阴谋、拯救世界等重度剧情。所有情节必须严格围绕故事的核心设定和角色间的日常互动展开。】
+    ` : '';
+
+    // [新增] 最高优先级上下文（仅在第一章时注入）
+    const userRequirementsContext = (novel.specialRequirements && chapterToGenerate === 1) ? `
+【最高优先级上下文：用户核心要求】
+你必须首先阅读并完全理解以下由用户提供的核心设定。你生成的所有内容，都必须与此设定完美保持一致，尤其是关于主角的背景和故事的开篇事件。
+---
+${novel.specialRequirements}
+---
+` : '';
+
     console.log(`[章节解构] 正在为第 ${nextChapterNumber} 章生成场景规划。`);
     if (!chapterOutline) {
       const errorMsg = `未能为第 ${nextChapterNumber} 章找到剧情大纲，无法进行章节解构。`;
@@ -589,6 +623,9 @@ ${start}...
     try {
       const decompositionPrompt = `
 你是一位顶级小说编剧，任务是规划即将开始的新章节，确保故事天衣无缝。
+
+${userRequirementsContext}
+${mandatoryRules}
 
 **最高优先级指令：** 你的首要任务是延续上一章的结尾。所有你规划的场景都必须直接从这一点开始。绝对禁止出现情节断裂。
 
@@ -612,6 +649,7 @@ ${chapterOutline}
 2.  设计出 ${settings.segmentsPerChapter} 个连贯的场景。你设计的第一个场景必须紧接着"上一章结尾"发生。如果"参考剧情大纲"与结尾情节有冲突，你必须巧妙地调整或重新安排大纲中的事件，使其能够自然地融入到故事流中，而不是生硬地插入。
 
 请严格按照以下JSON格式返回，不要包含任何额外的解释或Markdown标记：
+**JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
 {
   "title": "章节标题",
   "scenes": [
@@ -640,6 +678,7 @@ ${chapterOutline}
 
     } catch (e) {
       console.error("[章节解构] 失败:", e);
+      handleOpenAIError(e);
       toast.error(`章节规划失败: ${e instanceof Error ? e.message : '未知错误'}`);
       set({ generationLoading: false });
       return;
@@ -668,6 +707,9 @@ ${chapterOutline}
       const scenePrompt = `
 你是一位顶级小说家，正在创作《${novel.name}》的第 ${nextChapterNumber} 章，标题是"${chapterTitle}"。
 你的写作风格是：【${novel.style}】。
+
+${userRequirementsContext}
+${mandatoryRules}
 
 ${previousChapterContext}
 
@@ -710,6 +752,7 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
 
       } catch (error) {
         console.error(`[场景生成] 场景 ${i + 1} 失败:`, error);
+        handleOpenAIError(error);
         toast.error(`生成场景 ${i + 1} 时出错，章节生成中止。`);
         set({ generationLoading: false });
         return;
@@ -731,7 +774,16 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
     },
     userPrompt?: string
   ) => {
-    set({ generationLoading: true, generatedContent: null });
+    set({
+      generationTask: {
+        isActive: true,
+        progress: 0,
+        currentStep: '准备续写新章节...',
+        novelId,
+      },
+      generationLoading: true,
+      generatedContent: null,
+    });
     try {
       // 步骤 1: 检查并扩展大纲
       await get().expandPlotOutlineIfNeeded(novelId);
@@ -762,12 +814,34 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         await get().saveGeneratedChapter(novelId);
         await get().recordExpansion(novelId);
         toast.success("新章节已生成并保存！");
+        set({
+          generationTask: {
+            isActive: false,
+            progress: 100,
+            currentStep: '新章节已成功生成并保存！',
+            novelId,
+          },
+        });
       } else {
         toast.warning("内容生成为空，未执行保存。");
+        set(state => ({
+          generationTask: {
+            ...state.generationTask,
+            isActive: false,
+            currentStep: '续写中止：AI未返回有效内容。',
+          },
+        }));
       }
     } catch (error) {
       console.error("An error occurred during the generate-and-save process:", error);
       toast.error(`续写章节时发生错误: ${error instanceof Error ? error.message : "未知错误"}`);
+      set(state => ({
+        generationTask: {
+          ...state.generationTask,
+          isActive: false,
+          currentStep: `续写失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        },
+      }));
     } finally {
       set({ generationLoading: false });
     }
@@ -867,6 +941,7 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
                   - "description": 对线索的详细描述，并解释其潜在的重要性。
 
               请严格按照此 JSON 格式返回，不要添加任何额外的解释或 Markdown 标记。
+              **JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
             `;
 
         const analysisResponse = await openai.chat.completions.create({
