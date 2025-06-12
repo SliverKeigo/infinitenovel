@@ -13,7 +13,6 @@ import { KeyStats } from "@/components/novel-detail/key-stats";
 import { NovelDescriptionCard } from "@/components/novel-detail/novel-description-card";
 
 export default function NovelDetailPage() {
-  console.time('NovelDetailPage Full Render');
   const params = useParams();
   const id = Number(params.id);
 
@@ -61,7 +60,6 @@ export default function NovelDetailPage() {
     );
   }
 
-  console.timeEnd('NovelDetailPage Full Render');
 
   return (
       <div className="container mx-auto py-10 space-y-8">
