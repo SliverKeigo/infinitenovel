@@ -279,6 +279,7 @@ interface GenerationTask {
   progress: number;
   currentStep: string;
   novelId: number | null;
+  mode: 'create' | 'continue' | 'idle'; // 添加mode字段，用于区分创建新小说和续写现有小说
 }
 
 interface NovelState {
@@ -349,6 +350,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     progress: 0,
     currentStep: '空闲',
     novelId: null,
+    mode: 'idle',
   },
   resetGenerationTask: () => {
     set({
@@ -357,9 +359,12 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         progress: 0,
         currentStep: '空闲',
         novelId: null,
+        mode: 'idle', // 确保重置mode字段
       },
       generationLoading: false,
+      generatedContent: null, // 同时清空生成的内容
     });
+    console.log("[状态重置] 已重置生成任务状态");
   },
   fetchNovels: async () => {
     set({ loading: true });
@@ -484,13 +489,14 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       set({ indexLoading: false });
     }
   },
-  generateChapters: async (novelId, _context, { chaptersToGenerate, userPrompt }) => {
+  generateChapters: async (novelId, context, { chaptersToGenerate, userPrompt }) => {
     set({
       generationTask: {
         isActive: true,
         progress: 0,
         currentStep: `准备生成 ${chaptersToGenerate} 个新章节...`,
         novelId,
+        mode: 'continue', // 设置为continue模式，表示这是续写现有小说
       },
       generationLoading: true,
       generatedContent: null, // Reset content view
@@ -554,6 +560,11 @@ export const useNovelStore = create<NovelState>((set, get) => ({
             currentStep: '续写任务完成！'
           }
         }));
+        
+        // 延迟1秒后重置状态，确保用户能看到完成消息
+        setTimeout(() => {
+          get().resetGenerationTask();
+        }, 1000);
       }
 
     } catch (error) {
@@ -567,6 +578,11 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           currentStep: `续写失败: ${errorMessage}`,
         },
       }));
+      
+      // 延迟3秒后重置状态，确保用户能看到错误消息
+      setTimeout(() => {
+        get().resetGenerationTask();
+      }, 3000);
     } finally {
       set({ generationLoading: false });
     }
@@ -578,6 +594,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         progress: 0,
         currentStep: '正在初始化任务...',
         novelId: novelId,
+        mode: 'create', // 设置为create模式，表示这是创建新小说
       },
     });
 
@@ -849,8 +866,14 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           progress: 100,
           currentStep: '全部章节生成完毕！',
           novelId: novelId,
+          mode: 'create',
         },
       });
+      
+      // 延迟1秒后重置状态，确保用户能看到完成消息
+      setTimeout(() => {
+        get().resetGenerationTask();
+      }, 1000);
 
     } catch (error) {
       console.error("Failed to generate novel chapters:", error);
@@ -860,8 +883,14 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           progress: get().generationTask.progress,
           currentStep: `生成失败: ${error instanceof Error ? error.message : '未知错误'}`,
           novelId: novelId,
+          mode: 'create',
         },
       });
+      
+      // 延迟3秒后重置状态，确保用户能看到错误消息
+      setTimeout(() => {
+        get().resetGenerationTask();
+      }, 3000);
     }
   },
   generateNewChapter: async (
@@ -1074,7 +1103,7 @@ ${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体�
         },
       });
 
-      const targetTotalWords = 3000;
+      const targetTotalWords = 2000;
       // 使用实际场景数量计算每个场景的字数
       const wordsPerSceneLower = Math.round((targetTotalWords / chapterScenes.length) * 0.85);
       const wordsPerSceneUpper = Math.round((targetTotalWords / chapterScenes.length) * 1.15);

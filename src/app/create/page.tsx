@@ -312,6 +312,7 @@ export default function CreateNovelPage() {
             novelId={useNovelStore(state => state.generationTask.novelId)}
             currentStep={useNovelStore(state => state.generationTask.currentStep)}
             progress={useNovelStore(state => state.generationTask.progress)}
+            mode={useNovelStore(state => state.generationTask.mode)}
             className="h-full" 
         />
       </div>

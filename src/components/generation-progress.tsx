@@ -15,6 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from "@/lib/utils";
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 const generationSteps = [
   { name: '创建大纲', progressThreshold: 0 },
@@ -29,6 +30,7 @@ type GenerationProgressProps = {
     currentStep: string;
     progress: number;
     novelId: number | null;
+    mode?: 'create' | 'continue' | 'idle';
 }
 
 export function GenerationProgress({ 
@@ -36,8 +38,10 @@ export function GenerationProgress({
     isActive, 
     currentStep, 
     progress, 
-    novelId 
+    novelId,
+    mode = 'idle'
 }: GenerationProgressProps) {
+  const pathname = usePathname();
   
   if (!isActive) {
       return (
@@ -53,6 +57,28 @@ export function GenerationProgress({
              </CardContent>
          </Card>
       )
+  }
+
+  if ((mode === 'create' && currentStep.includes('第') && currentStep.includes('章')) || 
+      (mode === 'continue' && pathname.includes('/create'))) {
+    return (
+      <Card className={cn("sticky top-24 flex flex-col items-center justify-center", className)}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-muted-foreground" />
+            <span>创建新小说</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-center">
+          <p className="text-muted-foreground">填写左侧表单，开始你的创作之旅。</p>
+          {mode === 'continue' && (
+            <p className="text-xs text-amber-500 mt-2">
+              提示：您有一个续写任务正在进行中，请返回小说详情页查看。
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    );
   }
 
   const isCompleted = progress === 100;
