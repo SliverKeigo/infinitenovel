@@ -35,10 +35,34 @@ const countDetailedChaptersInOutline = (outline: string): number => {
  * @returns 特定章节的剧情摘要，如果找不到则返回 null
  */
 const getChapterOutline = (outline: string, chapterNumber: number): string | null => {
-  // 正则表达式匹配 "第X章:" 或 "第 X 章:"，并捕获之后直到下一个 "第X章:" 或字符串结尾的所有内容。
-  const regex = new RegExp(`第\\s*${chapterNumber}\\s*章:?([\\s\\S]*?)(?=\\n*第\\s*\\d+\\s*章:|$)`, 'i');
+  // 增强版正则表达式，匹配多种可能的章节标记格式
+  // 包括: "第X章:", "第 X 章:", "第X.章:", "第 X. 章:" 等变体
+  const regex = new RegExp(`第\\s*${chapterNumber}\\s*\\.?\\s*章:?([\\s\\S]*?)(?=\\n*第\\s*\\d+\\s*\\.?\\s*章:|$)`, 'i');
+  
+  console.log(`[诊断] 尝试从大纲中匹配第 ${chapterNumber} 章内容`);
+  
+  // 为了帮助诊断，记录大纲的前200个字符
+  console.log(`[诊断] 大纲前200字符: ${outline.substring(0, 200)}...`);
+  
   const match = outline.match(regex);
-  return match && match[1] ? match[1].trim() : null;
+  
+  if (match && match[1]) {
+    console.log(`[诊断] 成功匹配到第 ${chapterNumber} 章内容，前50字符: ${match[1].trim().substring(0, 50)}...`);
+    return match[1].trim();
+  } else {
+    console.log(`[诊断] 未能匹配到第 ${chapterNumber} 章内容`);
+    
+    // 尝试查找所有章节标记，帮助诊断
+    const allChaptersRegex = /第\s*\d+\s*\.?\s*章:?/gi;
+    const allChapters = outline.match(allChaptersRegex);
+    if (allChapters) {
+      console.log(`[诊断] 在大纲中找到的所有章节标记: ${JSON.stringify(allChapters.slice(0, 10))}`);
+    } else {
+      console.log(`[诊断] 在大纲中未找到任何章节标记`);
+    }
+    
+    return null;
+  }
 };
 
 /**
@@ -610,6 +634,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         请为故事最开始的 ${initialChapterGoal} 章提供逐章的、较为详细的剧情摘要。
         - **最高优先级指令:** 你的首要任务是仔细阅读上面的"核心设定与特殊要求"。如果其中描述了故事的开篇情节（如主角的来历、穿越过程等），那么你生成的"第1章"大纲必须严格按照这个情节来写。
         - **叙事节奏指南:** 请放慢叙事节奏。每个章节的摘要只应包含一个核心的小事件或2-3个关键场景，而不是一个完整的情节弧线。学会将一个大事件拆分成多个章节来铺垫和展开。
+        - **格式要求:** 必须严格使用"第X章: [剧情摘要]"的格式，不要添加额外的符号（如点号）。例如，应该是"第3章: 标题"而不是"第3.章: 标题"。
 
         **Part 2: 后续宏观规划 (Phased Outline)**
         在完成开篇的详细剧情后，请根据你对小说类型（${novel.genre}）的理解，为剩余的章节设计一个更高层次的、分阶段的宏观叙事结构。
@@ -622,6 +647,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         2. 每个章节都应该有明确的目标和冲突
         3. 故事应该有清晰的发展脉络和节奏变化
         4. 角色成长和情节发展要相互促进
+        5. 章节标记必须使用统一的格式："第X章: "，不要使用"第X.章: "或其他变体
 
         **输出格式要求:**
         请严格按照以下格式输出，先是详细章节，然后是宏观规划。
@@ -958,7 +984,7 @@ ${styleGuide}
 **本章的参考剧情大纲 (作为灵感，而非铁律):**
 这是我们对本章的初步构想。请阅读并理解其核心事件。
 \`\`\`
-${chapterOutline}
+${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体的剧情大纲。请根据上一章的结尾和整体故事走向，创造一个合理的情节发展。`}
 \`\`\`
 ---
 
