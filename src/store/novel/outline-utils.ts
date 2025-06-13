@@ -209,7 +209,30 @@ export const getChapterOutlineByIndex = (outline: string, index: number): string
  * @returns 包含所有章节编号的数组
  */
 export const extractChapterNumbers = (outline: string): number[] => {
-  const chapterNumberRegex = /第\s*(\d+)\s*\.?\s*章:?/gi;
+  // 增强版正则表达式，匹配更多格式的章节标记
+  // 1. 标准格式: "第10章:"
+  // 2. 带空格: "第 10 章:"
+  // 3. 带句点: "第10.章:"
+  // 4. 不带冒号: "第10章"
+  // 5. 中英文冒号: "第10章："
+  const chapterNumberRegex = /第\s*(\d+)\s*\.?\s*章[:\：]?/gi;
+  
+  // 为诊断目的，先获取所有完整的章节标记
+  const allMarkers = outline.match(chapterNumberRegex);
+  if (allMarkers) {
+    console.log(`[诊断] 匹配到的所有章节标记: ${JSON.stringify(allMarkers.slice(0, 15))}`);
+  } else {
+    console.log(`[诊断] 未匹配到任何章节标记，检查大纲格式`);
+    // 输出大纲的前100个字符，帮助诊断
+    console.log(`[诊断] 大纲前100字符: ${outline.substring(0, 100)}`);
+    
+    // 尝试匹配任何可能是章节标记的内容
+    const looseMatches = outline.match(/第.{0,5}\d+.{0,5}章.{0,3}/g);
+    if (looseMatches) {
+      console.log(`[诊断] 宽松匹配找到的可能章节标记: ${JSON.stringify(looseMatches.slice(0, 15))}`);
+    }
+  }
+  
   const numbers: number[] = [];
   let match;
   
@@ -223,5 +246,24 @@ export const extractChapterNumbers = (outline: string): number[] => {
   }
   
   console.log(`[诊断] 从大纲中提取到的章节编号: ${JSON.stringify(numbers)}`);
+  
+  // 如果没有找到任何章节编号，尝试使用更宽松的正则表达式
+  if (numbers.length === 0) {
+    console.log(`[诊断] 使用备用正则表达式尝试匹配章节编号`);
+    
+    // 备用正则表达式，更宽松的匹配
+    const backupRegex = /第[^\d]*(\d+)[^\d]*章/gi;
+    while ((match = backupRegex.exec(outline)) !== null) {
+      if (match[1]) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num)) {
+          numbers.push(num);
+        }
+      }
+    }
+    
+    console.log(`[诊断] 备用正则表达式匹配到的章节编号: ${JSON.stringify(numbers)}`);
+  }
+  
   return numbers;
 }; 
