@@ -213,26 +213,28 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   // 匹配宏观叙事阶段，如"**第一幕: 幸存者的试炼 (第1-100章)**"
   const stageRegex = /\*\*([^:]+):\s*([^(]+)\s*\(第(\d+)-(\d+)章\)\*\*/g;
   const stages: NarrativeStage[] = [];
+  console.log(`[宏观规划提取] 开始匹配宏观叙事阶段`);
   
-  let match;
-  while ((match = stageRegex.exec(macroPlanningPart)) !== null) {
+  // 使用字符串的match方法获取所有匹配，避免使用exec的状态
+  const allMatches = Array.from(macroPlanningPart.matchAll(stageRegex));
+  console.log(`[宏观规划提取] 找到 ${allMatches.length} 个阶段匹配`);
+  
+  for (let i = 0; i < allMatches.length; i++) {
+    const match = allMatches[i];
     const stageName = match[1].trim();
     const stageTitle = match[2].trim();
     const startChapter = parseInt(match[3], 10);
     const endChapter = parseInt(match[4], 10);
     
     // 提取该阶段的核心概述
-    const stageStart = match.index + match[0].length;
+    const stageStart = match.index! + match[0].length;
     let stageEnd = macroPlanningPart.length;
     
     // 寻找下一个阶段的开始位置
-    const nextStageMatch = stageRegex.exec(macroPlanningPart);
-    if (nextStageMatch) {
-      stageEnd = nextStageMatch.index;
-      // 重置正则表达式的lastIndex，使其回到当前匹配之后
-      stageRegex.lastIndex = match.index + match[0].length;
+    if (i < allMatches.length - 1) {
+      stageEnd = allMatches[i + 1].index!;
     }
-    
+   
     // 提取阶段内容
     let stageContent = macroPlanningPart.substring(stageStart, stageEnd).trim();
     

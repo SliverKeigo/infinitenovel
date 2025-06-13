@@ -10,7 +10,6 @@ import { useNovelStore } from '@/store/use-novel-store';
 import { useRouter } from 'next/navigation';
 import { toast } from "sonner";
 import { Chapter } from '@/types/chapter';
-import { batchCheckChaptersCompliance } from '@/store/novel/generators/chapter-regenerator';
 import { useAppStatusStore, ModelLoadStatus } from '@/store/use-app-status-store';
 import { 
   AlertCircle, RefreshCw, BookMarked, PlusCircle, Loader2, 
@@ -136,29 +135,7 @@ export function ChapterManager() {
     return nonCompliantChapters.some(chapter => chapter.id === chapterId);
   };
 
-  const handleCheckCompliance = async () => {
-    if (!currentNovel) {
-      toast.error("请先选择一部小说");
-      return;
-    }
 
-    setIsCheckingCompliance(true);
-    try {
-      const nonCompliant = await batchCheckChaptersCompliance(currentNovel.id);
-      setNonCompliantChapters(nonCompliant);
-      
-      if (nonCompliant.length === 0) {
-        toast.success("所有章节都符合宏观叙事规划");
-      } else {
-        toast.warning(`发现 ${nonCompliant.length} 个不符合宏观叙事规划的章节`);
-      }
-    } catch (error) {
-      console.error("检查章节合规性失败:", error);
-      toast.error("检查章节合规性失败");
-    } finally {
-      setIsCheckingCompliance(false);
-    }
-  };
 
   // 显示不符合规划的详细信息
   const handleShowNonCompliantDetails = (chapter: Chapter) => {
@@ -240,24 +217,7 @@ export function ChapterManager() {
             <span>章节管理</span>
           </CardTitle>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleCheckCompliance}
-              disabled={isCheckingCompliance || !currentNovel}
-            >
-              {isCheckingCompliance ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  检查中...
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="mr-2 h-4 w-4" />
-                  检查规划合规性
-                </>
-              )}
-            </Button>
+            
             <Button 
               variant="outline" 
               size="sm" 

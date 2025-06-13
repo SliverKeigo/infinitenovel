@@ -2,9 +2,7 @@
  * 章节宏观叙事规划检查相关的函数
  */
 
-import { db } from '@/lib/db';
-import { toast } from "sonner";
-import { Chapter } from '@/types/chapter';
+
 import { extractNarrativeStages, getCurrentNarrativeStage } from '../parsers';
 
 /**
@@ -54,7 +52,9 @@ export const checkChapterComplianceWithNarrativePlan = (
   const forbiddenElements = nextStageKeywords.filter(keyword => 
     chapterContent.toLowerCase().includes(keyword.toLowerCase())
   );
-  
+  console.log(`[合规性检查] 章节内容: ${chapterContent}`);
+  console.log(`[合规性检查] 下一个阶段关键词: ${nextStageKeywords}`);
+  console.log(`[合规性检查] 不符合元素: ${forbiddenElements}`);
   if (forbiddenElements.length > 0) {
     return { 
       compliant: false, 
@@ -121,53 +121,3 @@ const extractKeywordsAndPhrases = (text: string): string[] => {
   return keywords.filter(word => !stopwords.includes(word.toLowerCase()));
 };
 
-/**
- * 批量检查章节是否符合宏观叙事规划
- * @param novelId - 小说ID
- * @returns 不符合规划的章节列表
- */
-export const batchCheckChaptersCompliance = async (
-  novelId: number | undefined
-): Promise<Chapter[]> => {
-  if (novelId === undefined) {
-    toast.error("无效的小说ID");
-    return [];
-  }
-
-  try {
-    // 获取小说信息
-    const novel = await db.novels.get(novelId);
-    if (!novel) {
-      toast.error("未找到小说");
-      return [];
-    }
-    
-    // 获取所有章节
-    const chapters = await db.chapters.where('novelId').equals(novelId).toArray();
-    
-    // 检查每个章节是否符合宏观叙事规划
-    const nonCompliantChapters: Chapter[] = [];
-    
-    for (const chapter of chapters) {
-      const { compliant, reason } = checkChapterComplianceWithNarrativePlan(
-        chapter.content,
-        chapter.chapterNumber,
-        novel.plotOutline || ""
-      );
-      
-      if (!compliant) {
-        console.log(`第 ${chapter.chapterNumber} 章不符合宏观叙事规划: ${reason}`);
-        nonCompliantChapters.push({
-          ...chapter,
-          title: `${chapter.title} [不符合规划: ${reason}]`
-        });
-      }
-    }
-    
-    return nonCompliantChapters;
-  } catch (error) {
-    console.error("批量检查章节失败:", error);
-    toast.error(`批量检查章节失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    return [];
-  }
-}; 
