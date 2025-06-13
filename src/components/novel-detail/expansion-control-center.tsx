@@ -91,14 +91,14 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-2">
-          <Textarea
-            placeholder="请输入你对下一章的具体要求、情节走向或关键对话..."
-            value={userPrompt}
-            onChange={(e) => setUserPrompt(e.target.value)}
-            rows={5}
-            disabled={generationLoading || isProcessFinished}
+        <Textarea
+          placeholder="请输入你对下一章的具体要求、情节走向或关键对话..."
+          value={userPrompt}
+          onChange={(e) => setUserPrompt(e.target.value)}
+          rows={5}
+          disabled={generationLoading || isProcessFinished}
             className="flex-grow"
-          />
+        />
           <Button 
             onClick={handleForceExpand} 
             disabled={generationLoading && generationTask.isActive} 

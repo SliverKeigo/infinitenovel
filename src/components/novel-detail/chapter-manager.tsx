@@ -72,7 +72,7 @@ export const ChapterManager = () => {
           }
         }
         return step;
-      };
+    };
 
     const filteredAndSortedChapters = useMemo(() => {
         return chapters

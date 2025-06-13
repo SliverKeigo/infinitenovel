@@ -162,13 +162,13 @@ export default function DbViewerPage() {
         await deleteNovel(rowToDelete.id);
         toast.success(`小说及其所有关联数据已成功删除 (ID: ${rowToDelete.id})`);
       } else {
-        await db.table(selectedTable).delete(rowToDelete.id);
-        toast.success(`在表 [${selectedTable}] 中成功删除记录 ID: ${rowToDelete.id}`);
+      await db.table(selectedTable).delete(rowToDelete.id);
+      toast.success(`在表 [${selectedTable}] 中成功删除记录 ID: ${rowToDelete.id}`);
       }
       setSelectedRowIds(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(rowToDelete.id);
-        return newSet;
+          const newSet = new Set(prev);
+          newSet.delete(rowToDelete.id);
+          return newSet;
       });
       loadTableData(selectedTable); // Refresh data
     } catch (error) {
@@ -180,52 +180,52 @@ export default function DbViewerPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (!selectedTable || selectedRowIds.size === 0) return;
-    try {
-      const idsToDelete = Array.from(selectedRowIds);
+      if (!selectedTable || selectedRowIds.size === 0) return;
+      try {
+          const idsToDelete = Array.from(selectedRowIds);
       if (selectedTable === 'novels') {
         for (const id of idsToDelete) {
           await deleteNovel(id);
         }
         toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 本小说及其所有关联数据。`);
       } else {
-        await db.table(selectedTable).bulkDelete(idsToDelete);
-        toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 条记录。`);
+          await db.table(selectedTable).bulkDelete(idsToDelete);
+          toast.success(`在表 [${selectedTable}] 中成功批量删除 ${idsToDelete.length} 条记录。`);
       }
-      setSelectedRowIds(new Set());
-      loadTableData(selectedTable);
-    } catch (error) {
-      console.error('Failed to bulk delete records:', error);
-      toast.error(`批量删除记录失败: ${error}`);
-    } finally {
-      setIsBulkDeleteConfirmOpen(false);
-    }
+          setSelectedRowIds(new Set());
+          loadTableData(selectedTable);
+      } catch (error) {
+          console.error('Failed to bulk delete records:', error);
+          toast.error(`批量删除记录失败: ${error}`);
+      } finally {
+          setIsBulkDeleteConfirmOpen(false);
+      }
   };
 
   const handleSave = () => {
     setIsSheetOpen(false);
     setEditingRow(null);
     if(selectedTable) {
-      loadTableData(selectedTable);
+        loadTableData(selectedTable);
     }
   };
 
   const handleRowSelect = (id: any) => {
-    setSelectedRowIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
+      setSelectedRowIds(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(id)) {
+              newSet.delete(id);
+          } else {
+              newSet.add(id);
+          }
+          return newSet;
+      });
   };
 
   const handleSelectAll = () => {
     if (selectedRowIds.size === filteredData.length) {
-      setSelectedRowIds(new Set());
-    } else {
+          setSelectedRowIds(new Set());
+      } else {
       setSelectedRowIds(new Set(filteredData.map(row => row.id)));
     }
   };
@@ -237,7 +237,7 @@ export default function DbViewerPage() {
     } else {
       toast.error(`请输入一个介于 1 和 ${totalPages} 之间的有效页码`);
       setPageInput(String(currentPage)); // Reset to current page
-    }
+      }
   };
 
   const renderCell = (item: any, column: string) => {
@@ -254,23 +254,23 @@ export default function DbViewerPage() {
   return (
     <div className="container mx-auto p-4 grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
       <div className="md:col-span-1">
-        <h2 className="text-xl font-semibold mb-4 flex items-center"><Database className="mr-2 h-5 w-5"/> 数据库表</h2>
-        <Card className="p-2">
-          <ul className="space-y-1">
-            {tables.map((table) => (
-              <li key={table}>
-                <Button
-                  variant={selectedTable === table ? 'secondary' : 'ghost'}
-                  className="w-full justify-between"
-                  onClick={() => loadTableData(table)}
-                >
-                  <span className="capitalize">{table}</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </Card>
+          <h2 className="text-xl font-semibold mb-4 flex items-center"><Database className="mr-2 h-5 w-5"/> 数据库表</h2>
+          <Card className="p-2">
+              <ul className="space-y-1">
+                  {tables.map((table) => (
+                      <li key={table}>
+                          <Button
+                              variant={selectedTable === table ? 'secondary' : 'ghost'}
+                              className="w-full justify-between"
+                              onClick={() => loadTableData(table)}
+                          >
+                            <span className="capitalize">{table}</span>
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                      </li>
+                  ))}
+              </ul>
+          </Card>
       </div>
 
       <div className="md:col-span-3">
@@ -278,15 +278,15 @@ export default function DbViewerPage() {
           <div>
             <div className="flex justify-between items-center mb-4">
                <h2 className="text-2xl font-bold capitalize">
-                  <span className="text-primary">{selectedTable}</span>
+              <span className="text-primary">{selectedTable}</span>
                   <span className="text-muted-foreground text-lg ml-2 font-normal">({filteredData.length} / {fullTableData.length})</span>
                </h2>
-              {selectedRowIds.size > 0 && (
-                <Button variant="destructive" onClick={() => setIsBulkDeleteConfirmOpen(true)}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  批量删除 ({selectedRowIds.size})
-                </Button>
-              )}
+                {selectedRowIds.size > 0 && (
+                    <Button variant="destructive" onClick={() => setIsBulkDeleteConfirmOpen(true)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        批量删除 ({selectedRowIds.size})
+                    </Button>
+                )}
             </div>
              <div className="flex items-center space-x-2 mb-4">
                 <Select
@@ -325,50 +325,50 @@ export default function DbViewerPage() {
                 <Button onClick={resetFilters} variant="outline">清除</Button>
             </div>
             <Card>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[50px]">
-                        <Checkbox
+                <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[50px]">
+                            <Checkbox
                           checked={filteredData.length > 0 && selectedRowIds.size === filteredData.length}
-                          onCheckedChange={handleSelectAll}
+                                onCheckedChange={handleSelectAll}
                           disabled={filteredData.length === 0}
-                        />
-                      </TableHead>
-                      {columns.map((col) => (
-                        <TableHead key={col} className="capitalize">{col}</TableHead>
-                      ))}
-                      <TableHead className="text-right">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                            />
+                          </TableHead>
+                          {columns.map((col) => (
+                            <TableHead key={col} className="capitalize">{col}</TableHead>
+                          ))}
+                          <TableHead className="text-right">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                     {paginatedData.map((item) => (
-                      <TableRow key={item.id} data-state={selectedRowIds.has(item.id) && "selected"}>
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedRowIds.has(item.id)}
-                            onCheckedChange={() => handleRowSelect(item.id)}
-                          />
-                        </TableCell>
-                        {columns.map((col) => (
-                          <TableCell key={col} className="max-w-xs truncate">
-                            {renderCell(item, col)}
-                          </TableCell>
+                          <TableRow key={item.id} data-state={selectedRowIds.has(item.id) && "selected"}>
+                            <TableCell>
+                              <Checkbox
+                                  checked={selectedRowIds.has(item.id)}
+                                  onCheckedChange={() => handleRowSelect(item.id)}
+                              />
+                            </TableCell>
+                            {columns.map((col) => (
+                              <TableCell key={col} className="max-w-xs truncate">
+                                {renderCell(item, col)}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-right">
+                              <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}>
+                                <FilePenLine className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDeleteConfirmation(item)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
                         ))}
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}>
-                            <FilePenLine className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteConfirmation(item)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                      </TableBody>
+                    </Table>
+                </div>
             </Card>
             {fullTableData.length > 0 && paginatedData.length === 0 && (
                 <p className="text-muted-foreground text-center mt-8">没有匹配筛选条件的数据。</p>
@@ -449,18 +449,18 @@ export default function DbViewerPage() {
       </AlertDialog>
 
       <AlertDialog open={isBulkDeleteConfirmOpen} onOpenChange={setIsBulkDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>确定要批量删除吗?</AlertDialogTitle>
-            <AlertDialogDescription>
-              此操作无法撤销。这将从数据库中永久删除 <span className="font-semibold text-destructive">{selectedRowIds.size}</span> 条记录。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleBulkDelete}>继续删除</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>确定要批量删除吗?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      此操作无法撤销。这将从数据库中永久删除 <span className="font-semibold text-destructive">{selectedRowIds.size}</span> 条记录。
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleBulkDelete}>继续删除</AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
       </AlertDialog>
     </div>
   );
