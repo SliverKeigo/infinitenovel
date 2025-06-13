@@ -67,6 +67,34 @@ export class InfiniteNovelDB extends Dexie {
             }
         });
     });
+    this.version(5).stores({}).upgrade(tx => {
+      // 更新AI配置表，添加向量化模型相关字段
+      return tx.table('aiConfigs').toCollection().modify(config => {
+        if (config.useApiForEmbeddings === undefined) {
+          config.useApiForEmbeddings = false;
+        }
+        if (config.embeddingModel === undefined) {
+          // 默认使用OpenAI的文本嵌入模型
+          config.embeddingModel = config.useApiForEmbeddings ? 
+            'text-embedding-ada-002' : 
+            'Xenova/all-MiniLM-L6-v2';
+        }
+      });
+    });
+    this.version(6).stores({}).upgrade(tx => {
+      // 更新AI配置表，添加独立嵌入配置相关字段
+      return tx.table('aiConfigs').toCollection().modify(config => {
+        if (config.useIndependentEmbeddingConfig === undefined) {
+          config.useIndependentEmbeddingConfig = false;
+        }
+        if (config.embeddingApiKey === undefined) {
+          config.embeddingApiKey = '';
+        }
+        if (config.embeddingApiBaseUrl === undefined) {
+          config.embeddingApiBaseUrl = '';
+        }
+      });
+    });
   }
 
   /**
@@ -83,6 +111,11 @@ export class InfiniteNovelDB extends Dexie {
         apiKey: '',
         model: 'gpt-4-turbo',
         apiBaseUrl: '',
+        useApiForEmbeddings: false,
+        embeddingModel: 'Xenova/all-MiniLM-L6-v2',
+        useIndependentEmbeddingConfig: false,
+        embeddingApiKey: '',
+        embeddingApiBaseUrl: '',
       });
     }
 
