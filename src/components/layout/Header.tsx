@@ -3,7 +3,6 @@
 import { usePathname } from 'next/navigation'
 import { MainNav } from '@/components/layout/main-nav'
 import { useAppStatusStore, ModelLoadStatus } from '@/store/use-app-status-store'
-import { useModelLoader } from '@/hooks/use-model-loader'
 import { useSettingsInitializer } from '@/hooks/use-settings-initializer'
 import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -55,7 +54,6 @@ const ModelStatusIndicator = () => {
 
 export function Header() {
   const pathname = usePathname()
-  useModelLoader()
   useSettingsInitializer()
 
   return (
