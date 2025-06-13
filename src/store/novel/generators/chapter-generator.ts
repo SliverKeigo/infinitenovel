@@ -11,7 +11,13 @@ import { GenerationSettings } from '@/types/generation-settings';
 import { getChapterOutline, countDetailedChaptersInOutline } from '../outline-utils';
 import { handleOpenAIError } from '../error-handlers';
 import { getGenreStyleGuide } from '../style-guides';
-import { parseJsonFromAiResponse, extractChapterDetailFromOutline } from '../parsers';
+import { 
+  parseJsonFromAiResponse, 
+  extractChapterDetailFromOutline, 
+  extractNarrativeStages, 
+  getCurrentNarrativeStage,
+  type NarrativeStage
+} from '../parsers';
 import { CHAPTER_WORD_TARGET, CHAPTER_WORD_TOLERANCE } from '../constants';
 import { retrieveRelevantContext, formatRetrievedContextForPrompt } from '../utils/rag-utils';
 
@@ -35,6 +41,80 @@ interface NovelStateSlice {
   };
   [key: string]: any;
 }
+
+/**
+ * 根据宏观叙事规划生成阶段指导提示
+ * @param fullOutline - 完整大纲
+ * @param chapterNumber - 当前章节号
+ * @returns 阶段指导提示
+ */
+const generateNarrativeStageGuidance = (fullOutline: string, chapterNumber: number): string => {
+  // 提取宏观叙事规划
+  const narrativeStages = extractNarrativeStages(fullOutline);
+  if (narrativeStages.length === 0) {
+    console.log("[宏观规划] 未找到宏观叙事规划，跳过阶段指导生成");
+    return "";
+  }
+
+  // 确定当前章节所处的叙事阶段
+  const currentStage = getCurrentNarrativeStage(narrativeStages, chapterNumber);
+  if (!currentStage) {
+    console.log(`[宏观规划] 无法确定第 ${chapterNumber} 章所处的叙事阶段`);
+    return "";
+  }
+
+  console.log(`[宏观规划] 第 ${chapterNumber} 章处于"${currentStage.stageName}"阶段 (第${currentStage.chapterRange.start}-${currentStage.chapterRange.end}章)`);
+
+  // 获取下一个阶段（如果有）
+  const currentStageIndex = narrativeStages.findIndex(stage => 
+    stage.chapterRange.start === currentStage.chapterRange.start && 
+    stage.chapterRange.end === currentStage.chapterRange.end
+  );
+  
+  const nextStage = currentStageIndex < narrativeStages.length - 1 ? narrativeStages[currentStageIndex + 1] : null;
+  const previousStage = currentStageIndex > 0 ? narrativeStages[currentStageIndex - 1] : null;
+
+  // 计算当前章节在当前阶段中的进度百分比
+  const stageProgress = Math.floor(
+    ((chapterNumber - currentStage.chapterRange.start) / 
+    (currentStage.chapterRange.end - currentStage.chapterRange.start + 1)) * 100
+  );
+
+  // 生成阶段指导提示
+  let guidance = `
+【宏观叙事规划指导】
+当前章节(第${chapterNumber}章)处于"${currentStage.stageName}"阶段 (第${currentStage.chapterRange.start}-${currentStage.chapterRange.end}章)
+阶段进度: ${stageProgress}% (${chapterNumber - currentStage.chapterRange.start + 1}/${currentStage.chapterRange.end - currentStage.chapterRange.start + 1}章)
+
+本阶段核心概述:
+${currentStage.coreSummary}
+
+`;
+
+  // 添加阶段限制指导
+  if (nextStage) {
+    guidance += `
+【重要限制】
+以下内容属于后续"${nextStage.stageName}"阶段(第${nextStage.chapterRange.start}-${nextStage.chapterRange.end}章)，在当前章节中不应过早引入:
+${nextStage.coreSummary}
+`;
+  }
+
+  // 添加特殊进度指导
+  if (stageProgress > 80) {
+    guidance += `
+【进度提示】
+当前章节已接近本阶段末尾，应该为下一阶段的内容做铺垫，但不要直接引入下一阶段的核心元素。
+`;
+  } else if (stageProgress < 20) {
+    guidance += `
+【进度提示】
+当前章节处于本阶段初期，应该专注于建立本阶段的基础元素和主题，同时与上一阶段做好过渡。
+`;
+  }
+
+  return guidance;
+};
 
 /**
  * 生成单个新章节
@@ -75,6 +155,9 @@ export const generateNewChapter = async (
   const chapterOnlyOutline = extractChapterDetailFromOutline(fullOutline);
   console.log(`[诊断] 原始大纲长度: ${fullOutline.length}, 提取后章节部分长度: ${chapterOnlyOutline.length}`);
   
+  // 生成宏观叙事规划指导
+  const narrativeStageGuidance = generateNarrativeStageGuidance(fullOutline, chapterToGenerate);
+  
   const {
     maxTokens,
     temperature,
@@ -98,7 +181,7 @@ export const generateNewChapter = async (
 
   // --- RAG 检索增强 (用于章节解构) ---
   const nextChapterNumber = chapterToGenerate;
-  
+   
   // 只获取当前章节的大纲，而不是整个大纲
   const chapterOutline = getChapterOutline(chapterOnlyOutline, nextChapterNumber);
   if (!chapterOutline) {
@@ -108,11 +191,11 @@ export const generateNewChapter = async (
     set({ generationLoading: false });
     return;
   }
-  
+   
   // 获取前一章和后一章的大纲，用于上下文理解
   const prevChapterOutline = nextChapterNumber > 1 ? getChapterOutline(chapterOnlyOutline, nextChapterNumber - 1) : null;
   const nextChapterOutline = getChapterOutline(chapterOnlyOutline, nextChapterNumber + 1);
-  
+   
   // 构建上下文感知大纲
   let contextAwareOutline = "";
   if (prevChapterOutline) {
@@ -122,7 +205,7 @@ export const generateNewChapter = async (
   if (nextChapterOutline) {
     contextAwareOutline += `**下一章大纲:**\n第${nextChapterNumber+1}章: ${nextChapterOutline}`;
   }
-  
+   
   console.log(`[诊断] 上下文感知大纲长度: ${contextAwareOutline.length}`);
 
   // 使用RAG检索相关上下文
@@ -189,6 +272,7 @@ ${userRequirementsContext}
 ${mandatoryRules}
 ${styleGuide}
 ${ragPrompt}
+${narrativeStageGuidance}
 
 **最高优先级指令：** 你的首要任务是确保本章内容忠实地实现大纲中规划的事件。章节内容必须严格遵循大纲描述的关键事件，不得随意跳过或改变大纲中的重要情节点。
 
@@ -347,6 +431,7 @@ ${userRequirementsContext}
 ${mandatoryRules}
 ${styleGuide}
 ${sceneRagPrompt}
+${narrativeStageGuidance}
 
 **大纲指导（最高优先级）:**
 根据小说大纲，本章必须实现以下关键事件：
@@ -408,4 +493,4 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
   const finalBody = get().generatedContent || "";
   const finalContent = `${chapterTitle}\n|||CHAPTER_SEPARATOR|||\n${finalBody}`;
   set({ generatedContent: finalContent });
-}; 
+};

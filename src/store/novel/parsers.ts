@@ -169,4 +169,133 @@ export const extractChapterDetailFromOutline = (content: string): string => {
   // 如果无法明确区分，返回原始内容
   console.log(`[大纲提取] 无法明确区分章节部分，返回原始内容`);
   return content;
+};
+
+/**
+ * 表示宏观叙事阶段的接口
+ */
+export interface NarrativeStage {
+  stageName: string;      // 阶段名称，如"第一幕"
+  chapterRange: {         // 章节范围
+    start: number;        // 起始章节号
+    end: number;          // 结束章节号
+  };
+  coreSummary: string;    // 核心概述
+  keyElements: string[];  // 关键元素（可选）
+}
+
+/**
+ * 从大纲中提取宏观叙事规划信息
+ * @param content - 完整的大纲内容
+ * @returns 宏观叙事规划的各个阶段
+ */
+export const extractNarrativeStages = (content: string): NarrativeStage[] => {
+  if (!content) return [];
+  
+  console.log(`[宏观规划提取] 开始提取宏观叙事规划，原始大纲长度: ${content.length}`);
+  
+  // 检查是否包含宏观叙事规划部分
+  if (!content.includes('宏观叙事规划')) {
+    console.log(`[宏观规划提取] 未检测到宏观叙事规划分隔符`);
+    return [];
+  }
+  
+  // 分离宏观规划部分
+  const parts = content.split(/---\s*\*\*宏观叙事规划\*\*\s*---/i);
+  if (parts.length < 2) {
+    console.log(`[宏观规划提取] 无法分离宏观规划部分`);
+    return [];
+  }
+  
+  const macroPlanningPart = parts[1].trim();
+  console.log(`[宏观规划提取] 宏观规划部分长度: ${macroPlanningPart.length}`);
+  
+  // 匹配宏观叙事阶段，如"**第一幕: 幸存者的试炼 (第1-100章)**"
+  const stageRegex = /\*\*([^:]+):\s*([^(]+)\s*\(第(\d+)-(\d+)章\)\*\*/g;
+  const stages: NarrativeStage[] = [];
+  
+  let match;
+  while ((match = stageRegex.exec(macroPlanningPart)) !== null) {
+    const stageName = match[1].trim();
+    const stageTitle = match[2].trim();
+    const startChapter = parseInt(match[3], 10);
+    const endChapter = parseInt(match[4], 10);
+    
+    // 提取该阶段的核心概述
+    const stageStart = match.index + match[0].length;
+    let stageEnd = macroPlanningPart.length;
+    
+    // 寻找下一个阶段的开始位置
+    const nextStageMatch = stageRegex.exec(macroPlanningPart);
+    if (nextStageMatch) {
+      stageEnd = nextStageMatch.index;
+      // 重置正则表达式的lastIndex，使其回到当前匹配之后
+      stageRegex.lastIndex = match.index + match[0].length;
+    }
+    
+    // 提取阶段内容
+    let stageContent = macroPlanningPart.substring(stageStart, stageEnd).trim();
+    
+    // 提取核心概述
+    let coreSummary = "";
+    const coreSummaryMatch = stageContent.match(/核心概述:\s*([\s\S]+?)(?=\n\n|\n-|\n\*|$)/);
+    if (coreSummaryMatch) {
+      coreSummary = coreSummaryMatch[1].trim();
+    }
+    
+    // 提取关键元素（如有）
+    const keyElements: string[] = [];
+    const keyElementsRegex = /-\s*([^\n]+)/g;
+    let elementMatch;
+    while ((elementMatch = keyElementsRegex.exec(stageContent)) !== null) {
+      keyElements.push(elementMatch[1].trim());
+    }
+    
+    stages.push({
+      stageName: `${stageName}: ${stageTitle}`,
+      chapterRange: {
+        start: startChapter,
+        end: endChapter
+      },
+      coreSummary,
+      keyElements
+    });
+  }
+  
+  console.log(`[宏观规划提取] 成功提取 ${stages.length} 个叙事阶段`);
+  stages.forEach((stage, index) => {
+    console.log(`[宏观规划提取] 阶段 ${index + 1}: ${stage.stageName} (第${stage.chapterRange.start}-${stage.chapterRange.end}章)`);
+  });
+  
+  return stages;
+};
+
+/**
+ * 根据章节号确定当前所处的叙事阶段
+ * @param stages - 宏观叙事规划的各个阶段
+ * @param chapterNumber - 当前章节号
+ * @returns 当前所处的叙事阶段，如果找不到则返回null
+ */
+export const getCurrentNarrativeStage = (stages: NarrativeStage[], chapterNumber: number): NarrativeStage | null => {
+  if (!stages || stages.length === 0) return null;
+  
+  for (const stage of stages) {
+    if (chapterNumber >= stage.chapterRange.start && chapterNumber <= stage.chapterRange.end) {
+      return stage;
+    }
+  }
+  
+  // 如果找不到匹配的阶段，返回最接近的一个
+  const lastStage = stages[stages.length - 1];
+  const firstStage = stages[0];
+  
+  if (chapterNumber > lastStage.chapterRange.end) {
+    return lastStage;
+  }
+  
+  if (chapterNumber < firstStage.chapterRange.start) {
+    return firstStage;
+  }
+  
+  return null;
 }; 
