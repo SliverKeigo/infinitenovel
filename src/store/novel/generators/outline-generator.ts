@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
 import { toast } from "sonner";
-import { countDetailedChaptersInOutline } from '../outline-utils';
+import { countDetailedChaptersInOutline, extractChapterNumbers } from '../outline-utils';
 import { getGenreStyleGuide } from '../style-guides';
 import { processOutline, extractChapterDetailFromOutline } from '../parsers';
 import { OUTLINE_EXPAND_THRESHOLD, OUTLINE_EXPAND_CHUNK_SIZE } from '../constants';
@@ -35,6 +35,11 @@ export const expandPlotOutlineIfNeeded = async (
   
   // 只计算章节部分的详细章节数量
   const chapterOnlyOutline = extractChapterDetailFromOutline(novel.plotOutline);
+  console.log(`[大纲扩展] 提取到的章节部分长度: ${chapterOnlyOutline.length} 字符`);
+  
+  // 输出章节部分的前200个字符，帮助诊断
+  console.log(`[大纲扩展] 章节部分前200字符: ${chapterOnlyOutline.substring(0, 200)}...`);
+  
   const detailedChaptersInOutline = countDetailedChaptersInOutline(chapterOnlyOutline);
 
   console.log(`扩展检查：当前章节 ${currentChapterCount}, 大纲中章节 ${detailedChaptersInOutline}`);
@@ -47,6 +52,10 @@ export const expandPlotOutlineIfNeeded = async (
   if (force || detailedChaptersInOutline - currentChapterCount < OUTLINE_EXPAND_THRESHOLD) {
     toast.info("AI正在思考后续情节，请稍候...");
     console.log("触发大纲扩展...");
+    
+    // 记录扩展前的章节数量，用于后续比较
+    console.log(`[大纲扩展] 扩展前大纲包含 ${detailedChaptersInOutline} 个章节`);
+    console.log(`[大纲扩展] 计划新增 ${OUTLINE_EXPAND_CHUNK_SIZE} 个章节，从第 ${detailedChaptersInOutline + 1} 章开始`);
 
     const openai = new OpenAI({
       apiKey: activeConfig.apiKey,
@@ -103,6 +112,15 @@ export const expandPlotOutlineIfNeeded = async (
         // 将新增内容与原大纲结合
         const updatedOutline = `${novel.plotOutline}\n\n${processedNewPart.trim()}`;
         await db.novels.update(novel.id!, { plotOutline: updatedOutline });
+        
+        // 验证扩展后的章节数量
+        const updatedChapterOnlyOutline = extractChapterDetailFromOutline(updatedOutline);
+        const updatedChapterCount = countDetailedChaptersInOutline(updatedChapterOnlyOutline);
+        console.log(`[大纲扩展] 扩展后大纲包含 ${updatedChapterCount} 个章节，理论上应有 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 个章节`);
+        
+        // 提取扩展后的章节编号，确认新章节已添加
+        const chapterNumbers = extractChapterNumbers(updatedChapterOnlyOutline);
+        console.log(`[大纲扩展] 扩展后的章节编号: ${JSON.stringify(chapterNumbers.slice(-OUTLINE_EXPAND_CHUNK_SIZE))}`);
         
         // 更新 Zustand store 中的 currentNovel
         const currentNovel = get().currentNovel;

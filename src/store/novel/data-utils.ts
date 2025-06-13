@@ -31,10 +31,8 @@ export const fetchNovelDetails = async (
   set: (partial: any) => void,
   id: number
 ) => {
-  console.time('fetchNovelDetails Execution');
   set({ detailsLoading: true });
   try {
-    console.time('数据库查询');
     const novel = await db.novels.get(id);
     if (!novel) throw new Error('Novel not found');
 

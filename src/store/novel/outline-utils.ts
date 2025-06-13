@@ -8,8 +8,24 @@
  * @returns 详细章节的数量
  */
 export const countDetailedChaptersInOutline = (outline: string): number => {
-  const detailedChapterRegex = /第\d+章:/g;
+  // 使用与extractChapterNumbers相同的正则表达式，保持一致性
+  // 匹配多种可能的章节标记格式：
+  // 1. 标准格式: "第10章:"
+  // 2. 带空格: "第 10 章:"
+  // 3. 带句点: "第10.章:"
+  // 4. 不带冒号: "第10章"
+  // 5. 中英文冒号: "第10章："
+  const detailedChapterRegex = /第\s*\d+\s*\.?\s*章[:\：]?/gi;
   const matches = outline.match(detailedChapterRegex);
+  
+  // 添加诊断日志
+  if (matches) {
+    console.log(`[章节计数] 在大纲中找到 ${matches.length} 个章节标记`);
+    console.log(`[章节计数] 前5个章节标记: ${JSON.stringify(matches.slice(0, 5))}`);
+  } else {
+    console.log(`[章节计数] 在大纲中未找到任何章节标记`);
+  }
+  
   return matches ? matches.length : 0;
 };
 
