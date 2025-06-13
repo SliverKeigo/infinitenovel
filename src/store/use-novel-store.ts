@@ -57,7 +57,7 @@ const parseJsonFromAiResponse = (content: string): any => {
   try {
     const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```|(\{[\s\S]*\})/);
     let jsonString = match ? (match[1] || match[2]) : content;
-    
+
     jsonString = jsonString.replace(/[""]['']/g, '"');
 
     return JSON.parse(jsonString);
@@ -65,6 +65,166 @@ const parseJsonFromAiResponse = (content: string): any => {
     console.error("Fallback JSON parsing also failed. Original content:", content);
     throw new Error(`AI返回了无效的JSON格式，即使在清理和提取后也无法解析。`);
   }
+};
+
+/**
+ * 根据小说类型生成相应的风格指导
+ * @param genre - 小说类型
+ * @param style - 写作风格（可选）
+ * @returns 针对该类型的风格指导字符串
+ */
+const getGenreStyleGuide = (genre: string, style?: string): string => {
+  // 将类型和风格转换为小写以便匹配
+  const genreLower = genre.toLowerCase();
+  const styleLower = style?.toLowerCase() || '';
+
+  // 创建一个风格指导数组，用于收集所有匹配的风格指导
+  const styleGuides: string[] = [];
+
+  // 轻小说/幽默/搞笑类
+  if (genreLower.includes('轻小说') || genreLower.includes('幽默') ||
+    genreLower.includes('搞笑') || genreLower.includes('喜剧') ||
+    styleLower.includes('轻松') || styleLower.includes('幽默')) {
+    styleGuides.push(`
+【轻小说/幽默风格指南】
+1. 每个场景都应该包含至少一个幽默元素、梗或出人意料的转折
+2. 角色对话要机智、诙谐，可以适度夸张
+3. 可以巧妙地打破第四面墙或引用流行文化
+4. 角色之间的互动要有趣，可以设计"笑果"
+5. 不要害怕使用夸张的表现手法和戏剧性的对比
+6. 可以加入轻松的吐槽、自嘲或调侃元素
+7. 角色可以有些"萌点"或特定的口头禅
+`);
+  }
+
+  // 悬疑/推理类
+  if (genreLower.includes('悬疑') || genreLower.includes('推理') ||
+    genreLower.includes('侦探') || genreLower.includes('谜题') ||
+    styleLower.includes('悬疑') || styleLower.includes('推理')) {
+    styleGuides.push(`
+【悬疑/推理风格指南】
+1. 线索铺设要合理且有逻辑性，避免"天降神迹"式的解决方案
+2. 保持适当的悬念和紧张感，但不要过度拖延关键信息
+3. 角色的行动和动机要符合逻辑，即使是误导读者的线索也要有合理性
+4. 适当使用有限视角或不可靠叙述者技巧
+5. 构建谜题时要"公平"，读者应该有机会在故事中找到解谜的关键
+6. 解谜过程要有层次感，可以设置多重谜题
+7. 人物心理描写要细腻，尤其是面对压力和危机时的反应
+`);
+  }
+
+  // 玄幻/仙侠/奇幻类
+  if (genreLower.includes('玄幻') || genreLower.includes('仙侠') ||
+    genreLower.includes('奇幻') || genreLower.includes('修仙') ||
+    genreLower.includes('异世界') || genreLower.includes('魔法')) {
+    styleGuides.push(`
+【玄幻/仙侠/奇幻风格指南】
+1. 世界观设定要有内在一致性，魔法/功法系统要有规则和限制
+2. 战斗/修炼场景要有张力和视觉冲击力，可以适度夸张但不失逻辑
+3. 角色成长要有阶段性和挑战性，避免毫无理由的突然强大
+4. 神通/法术的使用要有创意，不只是简单的力量对抗
+5. 可以融入东方/西方神话元素，但要有新的诠释
+6. 描绘异世界时注重感官细节，让读者能够身临其境
+7. 设置合理的权力结构和社会体系，增强世界的真实感
+`);
+  }
+
+  // 都市/职场类
+  if (genreLower.includes('都市') || genreLower.includes('职场') ||
+    genreLower.includes('商战') || genreLower.includes('现代') ||
+    styleLower.includes('现实') || styleLower.includes('职场')) {
+    styleGuides.push(`
+【都市/职场风格指南】
+1. 人际关系和职场政治要真实，避免过于简单化的敌友关系
+2. 冲突要基于现实中可能发生的情况，即使有夸张也要有现实基础
+3. 角色的职业技能和专业知识要有可信度
+4. 可以融入当代社会热点和现象，增强时代感
+5. 描写生活细节时要精准，展现都市生活的多样性
+6. 角色面临的挑战应该平衡个人能力和外部环境因素
+7. 成功不应该来得过于容易，要展现努力、智慧和机遇的结合
+`);
+  }
+
+  // 科幻类
+  if (genreLower.includes('科幻') || genreLower.includes('未来') ||
+    genreLower.includes('太空') || genreLower.includes('科技') ||
+    styleLower.includes('科幻') || styleLower.includes('未来主义')) {
+    styleGuides.push(`
+【科幻风格指南】
+1. 科技设定要有一定的科学基础或合理的外推，避免"黑科技"无限万能
+2. 未来社会的描绘要考虑技术对人类行为、社会结构的影响
+3. 可以探讨科技伦理、人性、存在主义等深层次主题
+4. 世界构建要注重细节，包括科技如何改变日常生活的方方面面
+5. 科幻元素应该服务于故事和角色，而不仅仅是摆设
+6. 可以设置"认知震撼"的场景，挑战读者的想象力
+7. 在描述高科技设备和现象时，平衡技术细节和可读性
+`);
+  }
+
+  // 言情/恋爱类
+  if (genreLower.includes('言情') || genreLower.includes('恋爱') ||
+    genreLower.includes('爱情') || genreLower.includes('romance') ||
+    styleLower.includes('浪漫') || styleLower.includes('感性')) {
+    styleGuides.push(`
+【言情/恋爱风格指南】
+1. 角色之间的情感发展要有层次和进程，避免毫无铺垫的感情爆发
+2. 情感冲突要有深度，可以探索价值观差异、成长经历等深层原因
+3. 对话和互动要有情感张力和微妙变化
+4. 适当使用环境和气氛烘托情感发展
+5. 角色的内心独白可以更细腻地展现情感变化
+6. 感情线索可以与其他故事线索交织，增加复杂性
+7. 浪漫场景要有创意，避免落入俗套
+`);
+  }
+
+  // 历史/架空历史类
+  if (genreLower.includes('历史') || genreLower.includes('古代') ||
+    genreLower.includes('王朝') || genreLower.includes('架空') ||
+    styleLower.includes('古风') || styleLower.includes('历史')) {
+    styleGuides.push(`
+【历史/架空历史风格指南】
+1. 历史背景要有一定的准确性，即使是架空也要有内在逻辑
+2. 人物的言行要符合时代背景，避免现代思维过度入侵
+3. 可以巧妙融入历史事件或人物，但要有新的角度
+4. 描写历史场景时注重细节，包括服饰、建筑、礼仪等
+5. 政治、军事、文化等元素要有深度，展现时代特色
+6. 在架空历史中，可以大胆想象，但变化要有合理性
+7. 可以通过小人物视角反映大时代变迁
+`);
+  }
+
+  // 游戏/竞技类
+  if (genreLower.includes('游戏') || genreLower.includes('竞技') ||
+    genreLower.includes('体育') || genreLower.includes('电竞') ||
+    styleLower.includes('热血') || styleLower.includes('竞技')) {
+    styleGuides.push(`
+【游戏/竞技风格指南】
+1. 比赛/对战场景要有张力和节奏感，可以使用专业术语增强真实感
+2. 角色的成长要体现技术进步和心理成熟
+3. 团队协作中展现不同角色的特点和价值
+4. 对手不应该是单一维度的反派，可以有自己的故事和动机
+5. 技战术分析要有深度，展现策略思考的过程
+6. 可以融入行业内幕或专业知识，增强专业感
+7. 挫折和失败是成长的必要部分，不要让主角总是轻易获胜
+`);
+  }
+
+  // 默认风格指导（如果没有匹配到任何类型）
+  if (styleGuides.length === 0) {
+    styleGuides.push(`
+【通用风格指南】
+1. 保持情节的连贯性和角色的一致性
+2. 场景描写要有代入感，让读者能够身临其境
+3. 对话要自然流畅，符合角色特点
+4. 冲突和转折要有意外性，但不失合理性
+5. 节奏要有变化，紧张与舒缓相结合
+6. 角色情感要有真实感，避免过于扁平化
+7. 适当设置悬念和铺垫，保持读者的阅读兴趣
+`);
+  }
+
+  // 将所有匹配的风格指导合并
+  return styleGuides.join('\n');
 };
 
 /**
@@ -355,7 +515,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
           await get().saveGeneratedChapter(novelId);
         } else {
           toast.warning(`第 ${nextChapterNumber} 章内容生成为空，续写任务已中止。`);
-          // Stop generating more chapters if one fails
           break;
         }
       }
@@ -404,6 +563,15 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       if (!settings) {
         throw new Error("生成设置未找到，请先在设置页面配置。");
       }
+      
+      // 输出诊断信息，确认设置值
+      console.log(`[诊断] 小说生成任务开始，设置中的场景数量: ${settings.segmentsPerChapter}`);
+      
+      // 确保场景数量至少为1
+      if (!settings.segmentsPerChapter || settings.segmentsPerChapter <= 0) {
+        console.log(`[诊断] 场景数量无效，设置为默认值1`);
+        settings.segmentsPerChapter = 1;
+      }
 
       const { activeConfigId } = useAIConfigStore.getState();
       if (!activeConfigId) {
@@ -422,6 +590,9 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       // --- STAGE 1: CREATE PLOT OUTLINE ---
       set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '正在创建故事大纲...' } });
 
+      // 获取基于小说类型的风格指导
+      const outlineStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+
       const outlinePrompt = `
         你是一位经验丰富的小说编辑和世界构建大师。请为一部名为《${novel.name}》的小说创作一个结构化、分阶段的故事大纲。
 
@@ -430,6 +601,8 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         - 写作风格: ${novel.style}
         - 计划总章节数: ${goal}
         - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
+
+        ${outlineStyleGuide}
 
         **你的任务分为两部分：**
 
@@ -443,6 +616,12 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         - 你需要将故事划分为几个大的部分或"幕"（例如：第一幕：起源与探索，第二幕：冲突升级，第三幕：决战与尾声）。
         - 在每个部分下，简要描述这一阶段的核心目标、关键转折点和大致的剧情走向。
         - **这部分不需要逐章展开**，而是提供一个清晰的、指导未来创作方向的路线图。
+
+        **请特别注意：**
+        1. 整个大纲必须遵循上述风格指南，确保风格一致性
+        2. 每个章节都应该有明确的目标和冲突
+        3. 故事应该有清晰的发展脉络和节奏变化
+        4. 角色成长和情节发展要相互促进
 
         **输出格式要求:**
         请严格按照以下格式输出，先是详细章节，然后是宏观规划。
@@ -486,6 +665,10 @@ export const useNovelStore = create<NovelState>((set, get) => ({
 
       // --- STAGE 1.5: CREATE NOVEL DESCRIPTION ---
       set({ generationTask: { ...get().generationTask, progress: 22, currentStep: '正在生成小说简介...' } });
+
+      // 获取基于小说类型的风格指导
+      const descriptionStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+
       const descriptionPrompt = `
         你是一位卓越的营销文案专家。请根据以下小说的核心信息，为其创作一段 150-250 字的精彩简介。
         这段简介应该引人入胜，能够吸引读者，让他们渴望立即开始阅读。请突出故事的核心冲突、独特设定和悬念。
@@ -494,6 +677,14 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         - 小说类型: ${novel.genre}
         - 写作风格: ${novel.style}
         - 故事大纲: ${plotOutline.substring(0, 1500)}...
+        
+        ${descriptionStyleGuide}
+        
+        请根据上述风格指南，确保简介的风格与小说类型相匹配。简介应该:
+        1. 体现出该类型小说的典型魅力和特点
+        2. 使用能够吸引目标读者的语言和表达方式
+        3. 突出故事中最能引起读者兴趣的元素
+        4. 营造与小说风格一致的氛围和基调
         
         请直接输出简介内容，不要包含任何额外的标题或解释。
       `;
@@ -510,8 +701,11 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       }
       set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '简介已生成！' } });
 
-      // --- STAGE 2: CREATE CHARACTERS ---
+      // --- STAGE 2: CREATE CHARACTERS ---3
       set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '正在创建核心角色...' } });
+
+      // 获取基于小说类型的风格指导
+      const characterStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
 
       const characterPrompt = `
         你是一位顶级角色设计师。基于下面的小说信息和故事大纲，设计出核心角色。
@@ -519,7 +713,15 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         - 小说类型: ${novel.genre}
         - 故事大纲: ${plotOutline.substring(0, 2000)}...
 
+        ${characterStyleGuide}
+
         请根据以上信息，为这部小说创建 **1 个核心主角** 和 **2 个首批登场的配角**。这些角色应该与故事的开篇情节紧密相关。
+
+        请注意：
+        1. 角色设计应该符合上述风格指南的要求
+        2. 角色性格应该有鲜明特点，避免扁平化
+        3. 角色之间应该有潜在的互动可能性和关系张力
+        4. 角色背景应该与故事世界观相融合
 
         请严格按照下面的JSON格式输出，返回一个包含 "characters" 键的JSON对象。不要包含任何额外的解释或文本。
         **JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
@@ -668,7 +870,15 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       topP,
       frequencyPenalty,
       presencePenalty,
+      segmentsPerChapter,
     } = settings;
+
+    // 添加诊断日志，输出实际使用的场景数量设置
+    console.log(`[诊断] 用户设置的每章场景数量: ${segmentsPerChapter}`);
+    
+    // 确保场景数量至少为1
+    const actualSegmentsPerChapter = segmentsPerChapter && segmentsPerChapter > 0 ? segmentsPerChapter : 1;
+    console.log(`[诊断] 实际使用的每章场景数量: ${actualSegmentsPerChapter}`);
 
     const novel = get().currentNovel;
     if (!novel) throw new Error("未找到当前小说");
@@ -712,6 +922,9 @@ ${novel.specialRequirements}
 ---
 ` : '';
 
+    // [新增] 根据小说类型获取风格指导
+    const styleGuide = getGenreStyleGuide(novel.genre, novel.style);
+
     console.log(`[章节解构] 正在为第 ${nextChapterNumber} 章生成场景规划。`);
     if (!chapterOutline) {
       const errorMsg = `未能为第 ${nextChapterNumber} 章找到剧情大纲，无法进行章节解构。`;
@@ -731,6 +944,7 @@ ${novel.specialRequirements}
 
 ${userRequirementsContext}
 ${mandatoryRules}
+${styleGuide}
 
 **最高优先级指令：** 你的首要任务是延续上一章的结尾。所有你规划的场景都必须直接从这一点开始。绝对禁止出现情节断裂。
 
@@ -751,7 +965,7 @@ ${chapterOutline}
 **你的具体任务:**
 请综合考虑"上一章结尾"和"参考剧情大纲"，完成以下两件事：
 1.  为本章起一个引人入胜的标题。
-2.  设计出 ${settings.segmentsPerChapter} 个连贯的场景。你设计的第一个场景必须紧接着"上一章结尾"发生。如果"参考剧情大纲"与结尾情节有冲突，你必须巧妙地调整或重新安排大纲中的事件，使其能够自然地融入到故事流中，而不是生硬地插入。
+2.  设计出 ${actualSegmentsPerChapter} 个连贯的场景。你设计的第一个场景必须紧接着"上一章结尾"发生。如果"参考剧情大纲"与结尾情节有冲突，你必须巧妙地调整或重新安排大纲中的事件，使其能够自然地融入到故事流中，而不是生硬地插入。
 
 请严格按照以下JSON格式返回，不要包含任何额外的解释或Markdown标记：
 **JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
@@ -807,6 +1021,10 @@ ${chapterOutline}
 
     set({ generatedContent: "" }); // 清空预览
 
+    // 确保场景数量与设置一致
+    console.log(`[诊断] 实际规划的场景数量: ${chapterScenes.length}`);
+    console.log(`[诊断] 将要生成的场景: ${JSON.stringify(chapterScenes)}`);
+
     for (let i = 0; i < chapterScenes.length; i++) {
       const sceneDescription = chapterScenes[i];
       set({
@@ -817,9 +1035,9 @@ ${chapterOutline}
       });
 
       const targetTotalWords = 3000;
-      const scenesCount = settings.segmentsPerChapter > 0 ? settings.segmentsPerChapter : 3; // Fallback to 3 scenes
-      const wordsPerSceneLower = Math.round((targetTotalWords / scenesCount) * 0.85);
-      const wordsPerSceneUpper = Math.round((targetTotalWords / scenesCount) * 1.15);
+      // 使用实际场景数量计算每个场景的字数
+      const wordsPerSceneLower = Math.round((targetTotalWords / chapterScenes.length) * 0.85);
+      const wordsPerSceneUpper = Math.round((targetTotalWords / chapterScenes.length) * 1.15);
 
       const scenePrompt = `
 你是一位顶级小说家，正在创作《${novel.name}》的第 ${nextChapterNumber} 章，标题是"${chapterTitle}"。
@@ -827,6 +1045,7 @@ ${chapterOutline}
 
 ${userRequirementsContext}
 ${mandatoryRules}
+${styleGuide}
 
 ${previousChapterContext}
 
@@ -1146,8 +1365,13 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         dangerouslyAllowBrowser: true,
       });
 
+      // 获取基于小说类型的风格指导
+      const styleGuide = getGenreStyleGuide(novel.genre, novel.style);
+
       const expansionPrompt = `
           你是一位正在续写自己史诗级作品《${novel.name}》的小说家。
+          
+          ${styleGuide}
           
           这是我们共同确定的、贯穿整个故事的宏观篇章规划和已有的详细大纲：
           ---
@@ -1158,6 +1382,12 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
           
           请确保新的细纲与前面的剧情无缝衔接，并稳步推进核心情节。
           请只返回新增的这 ${OUTLINE_EXPAND_CHUNK_SIZE} 章细纲，格式为"第X章: [剧情摘要]"，不要重复任何已有内容或添加额外解释。
+          
+          请特别注意：
+          1. 每个章节的剧情摘要应该遵循上面的风格指南，确保风格一致性
+          2. 避免剧情过于平淡或重复，每个章节都应该有新的发展或转折
+          3. 角色行为要符合其已建立的性格特点
+          4. 确保新增章节与整体故事弧线保持一致
         `;
 
       try {
