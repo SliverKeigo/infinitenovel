@@ -65,7 +65,11 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
   const buttonText = `让 Agent 自动续写 ${chaptersToGenerate > 1 ? `${chaptersToGenerate} 章` : ''}`.trim();
   const userPromptButtonText = `根据我的要求生成 ${chaptersToGenerate > 1 ? `${chaptersToGenerate} 章` : '新章节'}`.trim();
 
-  const isProcessFinished = !generationLoading && (generationTask.currentStep.includes('完成') || generationTask.currentStep.includes('完毕') || generationTask.currentStep.includes('失败'));
+  const isProcessFinished = !generationLoading && generationTask.isActive && (
+    generationTask.currentStep.includes('完成') || 
+    generationTask.currentStep.includes('完毕') || 
+    generationTask.currentStep.includes('失败')
+  );
 
   const getDisplayStep = (step: string): string => {
     if (step && step.includes('场景')) {
@@ -97,7 +101,7 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
           />
           <Button 
             onClick={handleForceExpand} 
-            disabled={generationLoading || isProcessFinished} 
+            disabled={generationLoading && generationTask.isActive} 
             variant="outline"
             className="self-start"
           >
@@ -113,11 +117,11 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
                     value={chaptersToGenerate}
                     onChange={(e) => setChaptersToGenerate(Math.max(1, parseInt(e.target.value, 10) || 1))}
                     className="w-full mt-1"
-                    disabled={generationLoading || isProcessFinished}
+                    disabled={generationLoading && generationTask.isActive}
                     min="1"
                 />
             </div>
-            <Button onClick={handleGenerate} disabled={generationLoading || isProcessFinished} className="w-full mt-6">
+            <Button onClick={handleGenerate} disabled={generationLoading && generationTask.isActive} className="w-full mt-6">
           {generationLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

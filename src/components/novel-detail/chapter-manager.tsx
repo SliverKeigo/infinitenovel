@@ -100,7 +100,7 @@ export const ChapterManager = () => {
                         variant="outline" 
                         size="sm" 
                         onClick={handleToggleControlCenter}
-                        disabled={isEmbeddingModelLoading || indexLoading}
+                        disabled={isEmbeddingModelLoading || indexLoading || (generationLoading && generationTask.isActive)}
                     >
                         {isEmbeddingModelLoading ? (
                             <>
@@ -112,7 +112,7 @@ export const ChapterManager = () => {
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 <span>构建索引...</span>
                             </>
-                        ) : generationLoading ? (
+                        ) : (generationLoading && generationTask.isActive) ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                 <span>{getDisplayStep(generationTask.currentStep) || '续写中...'}</span>
@@ -168,7 +168,7 @@ export const ChapterManager = () => {
                                 <p className="text-sm text-muted-foreground mt-2 mb-4">准备好开始创作你的第一章了吗？</p>
                                 <Button 
                                     onClick={handleToggleControlCenter}
-                                    disabled={isAnythingLoading}
+                                    disabled={isAnythingLoading || (generationLoading && generationTask.isActive)}
                                 >
                                 {isEmbeddingModelLoading ? (
                                         <>
@@ -179,6 +179,11 @@ export const ChapterManager = () => {
                                         <>
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                             <span>构建索引中...</span>
+                                        </>
+                                ) : (generationLoading && generationTask.isActive) ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            <span>{getDisplayStep(generationTask.currentStep) || '续写中...'}</span>
                                         </>
                                 ) : '生成第一章')}
                                 </Button>
