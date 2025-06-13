@@ -98,6 +98,8 @@ export const generateNewChapter = async (
 
   // --- RAG 检索增强 (用于章节解构) ---
   const nextChapterNumber = chapterToGenerate;
+  
+  // 只获取当前章节的大纲，而不是整个大纲
   const chapterOutline = getChapterOutline(chapterOnlyOutline, nextChapterNumber);
   if (!chapterOutline) {
     const errorMsg = `未能为第 ${nextChapterNumber} 章找到剧情大纲，无法进行章节解构。`;
@@ -106,6 +108,22 @@ export const generateNewChapter = async (
     set({ generationLoading: false });
     return;
   }
+  
+  // 获取前一章和后一章的大纲，用于上下文理解
+  const prevChapterOutline = nextChapterNumber > 1 ? getChapterOutline(chapterOnlyOutline, nextChapterNumber - 1) : null;
+  const nextChapterOutline = getChapterOutline(chapterOnlyOutline, nextChapterNumber + 1);
+  
+  // 构建上下文感知大纲
+  let contextAwareOutline = "";
+  if (prevChapterOutline) {
+    contextAwareOutline += `**上一章大纲:**\n第${nextChapterNumber-1}章: ${prevChapterOutline}\n\n`;
+  }
+  contextAwareOutline += `**当前章节大纲:**\n第${nextChapterNumber}章: ${chapterOutline}\n\n`;
+  if (nextChapterOutline) {
+    contextAwareOutline += `**下一章大纲:**\n第${nextChapterNumber+1}章: ${nextChapterOutline}`;
+  }
+  
+  console.log(`[诊断] 上下文感知大纲长度: ${contextAwareOutline.length}`);
 
   // 使用RAG检索相关上下文
   console.log("[RAG] 开始检索相关上下文...");
@@ -192,7 +210,7 @@ ${ragPrompt}
 **本章的剧情大纲 (必须严格遵循):**
 这是我们为第 ${nextChapterNumber} 章设计的官方大纲。你必须确保所有这些关键事件都在本章中得到实现。
 \`\`\`
-${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体的剧情大纲。请根据上一章的结尾和整体故事走向，创造一个合理的情节发展。`}
+${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体的剧情大纲。请根据上一章的结尾和整体故事走向，创造一个合理的情节发展。`}
 \`\`\`
 ---
 
