@@ -258,8 +258,15 @@ export const generateNovelChapters = async (
       3. 角色之间应该有潜在的互动可能性和关系张力
       4. 角色背景应该与故事世界观相融合
 
-      请严格按照下面的JSON格式输出，返回一个包含 "characters" 键的JSON对象。不要包含任何额外的解释或文本。
+      【严格格式要求】
+      - 你必须只输出一个JSON对象，不包含任何前言、解释或结尾评论
+      - 不要使用Markdown代码块
+      - 不要包含"我已经创建了"、"以下是"等任何形式的引导语
+      - 不要在JSON前后添加任何额外文本
+      - 直接以花括号 { 开始你的响应，以花括号 } 结束
+      
       **JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
+      
       {
         "characters": [
           {
@@ -286,7 +293,13 @@ export const generateNovelChapters = async (
 
     const charactersResponse = await openai.chat.completions.create({
       model: activeConfig.model,
-      messages: [{ role: 'user', content: characterPrompt }],
+      messages: [
+        {
+          role: 'system',
+          content: '你是一个只输出JSON的助手。不要包含任何解释、前缀或后缀。不要使用Markdown代码块。直接以花括号{开始你的响应，以花括号}结束。不要添加任何额外的文本。'
+        },
+        { role: 'user', content: characterPrompt }
+      ],
       response_format: { type: "json_object" },
       temperature: settings.characterCreativity,
     });
@@ -294,35 +307,100 @@ export const generateNovelChapters = async (
     const charactersText = charactersResponse.choices[0].message.content;
     if (!charactersText) throw new Error("未能生成人物。");
 
+    console.log("[角色生成] 收到AI响应，开始解析");
+
     let newCharacters: Omit<Character, 'id'>[] = [];
     try {
+      // 记录原始响应，方便调试
+      console.log("[角色生成] 原始AI响应:", charactersText);
+      
       const parsedCharacters = parseJsonFromAiResponse(charactersText);
+      console.log("[角色生成] JSON解析成功:", JSON.stringify(parsedCharacters).substring(0, 200) + "...");
+      
       const charactersData = parsedCharacters.characters || [];
+      console.log("[角色生成] 找到角色数据，数量:", charactersData.length);
 
       if (Array.isArray(charactersData)) {
-        newCharacters = charactersData.map((char: any) => ({
-          novelId: novelId,
-          name: char.name || '未知姓名',
-          coreSetting: char.coreSetting || '无核心设定',
-          personality: char.personality || '未知性格',
-          backgroundStory: char.backgroundStory || '无背景故事',
-          appearance: '',
-          relationships: '',
-          status: 'active',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }));
+        newCharacters = charactersData.map((char: any) => {
+          console.log("[角色生成] 处理角色:", char.name);
+          return {
+            novelId: novelId,
+            name: char.name || '未知姓名',
+            coreSetting: char.coreSetting || '无核心设定',
+            personality: char.personality || '未知性格',
+            backgroundStory: char.backgroundStory || '无背景故事',
+            appearance: '',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+        });
+      } else {
+        console.error("[角色生成] 角色数据不是数组:", charactersData);
+        throw new Error("角色数据格式错误：预期是数组，但收到了其他类型");
       }
     } catch (e) {
-      console.error("解析AI生成的角色JSON失败:", e);
-      throw new Error("AI返回了无效的角色数据格式。");
+      console.error("[角色生成] 解析AI生成的角色JSON失败:", e);
+      console.error("[角色生成] 问题响应内容:", charactersText);
+      
+      // 尝试手动解析作为最后的补救措施
+      try {
+        console.log("[角色生成] 尝试手动解析角色数据");
+        
+        // 简单的正则表达式提取角色信息
+        const nameMatches = charactersText.match(/"name"\s*:\s*"([^"]+)"/g);
+        const coreSettingMatches = charactersText.match(/"coreSetting"\s*:\s*"([^"]+)"/g);
+        const personalityMatches = charactersText.match(/"personality"\s*:\s*"([^"]+)"/g);
+        const backgroundStoryMatches = charactersText.match(/"backgroundStory"\s*:\s*"([^"]+)"/g);
+        
+        if (nameMatches && nameMatches.length > 0) {
+          console.log("[角色生成] 手动提取到角色名称:", nameMatches.length, "个");
+          
+          // 创建简单的角色对象
+          for (let i = 0; i < nameMatches.length; i++) {
+            const nameMatch = nameMatches[i].match(/"name"\s*:\s*"([^"]+)"/);
+            const name = nameMatch ? nameMatch[1] : `角色${i+1}`;
+            
+            const coreSettingMatch = coreSettingMatches && i < coreSettingMatches.length ? 
+              coreSettingMatches[i].match(/"coreSetting"\s*:\s*"([^"]+)"/) : null;
+            const coreSetting = coreSettingMatch ? coreSettingMatch[1] : '无核心设定';
+            
+            const personalityMatch = personalityMatches && i < personalityMatches.length ? 
+              personalityMatches[i].match(/"personality"\s*:\s*"([^"]+)"/) : null;
+            const personality = personalityMatch ? personalityMatch[1] : '未知性格';
+            
+            const backgroundStoryMatch = backgroundStoryMatches && i < backgroundStoryMatches.length ? 
+              backgroundStoryMatches[i].match(/"backgroundStory"\s*:\s*"([^"]+)"/) : null;
+            const backgroundStory = backgroundStoryMatch ? backgroundStoryMatch[1] : '无背景故事';
+            
+            newCharacters.push({
+              novelId: novelId,
+              name: name,
+              coreSetting: coreSetting,
+              personality: personality,
+              backgroundStory: backgroundStory,
+              appearance: '',
+              createdAt: new Date(),
+              updatedAt: new Date()
+            });
+          }
+          
+          console.log("[角色生成] 手动创建了", newCharacters.length, "个角色");
+        } else {
+          throw new Error("无法手动提取角色数据");
+        }
+      } catch (manualError) {
+        console.error("[角色生成] 手动解析也失败了:", manualError);
+        throw new Error(`AI返回了无效的角色数据格式，无法解析: ${e}`);
+      }
     }
 
     if (newCharacters.length > 0) {
+      console.log("[角色生成] 成功创建", newCharacters.length, "个角色，准备保存到数据库");
       await db.characters.bulkAdd(newCharacters as Character[]);
       await db.novels.update(novelId, { characterCount: newCharacters.length });
       set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '核心人物创建完毕！' } });
     } else {
+      console.warn("[角色生成] 未能创建任何角色");
       set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '未生成核心人物，继续...' } });
     }
 

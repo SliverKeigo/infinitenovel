@@ -9,22 +9,169 @@
  * @throws 如果找不到或无法解析JSON，则抛出错误
  */
 export const parseJsonFromAiResponse = (content: string): any => {
+  if (!content) {
+    console.error("parseJsonFromAiResponse: 输入内容为空");
+    throw new Error("无法解析空内容");
+  }
+  
+  console.log("parseJsonFromAiResponse: 开始解析内容", content.substring(0, 100) + "...");
+  
+  // 处理<think>标签
+  const thinkTagEnd = content.lastIndexOf('</think>');
+  if (thinkTagEnd !== -1) {
+    console.log("parseJsonFromAiResponse: 检测到<think>标签，移除标签内容");
+    // 只保留</think>标签之后的内容
+    content = content.substring(thinkTagEnd + 8).trim(); // 8是</think>的长度
+    console.log("parseJsonFromAiResponse: 移除标签后的内容", content.substring(0, 100) + "...");
+  }
+  
+  // 尝试直接解析
   try {
     return JSON.parse(content);
   } catch (e) {
-    console.warn("Direct JSON parsing failed, attempting fallback.", e);
+    console.warn("parseJsonFromAiResponse: 直接JSON解析失败，尝试预处理", e);
   }
 
   try {
-    const match = content.match(/```(?:json)?\s*([\s\S]*?)\s*```|(\{[\s\S]*\})/);
-    let jsonString = match ? (match[1] || match[2]) : content;
+    // 提取代码块中的JSON
+    let jsonString = content;
+    
+    // 尝试匹配Markdown代码块中的JSON
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      console.log("parseJsonFromAiResponse: 找到Markdown代码块");
+      jsonString = codeBlockMatch[1];
+    } else {
+      // 尝试匹配直接的JSON对象（从第一个{到最后一个}）
+      const firstBrace = content.indexOf('{');
+      const lastBrace = content.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        console.log("parseJsonFromAiResponse: 找到JSON对象");
+        jsonString = content.substring(firstBrace, lastBrace + 1);
+      }
+    }
 
+    // 预处理JSON字符串
+    // 1. 修复不完整的转义引号
+    jsonString = jsonString.replace(/\\"/g, '"').replace(/([^\\])"/g, '$1\\"').replace(/^"/, '\\"').replace(/\\"([,\s\n])/g, '\\"$1');
+    // 2. 再次修复，确保所有引号都被正确转义
+    jsonString = jsonString.replace(/\\\\"/g, '\\"');
+    // 3. 替换不标准的引号
     jsonString = jsonString.replace(/[""]['']/g, '"');
+    
+    console.log("parseJsonFromAiResponse: 预处理后的JSON字符串", jsonString.substring(0, 100) + "...");
 
-    return JSON.parse(jsonString);
+    // 尝试解析预处理后的JSON
+    try {
+      return JSON.parse(jsonString);
+    } catch (innerError) {
+      console.error("parseJsonFromAiResponse: 预处理后的JSON解析失败", innerError);
+      
+      // 最后的尝试：使用更激进的方法处理JSON
+      // 移除所有转义符号，然后重新添加必要的转义
+      jsonString = content.replace(/\\"/g, '"'); // 先移除所有转义引号
+      
+      // 尝试找到JSON对象的开始和结束
+      const objectStartMatch = jsonString.match(/\s*\{\s*"[^"]+"\s*:/);
+      if (objectStartMatch) {
+        const startIndex = objectStartMatch.index || 0;
+        let endIndex = jsonString.lastIndexOf("}");
+        if (endIndex > startIndex) {
+          jsonString = jsonString.substring(startIndex, endIndex + 1);
+          console.log("parseJsonFromAiResponse: 提取JSON对象", jsonString.substring(0, 100) + "...");
+          
+          try {
+            return JSON.parse(jsonString);
+          } catch (finalError) {
+            console.error("parseJsonFromAiResponse: 最终JSON解析失败", finalError);
+          }
+        }
+      }
+      
+      // 如果还是失败，尝试使用正则表达式提取所有可能的键值对
+      console.log("parseJsonFromAiResponse: 尝试使用正则表达式提取键值对");
+      
+      // 提取键值对
+      const keyValuePairs: Record<string, any> = {};
+      
+      // 提取title
+      const titleMatch = content.match(/"title"\s*:\s*"([^"]+)"/);
+      if (titleMatch) {
+        keyValuePairs.title = titleMatch[1];
+      }
+      
+      // 提取progressStatus
+      const progressMatch = content.match(/"progressStatus"\s*:\s*"([^"]+)"/);
+      if (progressMatch) {
+        keyValuePairs.progressStatus = progressMatch[1];
+      }
+      
+      // 提取bigOutlineEvents数组
+      const eventsMatch = content.match(/"bigOutlineEvents"\s*:\s*\[([\s\S]*?)\]/);
+      if (eventsMatch) {
+        const eventsStr = eventsMatch[1];
+        const events = eventsStr.match(/"([^"]+)"/g);
+        if (events) {
+          keyValuePairs.bigOutlineEvents = events.map(e => e.replace(/"/g, ''));
+        }
+      }
+      
+      // 提取scenes数组
+      const scenesMatch = content.match(/"scenes"\s*:\s*\[([\s\S]*?)\]/);
+      if (scenesMatch) {
+        const scenesStr = scenesMatch[1];
+        const scenes = scenesStr.match(/"([^"]+)"/g);
+        if (scenes) {
+          keyValuePairs.scenes = scenes.map(s => s.replace(/"/g, ''));
+        }
+      }
+      
+      // 提取characters数组（用于角色生成）
+      const charactersMatch = content.match(/"characters"\s*:\s*\[([\s\S]*?)\]/);
+      if (charactersMatch) {
+        try {
+          // 尝试解析整个characters数组
+          const charactersStr = `{"characters":[${charactersMatch[1]}]}`;
+          const parsed = JSON.parse(charactersStr);
+          keyValuePairs.characters = parsed.characters;
+        } catch (e) {
+          console.error("parseJsonFromAiResponse: 解析characters数组失败", e);
+          // 如果整体解析失败，尝试提取单个角色信息
+          const characters: any[] = [];
+          const charBlocks = charactersMatch[1].split(/},\s*{/);
+          
+          charBlocks.forEach((block, index) => {
+            // 修复第一个和最后一个块的花括号
+            if (index === 0 && !block.startsWith('{')) block = '{' + block;
+            if (index === charBlocks.length - 1 && !block.endsWith('}')) block = block + '}';
+            if (index > 0 && index < charBlocks.length - 1) block = '{' + block + '}';
+            
+            try {
+              const char = JSON.parse(block);
+              characters.push(char);
+            } catch (e) {
+              console.error(`parseJsonFromAiResponse: 解析第${index}个角色失败`, e);
+            }
+          });
+          
+          if (characters.length > 0) {
+            keyValuePairs.characters = characters;
+          }
+        }
+      }
+      
+      // 如果至少找到了一些键值对，返回结果
+      if (Object.keys(keyValuePairs).length > 0) {
+        console.log("parseJsonFromAiResponse: 成功提取键值对", keyValuePairs);
+        return keyValuePairs;
+      }
+      
+      throw new Error(`无法解析JSON：${innerError}`);
+    }
   } catch (e) {
-    console.error("Fallback JSON parsing also failed. Original content:", content);
-    throw new Error(`AI返回了无效的JSON格式，即使在清理和提取后也无法解析。`);
+    console.error("parseJsonFromAiResponse: 所有解析尝试都失败了。原始内容:", content);
+    console.error("parseJsonFromAiResponse: 错误详情:", e);
+    throw new Error(`AI返回了无效的JSON格式，无法解析: ${e}`);
   }
 };
 

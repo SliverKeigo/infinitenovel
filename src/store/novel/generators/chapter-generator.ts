@@ -338,8 +338,15 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 - 所有场景必须共同推进大纲中规划的核心情节
 - 如果发现进度偏离，使用加速叙事技巧（如时间跳跃、场景切换等）追赶大纲进度
 
-请严格按照以下JSON格式返回，不要包含任何额外的解释或Markdown标记：
+【严格格式要求】
+- 你必须只输出一个JSON对象，不包含任何前言、解释或结尾评论
+- 不要使用Markdown代码块
+- 不要包含"我已经分析了"、"以下是"等任何形式的引导语
+- 不要在JSON前后添加任何额外文本
+- 直接以花括号 { 开始你的响应，以花括号 } 结束
+
 **JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
+
 {
   "title": "章节标题",
   "bigOutlineEvents": ["本章需要实现的大纲中的关键事件1", "关键事件2", ...],
@@ -354,7 +361,13 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 
     const decompResponse = await openai.chat.completions.create({
       model: activeConfig.model,
-      messages: [{ role: 'user', content: decompositionPrompt }],
+      messages: [
+        {
+          role: 'system',
+          content: '你是一个只输出JSON的助手。不要包含任何解释、前缀或后缀。不要使用Markdown代码块。直接以花括号{开始你的响应，以花括号}结束。不要添加任何额外的文本。'
+        },
+        { role: 'user', content: decompositionPrompt }
+      ],
       response_format: { type: "json_object" },
       temperature: 0.5,
     });
@@ -470,7 +483,14 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
 **${sceneDescription}**
 
 请你围绕这个核心任务，创作一段${wordsPerSceneLower}到${wordsPerSceneUpper}字左右的、情节丰富、文笔细腻的场景内容。
-请只输出纯粹的小说正文，不要包含任何标题、场景编号或解释性文字。
+
+【严格格式要求】
+- 只输出纯粹的小说正文
+- 不要包含任何标题、场景编号或解释性文字
+- 不要包含"我已经写好了"、"以下是"等任何形式的引导语
+- 不要在正文前后添加任何额外文本
+- 不要使用Markdown格式
+- 直接开始你的小说正文，不要有任何前缀
       `;
 
     try {
