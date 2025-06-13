@@ -11,6 +11,7 @@ import { GenerationSettings } from '@/types/generation-settings';
 import { getChapterOutline, countDetailedChaptersInOutline } from '../outline-utils';
 import { handleOpenAIError } from '../error-handlers';
 import { getGenreStyleGuide } from '../style-guides';
+import { getOrCreateStyleGuide } from './style-guide-generator';
 import { 
   parseJsonFromAiResponse, 
   extractChapterDetailFromOutline, 
@@ -253,8 +254,29 @@ ${novel.specialRequirements}
 ---
 ` : '';
 
-  // [新增] 根据小说类型获取风格指导
-  const styleGuide = getGenreStyleGuide(novel.genre, novel.style);
+  // [修改] 获取风格指导，优先使用保存的定制风格指导
+  let styleGuide = "";
+  try {
+    // 如果小说已有保存的风格指导，则直接使用
+    if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
+      console.log("[风格指导] 使用已保存的定制风格指导");
+      styleGuide = novel.styleGuide;
+    } else {
+      // 如果是第一章，尝试生成并保存定制风格指导
+      if (chapterToGenerate === 1) {
+        console.log("[风格指导] 正在生成定制风格指导");
+        styleGuide = await getOrCreateStyleGuide(novelId);
+      } else {
+        // 如果不是第一章且没有保存的风格指导，使用默认生成方式
+        console.log("[风格指导] 使用默认风格指导生成方式");
+        styleGuide = getGenreStyleGuide(novel.genre, novel.style);
+      }
+    }
+  } catch (error) {
+    // 出错时回退到默认风格指导
+    console.error("[风格指导] 获取定制风格指导失败，使用默认风格指导:", error);
+    styleGuide = getGenreStyleGuide(novel.genre, novel.style);
+  }
 
   console.log(`[章节解构] 正在为第 ${nextChapterNumber} 章生成场景规划。`);
 

@@ -8,6 +8,7 @@ import OpenAI from 'openai';
 import { toast } from "sonner";
 import { countDetailedChaptersInOutline, extractChapterNumbers } from '../outline-utils';
 import { getGenreStyleGuide } from '../style-guides';
+import { getOrCreateStyleGuide } from './style-guide-generator';
 import { processOutline, extractChapterDetailFromOutline } from '../parsers';
 import { OUTLINE_EXPAND_THRESHOLD, OUTLINE_EXPAND_CHUNK_SIZE } from '../constants';
 
@@ -63,8 +64,18 @@ export const expandPlotOutlineIfNeeded = async (
       dangerouslyAllowBrowser: true,
     });
 
-    // 获取基于小说类型的风格指导
-    const styleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    // 获取风格指导，优先使用保存的定制风格指导
+    let styleGuide = "";
+    try {
+      // 尝试获取或创建定制风格指导
+      console.log("[大纲扩展] 正在获取风格指导");
+      styleGuide = await getOrCreateStyleGuide(novelId);
+      console.log("[大纲扩展] 成功获取风格指导");
+    } catch (error) {
+      // 如果获取失败，回退到默认风格指导
+      console.error("[大纲扩展] 获取定制风格指导失败，使用默认风格指导:", error);
+      styleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    }
 
     // 仅使用章节部分进行扩展
     const existingChapterOutline = extractChapterDetailFromOutline(novel.plotOutline);

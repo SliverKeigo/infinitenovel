@@ -28,6 +28,8 @@ export interface Novel {
   description?: string;
   /** 用户的特殊要求或备注 */
   specialRequirements?: string;
+  /** AI生成的综合风格指导 */
+  styleGuide?: string;
   /** 创建时间 */
   createdAt: Date;
   /** 最后更新时间 */

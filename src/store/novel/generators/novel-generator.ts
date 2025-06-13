@@ -7,6 +7,7 @@ import OpenAI from 'openai';
 import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
 import { getGenreStyleGuide } from '../style-guides';
+import { generateCustomStyleGuide, getOrCreateStyleGuide } from './style-guide-generator';
 import { parseJsonFromAiResponse, processOutline } from '../parsers';
 import type { Character } from '@/types/character';
 import { INITIAL_CHAPTER_GENERATION_COUNT } from '../constants';
@@ -61,16 +62,48 @@ export const generateNovelChapters = async (
       throw new Error("有效的AI配置未找到或API密钥缺失。");
     }
 
-    const novel = await db.novels.get(novelId);
+    // 获取初始小说信息
+    let novel = await db.novels.get(novelId);
     if (!novel) {
       throw new Error("小说信息未找到。");
+    }
+
+    // --- STAGE 0: GENERATE CUSTOM STYLE GUIDE ---
+    set({ generationTask: { ...get().generationTask, progress: 2, currentStep: '正在生成定制风格指导...' } });
+    
+    try {
+      // 生成定制风格指导
+      await generateCustomStyleGuide(novelId);
+      console.log("[风格指导] 定制风格指导生成成功");
+      
+      // 重新获取novel对象，确保获取到最新的风格指导
+      const updatedNovel = await db.novels.get(novelId);
+      if (updatedNovel) {
+        novel = updatedNovel;
+        console.log("[风格指导] 已重新获取更新后的小说对象");
+      } else {
+        console.error("[风格指导] 无法重新获取小说对象");
+      }
+    } catch (error) {
+      console.error("[风格指导] 定制风格指导生成失败，将使用默认风格指导:", error);
+      // 生成失败时不中断整个流程，后续会使用默认风格指导
     }
 
     // --- STAGE 1: CREATE PLOT OUTLINE ---
     set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '正在创建故事大纲...' } });
 
-    // 获取基于小说类型的风格指导
-    const outlineStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    // 获取风格指导，优先使用已保存的定制风格指导
+    let outlineStyleGuide = "";
+    try {
+      // 尝试获取或创建定制风格指导
+      console.log("[大纲生成] 正在获取风格指导");
+      outlineStyleGuide = await getOrCreateStyleGuide(novelId);
+      console.log("[大纲生成] 成功获取风格指导");
+    } catch (error) {
+      // 如果获取失败，回退到默认风格指导
+      console.error("[大纲生成] 获取定制风格指导失败，使用默认风格指导:", error);
+      outlineStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    }
 
     const outlinePrompt = `
       【输出格式要求】
@@ -150,8 +183,17 @@ export const generateNovelChapters = async (
     // --- STAGE 1.5: CREATE NOVEL DESCRIPTION ---
     set({ generationTask: { ...get().generationTask, progress: 22, currentStep: '正在生成小说简介...' } });
 
-    // 获取基于小说类型的风格指导
-    const descriptionStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    // 获取风格指导，优先使用已保存的定制风格指导
+    let descriptionStyleGuide = "";
+    // 如果小说已有保存的风格指导，则直接使用
+    if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
+      console.log("[简介生成] 使用已保存的定制风格指导");
+      descriptionStyleGuide = novel.styleGuide;
+    } else {
+      // 否则使用默认风格指导
+      console.log("[简介生成] 使用默认风格指导");
+      descriptionStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    }
 
     const descriptionPrompt = `
       你是一位卓越的营销文案专家。请根据以下小说的核心信息，为其创作一段 150-250 字的精彩简介。
@@ -188,8 +230,17 @@ export const generateNovelChapters = async (
     // --- STAGE 2: CREATE CHARACTERS ---
     set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '正在创建核心角色...' } });
 
-    // 获取基于小说类型的风格指导
-    const characterStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    // 获取风格指导，优先使用已保存的定制风格指导
+    let characterStyleGuide = "";
+    // 如果小说已有保存的风格指导，则直接使用
+    if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
+      console.log("[角色生成] 使用已保存的定制风格指导");
+      characterStyleGuide = novel.styleGuide;
+    } else {
+      // 否则使用默认风格指导
+      console.log("[角色生成] 使用默认风格指导");
+      characterStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    }
 
     const characterPrompt = `
       你是一位顶级角色设计师。基于下面的小说信息和故事大纲，设计出核心角色。
