@@ -42,23 +42,21 @@ export const checkChapterComplianceWithNarrativePlan = (
     return { compliant: true }; // 如果没有下一个阶段，则认为符合规划
   }
 
-  // 检查章节内容是否包含下一个阶段的关键元素
-  // 这里我们使用一个简单的方法：检查章节内容是否包含下一个阶段核心概述中的关键词或短语
+  // 更合理的检查方法：检查下一阶段的关键概念和事件是否在当前章节中出现
   
-  // 将下一个阶段的核心概述拆分为关键词和短语
-  const nextStageKeywords = extractKeywordsAndPhrases(nextStage.coreSummary);
+  // 1. 从下一个阶段的核心概述中提取关键概念和事件
+  const nextStageConcepts = extractKeyConcepts(nextStage.coreSummary);
   
-  // 检查章节内容是否包含这些关键词或短语
-  const forbiddenElements = nextStageKeywords.filter(keyword => 
-    chapterContent.toLowerCase().includes(keyword.toLowerCase())
+  // 2. 检查这些关键概念是否在当前章节中出现
+  const foundConcepts = nextStageConcepts.filter(concept => 
+    containsConcept(chapterContent, concept)
   );
-  console.log(`[合规性检查] 章节内容: ${chapterContent}`);
-  console.log(`[合规性检查] 下一个阶段关键词: ${nextStageKeywords}`);
-  console.log(`[合规性检查] 不符合元素: ${forbiddenElements}`);
-  if (forbiddenElements.length > 0) {
+  
+  // 3. 如果发现了超过阈值数量的关键概念，则认为章节不符合规划
+  if (foundConcepts.length >= 3) {
     return { 
       compliant: false, 
-      reason: `章节内容过早引入了属于"${nextStage.stageName}"阶段的元素: ${forbiddenElements.join(', ')}` 
+      reason: `章节内容过早引入了属于"${nextStage.stageName}"阶段的关键概念: ${foundConcepts.join(', ')}` 
     };
   }
   
@@ -66,58 +64,83 @@ export const checkChapterComplianceWithNarrativePlan = (
 };
 
 /**
- * 从文本中提取关键词和短语
+ * 从文本中提取关键概念和事件
  * @param text - 要分析的文本
- * @returns 关键词和短语数组
+ * @returns 关键概念和事件数组
  */
-const extractKeywordsAndPhrases = (text: string): string[] => {
-  // 这里使用一个简单的方法：按句子分割，然后提取每个句子中的名词短语
-  // 在实际应用中，可以使用更复杂的NLP技术来提取关键词和短语
+const extractKeyConcepts = (text: string): string[] => {
+  const concepts: string[] = [];
   
-  // 按句子分割
-  const sentences = text.split(/[.!?。！？]/);
+  // 1. 提取引号中的内容（通常是重要概念、名词或事件）
+  const quotedContent = text.match(/["'"']([^"'"']+)["'"']/g);
+  if (quotedContent) {
+    quotedContent.forEach(content => {
+      // 移除引号
+      const cleanContent = content.replace(/["'"'"]/g, '').trim();
+      if (cleanContent.length >= 2) {
+        concepts.push(cleanContent);
+      }
+    });
+  }
   
-  // 提取每个句子中的名词短语
-  const keywords: string[] = [];
+  // 2. 提取冒号后的内容（通常是定义或重要说明）
+  const colonContent = text.split(/[：:]/);
+  if (colonContent.length > 1) {
+    for (let i = 1; i < colonContent.length; i++) {
+      const content = colonContent[i].trim().split(/[,.;。，；]/)[0].trim();
+      if (content.length >= 2 && content.length <= 10) {
+        concepts.push(content);
+      }
+    }
+  }
   
-  sentences.forEach(sentence => {
-    const trimmedSentence = sentence.trim();
-    if (trimmedSentence.length > 0) {
-      // 提取引号中的内容作为关键短语
-      const quotedPhrases = trimmedSentence.match(/"([^"]+)"|"([^"]+)"|'([^']+)'/g);
-      if (quotedPhrases) {
-        quotedPhrases.forEach(phrase => {
-          // 移除引号
-          const cleanPhrase = phrase.replace(/["'"]/g, '').trim();
-          if (cleanPhrase.length > 0) {
-            keywords.push(cleanPhrase);
+  // 3. 提取包含特定标志词的短语（表示重要事件或转折）
+  const eventMarkers = ['发现', '出现', '获得', '突破', '觉醒', '开始', '结束', '死亡', '诞生', 
+                       '崛起', '陨落', '征服', '战争', '和平', '联盟', '背叛', '真相', '秘密'];
+  
+  eventMarkers.forEach(marker => {
+    if (text.includes(marker)) {
+      // 提取包含标志词的短句
+      const regex = new RegExp(`[^。！？.!?]*${marker}[^。！？.!?]*`, 'g');
+      const matches = text.match(regex);
+      if (matches) {
+        matches.forEach(match => {
+          if (match.length >= 5 && match.length <= 30) {
+            concepts.push(match.trim());
           }
         });
       }
-      
-      // 提取专有名词（大写开头的词组）
-      const properNouns = trimmedSentence.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g);
-      if (properNouns) {
-        properNouns.forEach(noun => {
-          if (noun.length > 0) {
-            keywords.push(noun);
-          }
-        });
-      }
-      
-      // 提取长度大于3的词作为可能的关键词
-      const words = trimmedSentence.split(/\s+/);
-      words.forEach(word => {
-        const cleanWord = word.replace(/[,.;:()[\]{}'"]/g, '').trim();
-        if (cleanWord.length > 3 && !keywords.includes(cleanWord)) {
-          keywords.push(cleanWord);
-        }
-      });
     }
   });
   
-  // 移除常见的停用词
-  const stopwords = ['the', 'and', 'that', 'this', 'with', 'for', 'from', 'they', 'their', 'them'];
-  return keywords.filter(word => !stopwords.includes(word.toLowerCase()));
+  // 去重
+  return Array.from(new Set(concepts));
+};
+
+/**
+ * 检查文本是否包含特定概念
+ * @param text - 要检查的文本
+ * @param concept - 要查找的概念
+ * @returns 是否包含该概念
+ */
+const containsConcept = (text: string, concept: string): boolean => {
+  // 对于短概念（2-3个字），需要精确匹配
+  if (concept.length <= 3) {
+    return text.includes(concept);
+  }
+  
+  // 对于较长概念，如果文本包含概念的70%以上的字符，则认为匹配
+  // 这是一个简化的模糊匹配方法
+  const conceptChars = concept.split('');
+  let matchCount = 0;
+  
+  conceptChars.forEach(char => {
+    if (text.includes(char)) {
+      matchCount++;
+    }
+  });
+  
+  const matchRatio = matchCount / conceptChars.length;
+  return matchRatio >= 0.7;
 };
 
