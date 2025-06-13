@@ -8,10 +8,11 @@ import OpenAI from 'openai';
 import { toast } from "sonner";
 import { Character } from '@/types/character';
 import { GenerationSettings } from '@/types/generation-settings';
-import { getChapterOutline } from '../outline-utils';
+import { getChapterOutline, countDetailedChaptersInOutline } from '../outline-utils';
 import { handleOpenAIError } from '../error-handlers';
 import { getGenreStyleGuide } from '../style-guides';
-import { parseJsonFromAiResponse } from '../parsers';
+import { parseJsonFromAiResponse, extractChapterDetailFromOutline } from '../parsers';
+import { CHAPTER_WORD_TARGET, CHAPTER_WORD_TOLERANCE } from '../constants';
 
 /**
  * 生成单个新章节的上下文接口
@@ -66,7 +67,13 @@ export const generateNewChapter = async (
     dangerouslyAllowBrowser: true,
   });
 
-  const { plotOutline, characters, settings } = context;
+  // 从上下文中提取大纲，并只使用章节部分
+  const { plotOutline: fullOutline, characters, settings } = context;
+  
+  // 只保留大纲中的章节部分（不包含宏观叙事规划）
+  const chapterOnlyOutline = extractChapterDetailFromOutline(fullOutline);
+  console.log(`[诊断] 原始大纲长度: ${fullOutline.length}, 提取后章节部分长度: ${chapterOnlyOutline.length}`);
+  
   const {
     maxTokens,
     temperature,
@@ -90,7 +97,7 @@ export const generateNewChapter = async (
 
   // --- RAG 检索增强 (用于章节解构) ---
   const nextChapterNumber = chapterToGenerate;
-  const chapterOutline = getChapterOutline(plotOutline, nextChapterNumber);
+  const chapterOutline = getChapterOutline(chapterOnlyOutline, nextChapterNumber);
   if (!chapterOutline) {
     const errorMsg = `未能为第 ${nextChapterNumber} 章找到剧情大纲，无法进行章节解构。`;
     console.warn(`[章节解构] ${errorMsg}`);
@@ -140,18 +147,26 @@ ${novel.specialRequirements}
   // 步骤 1: 章节解构，获取标题和场景列表
   let chapterTitle = "";
   let chapterScenes: string[] = [];
+  let progressStatus = "正常进度";
+  let bigOutlineEvents: string[] = [];
 
   try {
     const decompositionPrompt = `
-你是一位顶级小说编剧，任务是规划即将开始的新章节，确保故事天衣无缝。
+你是一位顶级小说编剧，任务是规划即将开始的新章节，确保故事严格按照大纲发展。
 
 ${userRequirementsContext}
 ${mandatoryRules}
 ${styleGuide}
 
-**最高优先级指令：** 你的首要任务是延续上一章的结尾。所有你规划的场景都必须直接从这一点开始。绝对禁止出现情节断裂。
+**最高优先级指令：** 你的首要任务是确保本章内容忠实地实现大纲中规划的事件。章节内容必须严格遵循大纲描述的关键事件，不得随意跳过或改变大纲中的重要情节点。
 
-**场景数量硬性要求：** 你必须严格遵守生成 ${actualSegmentsPerChapter} 个场景的限制，不多不少。这是系统的硬性要求，违反此要求将导致生成失败。
+**双重约束：** 你需要同时满足两个核心要求：
+1. 确保本章内容与大纲中对应章节的描述高度一致
+2. 确保叙事与上一章的结尾自然衔接
+
+如果上一章结尾与大纲存在冲突，你必须想办法在本章中回归到大纲的轨道上，而不是继续偏离。
+
+**场景数量硬性要求：** 你必须严格遵守生成 ${actualSegmentsPerChapter} 个场景的限制，不多不少。
 
 ---
 **上一章结尾的关键情节:**
@@ -160,26 +175,39 @@ ${styleGuide}
 \`\`\`
 ---
 
-**本章的参考剧情大纲 (作为灵感，而非铁律):**
-这是我们对本章的初步构想。请阅读并理解其核心事件。
+**本章的剧情大纲 (必须严格遵循):**
+这是我们为第 ${nextChapterNumber} 章设计的官方大纲。你必须确保所有这些关键事件都在本章中得到实现。
 \`\`\`
 ${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体的剧情大纲。请根据上一章的结尾和整体故事走向，创造一个合理的情节发展。`}
 \`\`\`
 ---
 
-**你的具体任务:**
-请综合考虑"上一章结尾"和"参考剧情大纲"，完成以下两件事：
-1.  为本章起一个引人入胜的标题。
-2.  设计出 **严格限制为${actualSegmentsPerChapter}个** 连贯的场景。你设计的第一个场景必须紧接着"上一章结尾"发生。如果"参考剧情大纲"与结尾情节有冲突，你必须巧妙地调整或重新安排大纲中的事件，使其能够自然地融入到故事流中，而不是生硬地插入。
+**大纲进度追踪:**
+当前小说总体进度: 已完成 ${nextChapterNumber - 1} 章 / 计划总章节 ${novel.totalChapterGoal || "未知"} 章
+大纲中详细规划的章节数: ${countDetailedChaptersInOutline(chapterOnlyOutline)} 章
+根据预期进度，本章应实现的大纲内容: 第 ${nextChapterNumber} 章的全部内容
+---
 
-**再次强调：** 你必须严格生成 ${actualSegmentsPerChapter} 个场景，不能多也不能少。这是系统的硬性限制。
+**你的具体任务:**
+1. 为本章起一个引人入胜的标题，能够反映大纲中描述的主要事件。
+2. 分析本章的大纲，提取出2-4个需要在本章实现的关键事件点。
+3. 评估当前小说进度是否与大纲匹配（正常进度、轻度偏离、严重偏离）。
+4. 设计出 **严格限制为${actualSegmentsPerChapter}个** 连贯的场景，这些场景必须涵盖大纲中规划的所有关键事件。
+5. 如果发现当前小说进度已经偏离大纲(例如，大纲中第3章提到主角进入村庄，但实际到第7章还未发生)，请在设计场景时特别注意加速推进剧情，确保尽快回归大纲轨道。
+
+**场景设计指导:**
+- 第一个场景必须自然衔接上一章结尾
+- 所有场景必须共同推进大纲中规划的核心情节
+- 如果发现进度偏离，使用加速叙事技巧（如时间跳跃、场景切换等）追赶大纲进度
 
 请严格按照以下JSON格式返回，不要包含任何额外的解释或Markdown标记：
 **JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
 {
   "title": "章节标题",
+  "bigOutlineEvents": ["本章需要实现的大纲中的关键事件1", "关键事件2", ...],
+  "progressStatus": "正常进度|轻度偏离|严重偏离", 
   "scenes": [
-    "场景1的简要描述 (必须紧接上一章结尾)",
+    "场景1的简要描述 (必须衔接上一章结尾)",
     ${actualSegmentsPerChapter > 1 ? `"场景2的简要描述",` : ''}
     ${actualSegmentsPerChapter > 2 ? `"..."` : ''}
   ]
@@ -195,7 +223,18 @@ ${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体�
 
     const decompResult = parseJsonFromAiResponse(decompResponse.choices[0].message.content || "");
     chapterTitle = decompResult.title;
+    progressStatus = decompResult.progressStatus || "未知";
+    bigOutlineEvents = decompResult.bigOutlineEvents || [];
     const rawScenes = decompResult.scenes || [];
+
+    // 记录进度状态
+    console.log(`[章节解构] 进度状态: ${progressStatus}`);
+    console.log(`[章节解构] 本章大纲关键事件: ${JSON.stringify(bigOutlineEvents)}`);
+
+    // 如果进度严重偏离，提示用户
+    if (progressStatus === "严重偏离") {
+      toast.warning("AI检测到小说进度与大纲严重偏离，正在尝试调整情节以回归大纲轨道。");
+    }
 
     // Defensive parsing for scenes, as AI might return an array of objects instead of strings.
     chapterScenes = rawScenes.map((scene: any) => {
@@ -251,10 +290,11 @@ ${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体�
       },
     });
 
-    const targetTotalWords = 2000;
+    // 使用常量替代硬编码值
+    const targetTotalWords = CHAPTER_WORD_TARGET;
     // 使用实际场景数量计算每个场景的字数
-    const wordsPerSceneLower = Math.round((targetTotalWords / chapterScenes.length) * 0.85);
-    const wordsPerSceneUpper = Math.round((targetTotalWords / chapterScenes.length) * 1.15);
+    const wordsPerSceneLower = Math.round((targetTotalWords / chapterScenes.length) * (1 - CHAPTER_WORD_TOLERANCE));
+    const wordsPerSceneUpper = Math.round((targetTotalWords / chapterScenes.length) * (1 + CHAPTER_WORD_TOLERANCE));
 
     const scenePrompt = `
 你是一位顶级小说家，正在创作《${novel.name}》的第 ${nextChapterNumber} 章，标题是"${chapterTitle}"。
@@ -263,6 +303,13 @@ ${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体�
 ${userRequirementsContext}
 ${mandatoryRules}
 ${styleGuide}
+
+**大纲指导（最高优先级）:**
+根据小说大纲，本章必须实现以下关键事件：
+${bigOutlineEvents.map((event, idx) => `${idx+1}. ${event}`).join('\n')}
+
+**进度状态:** ${progressStatus}
+${progressStatus === "严重偏离" ? "由于当前小说进度已严重偏离大纲轨道，你必须在本章中想办法尽快推进剧情，确保回归大纲预设的情节发展。" : ""}
 
 ${previousChapterContext}
 

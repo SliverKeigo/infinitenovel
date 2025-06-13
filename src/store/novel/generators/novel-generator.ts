@@ -7,7 +7,7 @@ import OpenAI from 'openai';
 import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
 import { getGenreStyleGuide } from '../style-guides';
-import { parseJsonFromAiResponse } from '../parsers';
+import { parseJsonFromAiResponse, processOutline } from '../parsers';
 import type { Character } from '@/types/character';
 import { INITIAL_CHAPTER_GENERATION_COUNT } from '../constants';
 
@@ -73,6 +73,11 @@ export const generateNovelChapters = async (
     const outlineStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
 
     const outlinePrompt = `
+      【输出格式要求】
+      请直接输出大纲内容，不要包含任何前缀说明（如"好的，身为一位......"等），也不要包含额外的格式解释。
+      只有大纲内容会被保存和使用。
+      
+      【大纲内容】
       你是一位经验丰富的小说编辑和世界构建大师。请为一部名为《${novel.name}》的小说创作一个结构化、分阶段的故事大纲。
 
       **核心信息:**
@@ -85,32 +90,26 @@ export const generateNovelChapters = async (
 
       **你的任务分为两部分：**
 
-      **Part 1: 开篇详细剧情 (Chapter-by-Chapter)**
+      **Part 1: 开篇详细剧情**
       请为故事最开始的 ${initialChapterGoal} 章提供逐章的、较为详细的剧情摘要。
       - **最高优先级指令:** 你的首要任务是仔细阅读上面的"核心设定与特殊要求"。如果其中描述了故事的开篇情节（如主角的来历、穿越过程等），那么你生成的"第1章"大纲必须严格按照这个情节来写。
-      - **叙事节奏指南:** 请放慢叙事节奏。每个章节的摘要只应包含一个核心的小事件或2-3个关键场景，而不是一个完整的情节弧线。学会将一个大事件拆分成多个章节来铺垫和展开。
-      - **格式要求:** 必须严格使用"第X章: [剧情摘要]"的格式，不要添加额外的符号（如点号）。例如，应该是"第3章: 标题"而不是"第3.章: 标题"。
+      - **叙事节奏指南:** 每个章节的内容必须足够精简，只描述1-2个关键事件。禁止在单个章节中安排过多内容。学会将大事件拆分成多个章节来展开。
+      - **内容要求:** 每章大纲的字数控制在50-100字左右，简明扼要地概括核心事件。
+      - **格式要求:** 必须严格使用"第X章: [剧情摘要]"的格式。
 
-      **Part 2: 后续宏观规划 (Phased Outline)**
-      在完成开篇的详细剧情后，请根据你对小说类型（${novel.genre}）的理解，为剩余的章节设计一个更高层次的、分阶段的宏观叙事结构。
-      - 你需要将故事划分为几个大的部分或"幕"（例如：第一幕：起源与探索，第二幕：冲突升级，第三幕：决战与尾声）。
-      - 在每个部分下，简要描述这一阶段的核心目标、关键转折点和大致的剧情走向。
-      - **这部分不需要逐章展开**，而是提供一个清晰的、指导未来创作方向的路线图。
+      **Part 2: 后续宏观规划**
+      在完成开篇的详细剧情后，请根据你对小说类型的理解，为剩余的章节设计一个更高层次的、分阶段的宏观叙事结构。
+      - 你需要将故事划分为几个大的部分或"幕"
+      - 在每个部分下，简要描述这一阶段的核心目标和关键转折点
+      - **这部分不需要逐章展开**，而是提供一个指导未来创作方向的路线图
 
-      **请特别注意：**
-      1. 整个大纲必须遵循上述风格指南，确保风格一致性
-      2. 每个章节都应该有明确的目标和冲突
-      3. 故事应该有清晰的发展脉络和节奏变化
-      4. 角色成长和情节发展要相互促进
-      5. 章节标记必须使用统一的格式："第X章: "，不要使用"第X.章: "或其他变体
-
-      **输出格式要求:**
+      **输出格式:**
       请严格按照以下格式输出，先是详细章节，然后是宏观规划。
       
-      第1章: [剧情摘要]
-      第2章: [剧情摘要]
+      第1章: [精简的剧情摘要]
+      第2章: [精简的剧情摘要]
       ...
-      第${initialChapterGoal}章: [剧情摘要]
+      第${initialChapterGoal}章: [精简的剧情摘要]
 
       ---
       **宏观叙事规划**
@@ -122,8 +121,6 @@ export const generateNovelChapters = async (
       - [本幕核心剧情概述]
 
       ...
-
-      **重要提醒:** 你的唯一任务是生成大纲。绝对禁止返回任何形式的小说简介或摘要。
     `;
 
     const openai = new OpenAI({
@@ -138,8 +135,14 @@ export const generateNovelChapters = async (
       temperature: settings.temperature,
     });
 
-    const plotOutline = outlineResponse.choices[0].message.content;
-    if (!plotOutline) throw new Error("未能生成大纲。");
+    // 获取并处理大纲内容
+    const rawPlotOutline = outlineResponse.choices[0].message.content;
+    if (!rawPlotOutline) throw new Error("未能生成大纲。");
+    
+    // 使用新的处理函数清理大纲内容
+    const plotOutline = processOutline(rawPlotOutline);
+    console.log(`[大纲生成] 原始大纲前200字符: ${rawPlotOutline.substring(0, 200)}...`);
+    console.log(`[大纲生成] 处理后大纲前200字符: ${plotOutline.substring(0, 200)}...`);
 
     await db.novels.update(novelId, { plotOutline });
     set({ generationTask: { ...get().generationTask, progress: 20, currentStep: '大纲创建完毕！' } });

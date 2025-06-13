@@ -8,6 +8,7 @@ import OpenAI from 'openai';
 import { toast } from "sonner";
 import { countDetailedChaptersInOutline } from '../outline-utils';
 import { getGenreStyleGuide } from '../style-guides';
+import { processOutline, extractChapterDetailFromOutline } from '../parsers';
 import { OUTLINE_EXPAND_THRESHOLD, OUTLINE_EXPAND_CHUNK_SIZE } from '../constants';
 
 /**
@@ -31,7 +32,10 @@ export const expandPlotOutlineIfNeeded = async (
   }
 
   const currentChapterCount = novel.chapterCount;
-  const detailedChaptersInOutline = countDetailedChaptersInOutline(novel.plotOutline);
+  
+  // 只计算章节部分的详细章节数量
+  const chapterOnlyOutline = extractChapterDetailFromOutline(novel.plotOutline);
+  const detailedChaptersInOutline = countDetailedChaptersInOutline(chapterOnlyOutline);
 
   console.log(`扩展检查：当前章节 ${currentChapterCount}, 大纲中章节 ${detailedChaptersInOutline}`);
 
@@ -53,26 +57,34 @@ export const expandPlotOutlineIfNeeded = async (
     // 获取基于小说类型的风格指导
     const styleGuide = getGenreStyleGuide(novel.genre, novel.style);
 
+    // 仅使用章节部分进行扩展
+    const existingChapterOutline = extractChapterDetailFromOutline(novel.plotOutline);
+    
     const expansionPrompt = `
+        【输出格式要求】
+        请直接输出新增章节大纲内容，不要包含任何前缀说明或额外格式解释。
+        
+        【大纲扩展任务】
         你是一位正在续写自己史诗级作品《${novel.name}》的小说家。
         
         ${styleGuide}
         
-        这是我们共同确定的、贯穿整个故事的宏观篇章规划和已有的详细大纲：
+        这是我们已有的详细章节大纲（前 ${detailedChaptersInOutline} 章）：
         ---
-        ${novel.plotOutline}
+        ${existingChapterOutline}
         ---
+        
         任务: 
-        我们已经完成了前 ${currentChapterCount} 章的创作。现在，请你基于已有的宏观规划和剧情，为故事紧接着生成从第 ${detailedChaptersInOutline + 1} 章到第 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 章的详细剧情摘要。
+        我们已经完成了前 ${currentChapterCount} 章的创作。现在，请你基于已有的剧情，为故事紧接着生成从第 ${detailedChaptersInOutline + 1} 章到第 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 章的详细剧情摘要。
         
-        请确保新的细纲与前面的剧情无缝衔接，并稳步推进核心情节。
-        请只返回新增的这 ${OUTLINE_EXPAND_CHUNK_SIZE} 章细纲，格式为"第X章: [剧情摘要]"，不要重复任何已有内容或添加额外解释。
+        请遵循以下要求：
+        1. 新的大纲必须与前面的剧情无缝衔接，并稳步推进核心情节
+        2. 每章大纲的字数控制在50-100字左右，简明扼要地概括核心事件
+        3. 每个章节只描述1-2个关键事件，禁止在单个章节中安排过多内容
+        4. 请只返回新增的这 ${OUTLINE_EXPAND_CHUNK_SIZE} 章细纲，格式为"第X章: [剧情摘要]"
+        5. 不要重复任何已有内容或添加额外解释
         
-        请特别注意：
-        1. 每个章节的剧情摘要应该遵循上面的风格指南，确保风格一致性
-        2. 避免剧情过于平淡或重复，每个章节都应该有新的发展或转折
-        3. 角色行为要符合其已建立的性格特点
-        4. 确保新增章节与整体故事弧线保持一致
+        请保持故事的连贯性和风格一致性，确保每个章节都有明确的目标和冲突。
       `;
 
     try {
@@ -84,8 +96,14 @@ export const expandPlotOutlineIfNeeded = async (
 
       const newOutlinePart = response.choices[0].message.content;
       if (newOutlinePart) {
-        const updatedOutline = `${novel.plotOutline}\n${newOutlinePart.trim()}`;
+        // 处理新增大纲，确保格式正确
+        const processedNewPart = processOutline(newOutlinePart);
+        console.log(`[大纲扩展] 新增大纲部分 (处理前 ${newOutlinePart.length} 字符, 处理后 ${processedNewPart.length} 字符)`);
+        
+        // 将新增内容与原大纲结合
+        const updatedOutline = `${novel.plotOutline}\n\n${processedNewPart.trim()}`;
         await db.novels.update(novel.id!, { plotOutline: updatedOutline });
+        
         // 更新 Zustand store 中的 currentNovel
         const currentNovel = get().currentNovel;
         if (currentNovel && currentNovel.id === novel.id) {
