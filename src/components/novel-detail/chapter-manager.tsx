@@ -1,16 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNovelStore } from "@/store/use-novel-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookMarked, PlusCircle, Loader2, ArrowUpNarrowWide, ArrowDownWideNarrow, Search, ChevronsDown, ChevronsUp, BookOpen, RefreshCw } from "lucide-react";
+import { BookMarked, PlusCircle, Loader2, ArrowUpNarrowWide, ArrowDownWideNarrow, Search, ChevronsDown, ChevronsUp, BookOpen, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { ExpansionControlCenter } from './expansion-control-center';
 import { useAppStatusStore, ModelLoadStatus } from '@/store/use-app-status-store';
 import { ChapterViewer } from './chapter-viewer';
 import { Chapter } from '@/types/chapter';
 import { Input } from '@/components/ui/input';
 import { toast } from "sonner";
+
+// 定义每页显示的章节数量
+const ITEMS_PER_PAGE = 10;
 
 export const ChapterManager = () => {
     const { 
@@ -30,6 +33,9 @@ export const ChapterManager = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
     const [syncing, setSyncing] = useState(false);
+    
+    // 添加分页状态
+    const [currentPage, setCurrentPage] = useState(1);
 
     const isEmbeddingModelReady = embeddingModelStatus === ModelLoadStatus.LOADED;
     const isEmbeddingModelLoading = embeddingModelStatus === ModelLoadStatus.LOADING;
@@ -74,6 +80,7 @@ export const ChapterManager = () => {
         return step;
     };
 
+    // 过滤和排序章节
     const filteredAndSortedChapters = useMemo(() => {
         return chapters
             .filter(chapter => 
@@ -87,6 +94,27 @@ export const ChapterManager = () => {
                 return b.chapterNumber - a.chapterNumber;
             });
     }, [chapters, searchTerm, sortOrder]);
+    
+    // 计算总页数
+    const totalPages = useMemo(() => {
+        return Math.ceil(filteredAndSortedChapters.length / ITEMS_PER_PAGE);
+    }, [filteredAndSortedChapters]);
+    
+    // 获取当前页的章节
+    const currentPageChapters = useMemo(() => {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        return filteredAndSortedChapters.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [filteredAndSortedChapters, currentPage]);
+    
+    // 处理页面变化
+    const handlePageChange = (page: number) => {
+        setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    };
+    
+    // 当过滤条件改变时，重置到第一页
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, sortOrder]);
 
     return (
         <Card>
@@ -192,7 +220,7 @@ export const ChapterManager = () => {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {filteredAndSortedChapters.map((chapter) => (
+                        {currentPageChapters.map((chapter) => (
                             <div 
                                 key={chapter.id} 
                                 className="flex items-center justify-between rounded-lg border p-4"
@@ -206,6 +234,40 @@ export const ChapterManager = () => {
                                 <Button variant="outline" size="sm" onClick={() => setViewingChapter(chapter)}>阅读</Button>
                             </div>
                         ))}
+                        
+                        {/* 分页控制 */}
+                        {filteredAndSortedChapters.length > ITEMS_PER_PAGE && (
+                            <div className="flex items-center justify-between pt-4">
+                                <div className="text-sm text-muted-foreground">
+                                    显示 {filteredAndSortedChapters.length} 章中的 
+                                    {' '}{Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filteredAndSortedChapters.length)} - 
+                                    {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedChapters.length)} 章
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handlePageChange(currentPage - 1)}
+                                        disabled={currentPage === 1}
+                                    >
+                                        <ChevronLeft className="h-4 w-4" />
+                                        <span>上一页</span>
+                                    </Button>
+                                    <div className="text-sm">
+                                        第 {currentPage} / {totalPages} 页
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handlePageChange(currentPage + 1)}
+                                        disabled={currentPage >= totalPages}
+                                    >
+                                        <span>下一页</span>
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </CardContent>
