@@ -13,6 +13,7 @@ import { handleOpenAIError } from '../error-handlers';
 import { getGenreStyleGuide } from '../style-guides';
 import { parseJsonFromAiResponse, extractChapterDetailFromOutline } from '../parsers';
 import { CHAPTER_WORD_TARGET, CHAPTER_WORD_TOLERANCE } from '../constants';
+import { retrieveRelevantContext, formatRetrievedContextForPrompt } from '../utils/rag-utils';
 
 /**
  * 生成单个新章节的上下文接口
@@ -106,6 +107,18 @@ export const generateNewChapter = async (
     return;
   }
 
+  // 使用RAG检索相关上下文
+  console.log("[RAG] 开始检索相关上下文...");
+  const ragQuery = `${novel.name} ${chapterOutline} ${userPrompt || ""}`;
+  const relevantContext = await retrieveRelevantContext(
+    currentNovelIndex,
+    currentNovelDocuments || [],
+    ragQuery,
+    5 // 检索5条最相关的内容
+  );
+  const ragPrompt = formatRetrievedContextForPrompt(relevantContext);
+  console.log("[RAG] 检索完成，获取到相关上下文");
+
   // --- 上下文三明治策略 (重新引入) ---
   let previousChapterContext = "";
   const latestChapter = chapters[chapters.length - 1];
@@ -157,6 +170,7 @@ ${novel.specialRequirements}
 ${userRequirementsContext}
 ${mandatoryRules}
 ${styleGuide}
+${ragPrompt}
 
 **最高优先级指令：** 你的首要任务是确保本章内容忠实地实现大纲中规划的事件。章节内容必须严格遵循大纲描述的关键事件，不得随意跳过或改变大纲中的重要情节点。
 
@@ -296,6 +310,17 @@ ${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体�
     const wordsPerSceneLower = Math.round((targetTotalWords / chapterScenes.length) * (1 - CHAPTER_WORD_TOLERANCE));
     const wordsPerSceneUpper = Math.round((targetTotalWords / chapterScenes.length) * (1 + CHAPTER_WORD_TOLERANCE));
 
+    // 为每个场景生成时添加RAG上下文
+    // 使用场景描述作为查询，获取更具体的相关内容
+    const sceneRagQuery = `${novel.name} ${chapterTitle} ${sceneDescription}`;
+    const sceneRelevantContext = await retrieveRelevantContext(
+      currentNovelIndex,
+      currentNovelDocuments || [],
+      sceneRagQuery,
+      3 // 每个场景检索3条最相关的内容
+    );
+    const sceneRagPrompt = formatRetrievedContextForPrompt(sceneRelevantContext);
+
     const scenePrompt = `
 你是一位顶级小说家，正在创作《${novel.name}》的第 ${nextChapterNumber} 章，标题是"${chapterTitle}"。
 你的写作风格是：【${novel.style}】。
@@ -303,6 +328,7 @@ ${chapterOutline || `这是第 ${nextChapterNumber} 章，但我们没有具体�
 ${userRequirementsContext}
 ${mandatoryRules}
 ${styleGuide}
+${sceneRagPrompt}
 
 **大纲指导（最高优先级）:**
 根据小说大纲，本章必须实现以下关键事件：
