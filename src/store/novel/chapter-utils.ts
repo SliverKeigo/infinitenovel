@@ -194,4 +194,8 @@ export const saveGeneratedChapter = async (
 
   // --- Step 4: Final novel stats update in DB ---
   await get().updateNovelStats(novelId);
+  
+  // --- Step 5: Update vector index to include the new chapter ---
+  console.log(`[向量索引] 正在为新增章节更新向量索引...`);
+  await get().buildNovelIndex(novelId);
 }; 
