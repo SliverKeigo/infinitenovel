@@ -175,54 +175,54 @@ export function AiConfigManager() {
         </TabsList>
         
         <TabsContent value="configs">
-          <div className="flex justify-end mb-4">
-            <Button onClick={() => openDialog()}>
-              <Plus className="mr-2 h-4 w-4" /> 添加配置
-            </Button>
-          </div>
-          <div className="border rounded-md">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>模型</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {configs.map((config) => (
-                  <TableRow key={config.id}>
-                    <TableCell>{config.name}</TableCell>
-                    <TableCell>{config.model}</TableCell>
-                    <TableCell>
-                      {config.id === activeConfigId && <Badge>已激活</Badge>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setActiveConfigId(config.id!)}>
-                            {config.id === activeConfigId ? '取消激活' : '设为激活'}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openDialog(config)}>
-                            编辑
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openDeleteAlert(config.id!)} className="text-red-600">
-                            删除
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+      <div className="flex justify-end mb-4">
+        <Button onClick={() => openDialog()}>
+          <Plus className="mr-2 h-4 w-4" /> 添加配置
+        </Button>
+      </div>
+      <div className="border rounded-md">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>名称</TableHead>
+              <TableHead>模型</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead className="text-right">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {configs.map((config) => (
+              <TableRow key={config.id}>
+                <TableCell>{config.name}</TableCell>
+                <TableCell>{config.model}</TableCell>
+                <TableCell>
+                  {config.id === activeConfigId && <Badge>已激活</Badge>}
+                </TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0">
+                        <span className="sr-only">Open menu</span>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setActiveConfigId(config.id!)}>
+                        {config.id === activeConfigId ? '取消激活' : '设为激活'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openDialog(config)}>
+                        编辑
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openDeleteAlert(config.id!)} className="text-red-600">
+                        删除
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
           </div>
         </TabsContent>
         
@@ -281,7 +281,7 @@ export function AiConfigManager() {
                           checked={useIndependentEmbeddingConfig} 
                           onCheckedChange={handleToggleIndependentConfig} 
                         />
-                      </div>
+      </div>
                       
                       {useIndependentEmbeddingConfig ? (
                         <>
