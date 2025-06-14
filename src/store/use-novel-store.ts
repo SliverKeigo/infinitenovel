@@ -110,6 +110,7 @@ interface NovelState {
   expandPlotOutlineIfNeeded: (novelId: number, force?: boolean) => Promise<void>;
   forceExpandOutline: (novelId: number) => Promise<void>;
   resetGenerationTask: () => void;
+  publishChapter: (chapterId: number) => Promise<void>;
 }
 
 export const useNovelStore = create<NovelState>((set, get) => ({
@@ -182,5 +183,19 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   },
   forceExpandOutline: async (novelId: number) => {
     return forceExpand(get, set, novelId);
+  },
+  publishChapter: async (chapterId: number) => {
+    try {
+      await db.chapters.update(chapterId, { status: 'published' });
+      set((state) => ({
+        chapters: state.chapters.map((chapter) =>
+          chapter.id === chapterId ? { ...chapter, status: 'published' } : chapter
+        ),
+      }));
+      toast.success("章节已成功发布！");
+    } catch (error) {
+      console.error("发布章节失败:", error);
+      toast.error("发布章节失败，请查看控制台获取更多信息。");
+    }
   },
 }));

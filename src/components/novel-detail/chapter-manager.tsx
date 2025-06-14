@@ -14,7 +14,7 @@ import { useAppStatusStore, ModelLoadStatus } from '@/store/use-app-status-store
 import { 
   AlertCircle, RefreshCw, BookMarked, PlusCircle, Loader2, 
   ArrowUpNarrowWide, ArrowDownWideNarrow, Search, ChevronsDown, 
-  ChevronsUp, BookOpen, ChevronLeft, ChevronRight 
+  ChevronsUp, BookOpen, ChevronLeft, ChevronRight, BookUp
 } from 'lucide-react';
 import {
   Dialog,
@@ -40,6 +40,7 @@ export function ChapterManager() {
     generationLoading,
     generationTask,
     updateNovelStats,
+    publishChapter,
   } = useNovelStore();
   const { embeddingModelStatus, embeddingModelProgress } = useAppStatusStore();
   const router = useRouter();
@@ -59,6 +60,7 @@ export function ChapterManager() {
   
   // 分页状态
   const [currentPage, setCurrentPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'published'>('all');
 
   const isEmbeddingModelReady = embeddingModelStatus === ModelLoadStatus.LOADED;
   const isEmbeddingModelLoading = embeddingModelStatus === ModelLoadStatus.LOADING;
@@ -71,13 +73,16 @@ export function ChapterManager() {
         chapter.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         `第 ${chapter.chapterNumber} 章`.includes(searchTerm)
       )
+      .filter(chapter => 
+        statusFilter === 'all' || chapter.status === statusFilter
+      )
       .sort((a, b) => {
         if (sortOrder === 'asc') {
           return a.chapterNumber - b.chapterNumber;
         }
         return b.chapterNumber - a.chapterNumber;
       });
-  }, [chapters, searchTerm, sortOrder]);
+  }, [chapters, searchTerm, sortOrder, statusFilter]);
   
   // 计算总页数
   const totalPages = useMemo(() => {
@@ -161,7 +166,7 @@ export function ChapterManager() {
   // 当过滤条件改变时，重置到第一页
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, sortOrder]);
+  }, [searchTerm, sortOrder, statusFilter]);
   
   // 当章节列表变化时，检查当前页是否有效
   useEffect(() => {
@@ -270,6 +275,12 @@ export function ChapterManager() {
             {sortOrder === 'asc' ? <ArrowUpNarrowWide className="h-4 w-4" /> : <ArrowDownWideNarrow className="h-4 w-4" />}
           </Button>
         </div>
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">筛选:</span>
+          <Button size="sm" variant={statusFilter === 'all' ? 'secondary' : 'ghost'} onClick={() => setStatusFilter('all')}>全部</Button>
+          <Button size="sm" variant={statusFilter === 'draft' ? 'secondary' : 'ghost'} onClick={() => setStatusFilter('draft')}>草稿</Button>
+          <Button size="sm" variant={statusFilter === 'published' ? 'secondary' : 'ghost'} onClick={() => setStatusFilter('published')}>已发布</Button>
+        </div>
       </CardHeader>
       <CardContent>
         {showControlCenter && <ExpansionControlCenter onClose={() => setShowControlCenter(false)} />}
@@ -305,7 +316,12 @@ export function ChapterManager() {
                     )}
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Badge variant="secondary" className="font-normal">{chapter.wordCount.toLocaleString()}字</Badge>
+                    {chapter.status === 'draft' ? (
+                      <Badge variant="secondary" className="font-normal border-yellow-500/50 text-yellow-600">草稿</Badge>
+                    ) : (
+                      <Badge variant="default" className="font-normal bg-green-100 text-green-700">已发布</Badge>
+                    )}
+                    <Badge variant="outline" className="font-normal">{chapter.wordCount.toLocaleString()}字</Badge>
                     {isNonCompliant(chapterId) && (
                       <Button
                         variant="ghost" 
@@ -316,6 +332,19 @@ export function ChapterManager() {
                         }}
                       >
                         <AlertCircle className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {chapter.status === 'draft' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          publishChapter(chapterId);
+                        }}
+                      >
+                        <BookUp className="h-4 w-4 mr-1" />
+                        发布
                       </Button>
                     )}
                     <Button 
