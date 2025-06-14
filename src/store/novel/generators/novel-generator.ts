@@ -45,12 +45,8 @@ export const generateNovelChapters = async (
       throw new Error("生成设置未找到，请先在设置页面配置。");
     }
     
-    // 输出诊断信息，确认设置值
-    console.log(`[诊断] 小说生成任务开始，设置中的场景数量: ${settings.segmentsPerChapter}`);
-    
     // 确保场景数量至少为1
     if (!settings.segmentsPerChapter || settings.segmentsPerChapter <= 0) {
-      console.log(`[诊断] 场景数量无效，设置为默认值1`);
       settings.segmentsPerChapter = 1;
     }
 
@@ -75,13 +71,11 @@ export const generateNovelChapters = async (
     try {
       // 生成定制风格指导
       await generateCustomStyleGuide(novelId);
-      console.log("[风格指导] 定制风格指导生成成功");
       
       // 重新获取novel对象，确保获取到最新的风格指导
       const updatedNovel = await db.novels.get(novelId);
       if (updatedNovel) {
         novel = updatedNovel;
-        console.log("[风格指导] 已重新获取更新后的小说对象");
       } else {
         console.error("[风格指导] 无法重新获取小说对象");
       }
@@ -97,9 +91,7 @@ export const generateNovelChapters = async (
     let outlineStyleGuide = "";
     try {
       // 尝试获取或创建定制风格指导
-      console.log("[大纲生成] 正在获取风格指导");
       outlineStyleGuide = await getOrCreateStyleGuide(novelId);
-      console.log("[大纲生成] 成功获取风格指导");
     } catch (error) {
       // 如果获取失败，回退到默认风格指导
       console.error("[大纲生成] 获取定制风格指导失败，使用默认风格指导:", error);
@@ -179,8 +171,6 @@ export const generateNovelChapters = async (
     
     // 使用新的处理函数清理大纲内容
     const plotOutline = processOutline(rawPlotOutline);
-    console.log(`[大纲生成] 原始大纲前200字符: ${rawPlotOutline.substring(0, 200)}...`);
-    console.log(`[大纲生成] 处理后大纲前200字符: ${plotOutline.substring(0, 200)}...`);
 
     await db.novels.update(novelId, { plotOutline });
     set({ generationTask: { ...get().generationTask, progress: 20, currentStep: '大纲创建完毕！' } });
@@ -192,17 +182,13 @@ export const generateNovelChapters = async (
     let descriptionStyleGuide = "";
     // 如果小说已有保存的风格指导，则直接使用
     if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
-      console.log("[简介生成] 使用已保存的定制风格指导");
       descriptionStyleGuide = novel.styleGuide;
     } else {
       // 否则使用默认风格指导
-      console.log("[简介生成] 使用默认风格指导");
       descriptionStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
     }
 
-    console.log("[简介生成] 角色行为准则:", characterRules);
     if (characterRules && characterRules.trim().length > 0) {
-      console.log("[简介生成] 使用角色行为准则");
       descriptionStyleGuide = characterRules;
     }
 
@@ -245,11 +231,9 @@ export const generateNovelChapters = async (
     let characterStyleGuide = "";
     // 如果小说已有保存的风格指导，则直接使用
     if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
-      console.log("[角色生成] 使用已保存的定制风格指导");
       characterStyleGuide = novel.styleGuide;
     } else {
       // 否则使用默认风格指导
-      console.log("[角色生成] 使用默认风格指导");
       characterStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
     }
 
@@ -319,22 +303,14 @@ export const generateNovelChapters = async (
     const charactersText = charactersResponse.choices[0].message.content;
     if (!charactersText) throw new Error("未能生成人物。");
 
-    console.log("[角色生成] 收到AI响应，开始解析");
-
     let newCharacters: Omit<Character, 'id'>[] = [];
     try {
-      // 记录原始响应，方便调试
-      console.log("[角色生成] 原始AI响应:", charactersText);
-      
       const parsedCharacters = parseJsonFromAiResponse(charactersText);
-      console.log("[角色生成] JSON解析成功:", JSON.stringify(parsedCharacters).substring(0, 200) + "...");
       
       const charactersData = parsedCharacters.characters || [];
-      console.log("[角色生成] 找到角色数据，数量:", charactersData.length);
 
       if (Array.isArray(charactersData)) {
         newCharacters = charactersData.map((char: any) => {
-          console.log("[角色生成] 处理角色:", char.name);
           return {
             novelId: novelId,
             name: char.name || '未知姓名',
@@ -434,9 +410,7 @@ export const generateNovelChapters = async (
         },
       });
 
-      console.log(`[诊断] 准备为第 ${i + 1} 章构建索引...`);
       await get().buildNovelIndex(novelId);
-      console.log(`[诊断] 第 ${i + 1} 章索引构建完成。即将生成内容...`);
 
       await get().generateNewChapter(novelId, generationContext, undefined, i + 1);
       await get().saveGeneratedChapter(novelId);
