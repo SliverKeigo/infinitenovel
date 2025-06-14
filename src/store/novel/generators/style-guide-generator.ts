@@ -5,6 +5,7 @@
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
 import { db } from '@/lib/db';
+import { callOpenAIWithRetry } from '../utils/ai-utils';
 
 /**
  * 为小说生成定制化的风格指导
@@ -62,11 +63,13 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
 `;
 
     // 调用AI生成风格指导
-    const response = await openai.chat.completions.create({
-      model: activeConfig.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-    });
+    const response = await callOpenAIWithRetry(() => 
+      openai.chat.completions.create({
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+      })
+    );
 
     const styleGuide = response.choices[0].message.content || "";
 
