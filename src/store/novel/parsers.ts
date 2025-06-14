@@ -348,7 +348,7 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   }
   
   // 分离宏观规划部分
-  const parts = content.split(/---\s*\*\*宏观叙事规划\*\*\s*---/i);
+  const parts = content.split(/(?:---\\s*)?\\s*(?:\\*\\*)?宏观叙事规划(?:\\*\\*)?\\s*(?:---)?/i);
   if (parts.length < 2) {
     console.log(`[宏观规划提取] 无法分离宏观规划部分`);
     return [];
@@ -358,7 +358,8 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   console.log(`[宏观规划提取] 宏观规划部分长度: ${macroPlanningPart.length}`);
   
   // 匹配多种宏观叙事阶段格式，核心是寻找括号内的 `xx-xx` 数字范围
-  const stageRegex = /\*\*([^:]+):\s*([^(]*?)\s*\(.*?(\d+)\s*-\s*(\d+).*?\)\*\*/g;
+  // 使**可选，并匹配行首，以处理更灵活的格式
+  const stageRegex = /^\s*(?:\*\*)?([^:]+:\s*[^(]*?)\s*\(.*?(\d+)\s*-\s*(\d+).*?\)(?:\*\*)?/gm;
   const stages: NarrativeStage[] = [];
   console.log(`[宏观规划提取] 开始匹配宏观叙事阶段`);
   
@@ -368,10 +369,15 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   
   for (let i = 0; i < allMatches.length; i++) {
     const match = allMatches[i];
-    const stageName = match[1].trim();
-    const stageTitle = match[2].trim();
-    const startChapter = parseInt(match[3], 10);
-    const endChapter = parseInt(match[4], 10);
+    
+    // 从第一个捕获组中分离出 stageName 和 stageTitle
+    const fullTitle = match[1].trim();
+    const titleParts = fullTitle.split(/:\s*/, 2);
+    const stageName = titleParts[0] || '';
+    const stageTitle = titleParts[1] || '';
+
+    const startChapter = parseInt(match[2], 10);
+    const endChapter = parseInt(match[3], 10);
     
     // 提取该阶段的核心概述
     const stageStart = match.index! + match[0].length;
@@ -386,7 +392,8 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
     let stageContent = macroPlanningPart.substring(stageStart, stageEnd).trim();
     
     // 整个阶段内容就是核心概述
-    const coreSummary = stageContent;
+    // 移除开头的-、*、空格等列表标记
+    const coreSummary = stageContent.replace(/^[\s*\-•]+/, '').trim();
     
     // 不再单独提取关键元素，因为它们已经包含在核心概述中
     const keyElements: string[] = [];

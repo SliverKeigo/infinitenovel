@@ -11,6 +11,7 @@ import { generateCustomStyleGuide, getOrCreateStyleGuide } from './style-guide-g
 import { parseJsonFromAiResponse, processOutline } from '../parsers';
 import type { Character } from '@/types/character';
 import { INITIAL_CHAPTER_GENERATION_COUNT } from '../constants';
+import { getOrCreateCharacterRules } from './character-rules-generator';
 
 /**
  * 生成整本小说的章节
@@ -193,6 +194,14 @@ export const generateNovelChapters = async (
       // 否则使用默认风格指导
       console.log("[简介生成] 使用默认风格指导");
       descriptionStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    }
+
+    // 获取角色行为准则
+    const characterRules = await getOrCreateCharacterRules(novelId);
+    console.log("[简介生成] 角色行为准则:", characterRules);
+    if (characterRules && characterRules.trim().length > 0) {
+      console.log("[简介生成] 使用角色行为准则");
+      descriptionStyleGuide = characterRules;
     }
 
     const descriptionPrompt = `

@@ -65,9 +65,9 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
     // 调用AI生成风格指导
     const response = await callOpenAIWithRetry(() => 
       openai.chat.completions.create({
-        model: activeConfig.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
+      model: activeConfig.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
       })
     );
 

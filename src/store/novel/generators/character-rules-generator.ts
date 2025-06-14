@@ -102,6 +102,7 @@ export const getOrCreateCharacterRules = async (novelId: number): Promise<string
 
   // 如果已有保存的准则且不为空，则直接返回
   if (novel.characterBehaviorRules && novel.characterBehaviorRules.trim().length > 0) {
+    console.log("[角色准则] 使用已保存的定制角色行为准则");
     return novel.characterBehaviorRules;
   }
 
