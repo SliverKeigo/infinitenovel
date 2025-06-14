@@ -2,6 +2,11 @@
  * 解析相关的工具函数
  */
 
+import { log } from "console";
+
+// 标准化用于分割宏观叙事规划的正则表达式，以确保所有函数使用统一、健壮的逻辑
+const MACRO_PLANNING_SEPARATOR_REGEX = /\s*(?:---)?\s*(?:\*\*)?\s*宏观叙事规划\s*(?:\*\*)?\s*(?:---)?\s*/i;
+
 /**
  * 从AI返回的可能包含Markdown代码块的字符串中安全地解析JSON。
  * @param content - AI返回的原始字符串
@@ -208,7 +213,7 @@ export const processOutline = (content: string): string => {
   // 确保宏观叙事规划部分格式正确
   if (cleanedContent.includes('宏观叙事规划')) {
     // 分离章节详情和宏观规划
-    const parts = cleanedContent.split(/---\s*\*\*宏观叙事规划\*\*\s*---/i);
+    const parts = cleanedContent.split(MACRO_PLANNING_SEPARATOR_REGEX);
     if (parts.length >= 2) {
       const chapterDetail = parts[0].trim();
       const macroPlanning = parts[1].trim();
@@ -245,7 +250,7 @@ export const extractChapterDetailFromOutline = (content: string): string => {
   // 如果包含宏观叙事规划部分，需要特殊处理
   if (content.includes('宏观叙事规划')) {
     console.log(`[大纲提取] 检测到宏观叙事规划分隔符`);
-    const parts = content.split(/---\s*\*\*宏观叙事规划\*\*\s*---/i);
+    const parts = content.split(MACRO_PLANNING_SEPARATOR_REGEX);
     
     if (parts.length >= 2) {
       console.log(`[大纲提取] 成功分离前半部分和宏观规划部分`);
@@ -348,7 +353,7 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   }
   
   // 分离宏观规划部分
-  const parts = content.split(/(?:---\\s*)?\\s*(?:\\*\\*)?宏观叙事规划(?:\\*\\*)?\\s*(?:---)?/i);
+  const parts = content.split(MACRO_PLANNING_SEPARATOR_REGEX);
   if (parts.length < 2) {
     console.log(`[宏观规划提取] 无法分离宏观规划部分`);
     return [];
@@ -358,15 +363,15 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   console.log(`[宏观规划提取] 宏观规划部分长度: ${macroPlanningPart.length}`);
   
   // 匹配多种宏观叙事阶段格式，核心是寻找括号内的 `xx-xx` 数字范围
-  // 使**可选，并匹配行首，以处理更灵活的格式
-  const stageRegex = /^\s*(?:\*\*)?([^:]+:\s*[^(]*?)\s*\(.*?(\d+)\s*-\s*(\d+).*?\)(?:\*\*)?/gm;
+  // 新版Regex通过匹配以章节范围结尾的整行来识别标题，更健壮
+  const stageRegex = /^\s*(?:\*\*)?(.+?)\s*\([^)\d]*(\d+)\s*-\s*(\d+)[^)\d]*\)(?:\*\*)?\s*$/gm;
   const stages: NarrativeStage[] = [];
   console.log(`[宏观规划提取] 开始匹配宏观叙事阶段`);
   
   // 使用字符串的match方法获取所有匹配，避免使用exec的状态
   const allMatches = Array.from(macroPlanningPart.matchAll(stageRegex));
   console.log(`[宏观规划提取] 找到 ${allMatches.length} 个阶段匹配`);
-  
+
   for (let i = 0; i < allMatches.length; i++) {
     const match = allMatches[i];
     
