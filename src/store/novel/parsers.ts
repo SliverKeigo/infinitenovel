@@ -357,8 +357,8 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   const macroPlanningPart = parts[1].trim();
   console.log(`[宏观规划提取] 宏观规划部分长度: ${macroPlanningPart.length}`);
   
-  // 匹配宏观叙事阶段，如"**第一幕: 幸存者的试炼 (第1-100章)**"
-  const stageRegex = /\*\*([^:]+):\s*([^(]+)\s*\(第(\d+)-(\d+)章\)\*\*/g;
+  // 匹配多种宏观叙事阶段格式，核心是寻找括号内的 `xx-xx` 数字范围
+  const stageRegex = /\*\*([^:]+):\s*([^(]*?)\s*\(.*?(\d+)\s*-\s*(\d+).*?\)\*\*/g;
   const stages: NarrativeStage[] = [];
   console.log(`[宏观规划提取] 开始匹配宏观叙事阶段`);
   

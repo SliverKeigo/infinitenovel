@@ -40,7 +40,6 @@ export const fetchNovelDetails = async (
     const characters = await db.characters.where('novelId').equals(id).toArray();
     const plotClues = await db.plotClues.where('novelId').equals(id).toArray();
     const savedIndexRecord = await db.novelVectorIndexes.get({ novelId: id });
-    console.timeEnd('数据库查询');
 
     // 尝试加载已保存的向量索引
     let voyIndex: Voy | null = null;
@@ -66,9 +65,7 @@ export const fetchNovelDetails = async (
     console.error("Failed to fetch novel details:", error);
     set({ detailsLoading: false });
     return null;
-  } finally {
-    console.timeEnd('fetchNovelDetails Execution');
-  }
+  } 
 };
 
 /**
