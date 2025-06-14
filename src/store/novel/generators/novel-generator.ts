@@ -106,6 +106,9 @@ export const generateNovelChapters = async (
       outlineStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
     }
 
+    // [新增] 获取角色行为准则 (在此处统一定义)
+    const characterRules = await getOrCreateCharacterRules(novelId);
+
     const outlinePrompt = `
       【输出格式要求】
       请直接输出大纲内容，不要包含任何前缀说明（如"好的，身为一位......"等），也不要包含额外的格式解释。
@@ -121,6 +124,7 @@ export const generateNovelChapters = async (
       - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
 
       ${outlineStyleGuide}
+      ${characterRules}
 
       **你的任务分为两部分：**
 
@@ -196,8 +200,6 @@ export const generateNovelChapters = async (
       descriptionStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
     }
 
-    // 获取角色行为准则
-    const characterRules = await getOrCreateCharacterRules(novelId);
     console.log("[简介生成] 角色行为准则:", characterRules);
     if (characterRules && characterRules.trim().length > 0) {
       console.log("[简介生成] 使用角色行为准则");
@@ -258,6 +260,7 @@ export const generateNovelChapters = async (
       - 故事大纲: ${plotOutline.substring(0, 2000)}...
 
       ${characterStyleGuide}
+      ${characterRules}
 
       请根据以上信息，为这部小说创建 **1 个核心主角** 和 **2 个首批登场的配角**。这些角色应该与故事的开篇情节紧密相关。
 

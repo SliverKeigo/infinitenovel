@@ -11,6 +11,7 @@ import { getGenreStyleGuide } from '../style-guides';
 import { getOrCreateStyleGuide } from './style-guide-generator';
 import { processOutline, extractChapterDetailFromOutline } from '../parsers';
 import { OUTLINE_EXPAND_THRESHOLD, OUTLINE_EXPAND_CHUNK_SIZE } from '../constants';
+import { getOrCreateCharacterRules } from './character-rules-generator';
 
 /**
  * 如果需要，扩展小说大纲
@@ -77,6 +78,9 @@ export const expandPlotOutlineIfNeeded = async (
       styleGuide = getGenreStyleGuide(novel.genre, novel.style);
     }
 
+    // [新增] 获取角色行为准则
+    const characterRules = await getOrCreateCharacterRules(novelId);
+
     // 仅使用章节部分进行扩展
     const existingChapterOutline = extractChapterDetailFromOutline(novel.plotOutline);
     
@@ -88,6 +92,7 @@ export const expandPlotOutlineIfNeeded = async (
         你是一位正在续写自己史诗级作品《${novel.name}》的小说家。
         
         ${styleGuide}
+        ${characterRules}
         
         这是我们已有的详细章节大纲（前 ${detailedChaptersInOutline} 章）：
         ---
