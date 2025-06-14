@@ -105,6 +105,16 @@ export class InfiniteNovelDB extends Dexie {
         }
       });
     });
+    this.version(8).stores({
+      novels: '++id, &name, genre, style, totalChapterGoal, wordCount, chapterCount, characterCount, plotClueCount, expansionCount, createdAt, updatedAt, specialRequirements, storyConstitution, styleGuide, characterBehaviorRules',
+    }).upgrade(tx => {
+      // 为现有小说添加characterBehaviorRules字段，初始值为空字符串
+      return tx.table('novels').toCollection().modify(novel => {
+        if (novel.characterBehaviorRules === undefined) {
+          novel.characterBehaviorRules = '';
+        }
+      });
+    });
   }
 
   /**

@@ -30,6 +30,8 @@ export interface Novel {
   specialRequirements?: string;
   /** AI生成的综合风格指导 */
   styleGuide?: string;
+  /** AI生成的角色行为准则 */
+  characterBehaviorRules?: string;
   /** 创建时间 */
   createdAt: Date;
   /** 最后更新时间 */
