@@ -385,20 +385,11 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
     // 提取阶段内容
     let stageContent = macroPlanningPart.substring(stageStart, stageEnd).trim();
     
-    // 提取核心概述
-    let coreSummary = "";
-    const coreSummaryMatch = stageContent.match(/核心概述:\s*([\s\S]+?)(?=\n\n|\n-|\n\*|$)/);
-    if (coreSummaryMatch) {
-      coreSummary = coreSummaryMatch[1].trim();
-    }
+    // 整个阶段内容就是核心概述
+    const coreSummary = stageContent;
     
-    // 提取关键元素（如有）
+    // 不再单独提取关键元素，因为它们已经包含在核心概述中
     const keyElements: string[] = [];
-    const keyElementsRegex = /-\s*([^\n]+)/g;
-    let elementMatch;
-    while ((elementMatch = keyElementsRegex.exec(stageContent)) !== null) {
-      keyElements.push(elementMatch[1].trim());
-    }
     
     stages.push({
       stageName: `${stageName}: ${stageTitle}`,

@@ -12,6 +12,7 @@ import { getChapterOutline, countDetailedChaptersInOutline } from '../outline-ut
 import { handleOpenAIError } from '../error-handlers';
 import { getGenreStyleGuide } from '../style-guides';
 import { getOrCreateStyleGuide } from './style-guide-generator';
+import { getOrCreateCharacterRules } from './character-rules-generator';
 import { 
   parseJsonFromAiResponse, 
   extractChapterDetailFromOutline, 
@@ -21,6 +22,7 @@ import {
 } from '../parsers';
 import { CHAPTER_WORD_TARGET, CHAPTER_WORD_TOLERANCE } from '../constants';
 import { retrieveRelevantContext, formatRetrievedContextForPrompt } from '../utils/rag-utils';
+import { callOpenAIWithRetry } from '../utils/ai-utils';
 
 /**
  * 生成单个新章节的上下文接口
@@ -178,6 +180,9 @@ export const generateNewChapter = async (
   const novel = get().currentNovel;
   if (!novel) throw new Error("未找到当前小说");
 
+  // [新增] 获取角色行为准则
+  const characterBehaviorRules = await getOrCreateCharacterRules(novel.id);
+
   const { chapters, currentNovelIndex, currentNovelDocuments } = get();
 
   // --- RAG 检索增强 (用于章节解构) ---
@@ -240,11 +245,6 @@ ${start}...
 `;
   }
 
-  // [新增] 强制规则申明
-  const mandatoryRules = (novel.genre.includes("日常") || novel.genre.includes("温馨") || novel.genre.includes("轻小说")) ? `
-【警告：本故事为温馨日常或轻小说题材，严禁出现宏大战斗、时空危机、政治阴谋、拯救世界等重度剧情。所有情节必须严格围绕故事的核心设定和角色间的日常互动展开。】
-  ` : '';
-
   // [新增] 最高优先级上下文（仅在第一章时注入）
   const userRequirementsContext = (novel.specialRequirements && chapterToGenerate === 1) ? `
 【最高优先级上下文：用户核心要求】
@@ -291,8 +291,8 @@ ${novel.specialRequirements}
 你是一位顶级小说编剧，任务是规划即将开始的新章节，确保故事严格按照大纲发展。
 
 ${userRequirementsContext}
-${mandatoryRules}
 ${styleGuide}
+${characterBehaviorRules}
 ${ragPrompt}
 ${narrativeStageGuidance}
 
@@ -359,18 +359,20 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 }
       `;
 
-    const decompResponse = await openai.chat.completions.create({
-      model: activeConfig.model,
-      messages: [
-        {
-          role: 'system',
-          content: '你是一个只输出JSON的助手。不要包含任何解释、前缀或后缀。不要使用Markdown代码块。直接以花括号{开始你的响应，以花括号}结束。不要添加任何额外的文本。'
-        },
-        { role: 'user', content: decompositionPrompt }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.5,
-    });
+    const decompResponse = await callOpenAIWithRetry(() => 
+      openai.chat.completions.create({
+        model: activeConfig.model,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个只输出JSON的助手。不要包含任何解释、前缀或后缀。不要使用Markdown代码块。直接以花括号{开始你的响应，以花括号}结束。不要添加任何额外的文本。'
+          },
+          { role: 'user', content: decompositionPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.5,
+      })
+    );
 
     const decompResult = parseJsonFromAiResponse(decompResponse.choices[0].message.content || "");
     chapterTitle = decompResult.title;
@@ -463,8 +465,8 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 你的写作风格是：【${novel.style}】。
 
 ${userRequirementsContext}
-${mandatoryRules}
 ${styleGuide}
+${characterBehaviorRules}
 ${sceneRagPrompt}
 ${narrativeStageGuidance}
 
@@ -499,16 +501,18 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
       }
 
-      const stream = await openai.chat.completions.create({
-        model: activeConfig.model,
-        messages: [{ role: 'user', content: scenePrompt }],
-        stream: true, // 开启流式传输
-        max_tokens: maxTokens,
-        temperature,
-        top_p: topP,
-        frequency_penalty: frequencyPenalty,
-        presence_penalty: presencePenalty,
-      });
+      const stream = await callOpenAIWithRetry(() => 
+        openai.chat.completions.create({
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: scenePrompt }],
+          stream: true, // 开启流式传输
+          max_tokens: maxTokens,
+          temperature,
+          top_p: topP,
+          frequency_penalty: frequencyPenalty,
+          presence_penalty: presencePenalty,
+        })
+      );
 
       let currentSceneContent = "";
       for await (const chunk of stream) {
