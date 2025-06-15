@@ -8,7 +8,12 @@ import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
 import { getGenreStyleGuide } from '../style-guides';
 import { generateCustomStyleGuide, getOrCreateStyleGuide } from './style-guide-generator';
-import { parseJsonFromAiResponse, processOutline } from '../parsers';
+import {
+  parseJsonFromAiResponse,
+  processOutline,
+  extractDetailedAndMacro,
+  extractNarrativeStages
+} from '../parsers';
 import type { Character } from '@/types/character';
 import { INITIAL_CHAPTER_GENERATION_COUNT } from '../constants';
 import { getOrCreateCharacterRules } from './character-rules-generator';
@@ -101,76 +106,109 @@ export const generateNovelChapters = async (
     // [新增] 获取角色行为准则 (在此处统一定义)
     const characterRules = await getOrCreateCharacterRules(novelId);
 
-    const outlinePrompt = `
-      【输出格式要求】
-      请直接输出大纲内容，不要包含任何前缀说明（如"好的，身为一位......"等），也不要包含额外的格式解释。
-      只有大纲内容会被保存和使用。
-      
-      【大纲内容】
-      你是一位经验丰富的小说编辑和世界构建大师。请为一部名为《${novel.name}》的小说创作一个结构化、分阶段的故事大纲。
-
-      **核心信息:**
-      - 小说类型: ${novel.genre}
-      - 写作风格: ${novel.style}
-      - 计划总章节数: ${goal}
-      - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
-
-      ${outlineStyleGuide}
-      ${characterRules}
-
-      **你的任务分为两部分：**
-
-      **Part 1: 开篇详细剧情**
-      请为故事最开始的 ${initialChapterGoal} 章提供逐章的、较为详细的剧情摘要。
-      - **最高优先级指令:** 你的首要任务是仔细阅读上面的"核心设定与特殊要求"。如果其中描述了故事的开篇情节（如主角的来历、穿越过程等），那么你生成的"第1章"大纲必须严格按照这个情节来写。
-      - **叙事节奏指南:** 每个章节的内容必须足够精简，只描述1-2个关键事件。禁止在单个章节中安排过多内容。学会将大事件拆分成多个章节来展开。
-      - **内容要求:** 每章大纲的字数控制在50-100字左右，简明扼要地概括核心事件。
-      - **格式要求:** 必须严格使用"第X章: [剧情摘要]"的格式。
-
-      **Part 2: 后续宏观规划**
-      在完成开篇的详细剧情后，请根据你对小说类型的理解，为剩余的章节设计一个更高层次的、分阶段的宏观叙事结构。
-      - 你需要将故事划分为几个大的部分或"幕"
-      - 在每个部分下，简要描述这一阶段的核心目标和关键转折点
-      - **这部分不需要逐章展开**，而是提供一个指导未来创作方向的路线图
-
-      **输出格式:**
-      请严格按照以下格式输出，先是详细章节，然后是宏观规划。
-      
-      第1章: [精简的剧情摘要]
-      第2章: [精简的剧情摘要]
-      ...
-      第${initialChapterGoal}章: [精简的剧情摘要]
-
-      ---
-      **宏观叙事规划**
-      ---
-      **第一幕: [幕标题] (大约章节范围)**
-      - [本幕核心剧情概述]
-      
-      **第二幕: [幕标题] (大约章节范围)**
-      - [本幕核心剧情概述]
-
-      ...
-    `;
-
     const openai = new OpenAI({
       apiKey: activeConfig.apiKey,
       baseURL: activeConfig.apiBaseUrl || undefined,
       dangerouslyAllowBrowser: true,
     });
 
-    const outlineResponse = await openai.chat.completions.create({
+    // === STAGE 1A: THE GRAND ARCHITECT ===
+    set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '阶段1/3: 正在构建宏观叙事蓝图...' } });
+
+    const architectPrompt = `
+      你是一位顶级的世界构建师和叙事战略家。请为一部名为《${novel.name}》的小说设计一个分三到五幕的宏观叙事蓝图。
+
+      **核心信息:**
+      - 小说类型: ${novel.genre}
+      - 写作风格: ${novel.style}
+      - 计划总章节数: ${goal}
+      - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
+      - 风格指导: ${outlineStyleGuide}
+      - 角色行为准则: ${characterRules}
+
+      **你的任务:**
+      1.  **分配章节**: 根据 "计划总章节数" (${goal})，将整个故事划分为 3 到 5 个幕。你需要自行决定每一幕的起始和结束章节号。
+      2.  **定义每一幕**:
+          - 为每一幕设定一个标题。
+          - 清晰地写出你为该幕分配的 **章节范围**。
+          - 撰写该幕的核心剧情概述，说明主角在本幕的核心任务、挑战和最终状态。
+      3.  **绝对禁止**: 不要提供任何逐章的细节。
+
+      **输出格式:**
+      请严格按照以下格式输出，每一幕之间用空行隔开。**你必须包含章节范围**。
+      **第一幕: [幕标题] (大约章节范围: [起始章节]-[结束章节])**
+      - 核心剧情概述: [对第一幕的剧情概述]
+
+      **第二幕: [幕标题] (大约章节范围: [起始章节]-[结束章节])**
+      - 核心剧情概述: [对第二幕的剧情概述]
+      ...
+    `;
+    const architectResponse = await openai.chat.completions.create({
       model: activeConfig.model,
-      messages: [{ role: 'user', content: outlinePrompt }],
+      messages: [{ role: 'user', content: architectPrompt }],
       temperature: settings.temperature,
     });
-
-    // 获取并处理大纲内容
-    const rawPlotOutline = outlineResponse.choices[0].message.content;
-    if (!rawPlotOutline) throw new Error("未能生成大纲。");
+    const macroOutline = architectResponse.choices[0].message.content;
+    if (!macroOutline) throw new Error("大建筑师未能生成宏观蓝图。");
     
-    // 使用新的处理函数清理大纲内容
-    const plotOutline = processOutline(rawPlotOutline);
+    // === STAGE 1B: THE ACT PLANNER ===
+    set({ generationTask: { ...get().generationTask, progress: 10, currentStep: '阶段2/3: 正在策划第一幕详细情节...' } });
+    
+    // 从宏观蓝图中提取第一幕的信息
+    const firstActRegex = /\*\*第一幕:[\s\S]*?(?=\n\n\*\*第二幕:|\s*$)/;
+    const firstActMatch = macroOutline.match(firstActRegex);
+    if (!firstActMatch) throw new Error("无法从宏观蓝图中解析出第一幕。");
+    const firstActInfo = firstActMatch[0];
+
+    // 使用 extractNarrativeStages 函数来解析章节范围，代替手动正则
+    const stages = extractNarrativeStages(macroOutline);
+    
+    let actOneStart = 1;
+    let actOneEnd = 100; // 默认值
+    
+    if (stages.length > 0 && stages[0].chapterRange) {
+      actOneStart = stages[0].chapterRange.start;
+      actOneEnd = stages[0].chapterRange.end;
+    } else {
+      console.warn("[Act Planner] 未能从宏观大纲中解析出第一幕的章节范围，将使用默认值 1-100。");
+    }
+
+    const plannerPrompt = `
+      你是一位才华横溢、深谙故事节奏的总编剧。你的任务是为一部名为《${novel.name}》的小说的**第一幕**撰写详细的、逐章的剧情大纲。
+
+      **第一幕的宏观规划:**
+      ${firstActInfo}
+
+      **你的核心原则:**
+      - **放慢节奏**: 这是最高指令！你必须将上述的"核心剧情概述"分解成无数个微小的步骤、挑战、人物互动和支线任务。
+      - **填充细节**: 不要让主角轻易达成目标。为他设置障碍，让他与各种人相遇，让他探索世界，让他用不止一个章节去解决一个看似简单的问题。
+      - **禁止剧情飞跃**: 严禁在短短几章内完成一个重大的里程碑。例如，"赢得皇帝的信任"这个目标，应该通过数十个章节的事件和任务逐步累积来实现。
+      - **遵守初始设定**: 如果小说的 "核心设定与特殊要求" (${novel.specialRequirements || '无'}) 中包含了开篇情节，第一章必须严格遵循该设定。
+
+      **你的任务:**
+      - 根据上述宏观规划，为第一幕（从第 ${actOneStart} 章到第 ${actOneEnd} 章）生成**逐章节**剧情大纲。
+      - 每章大纲应为50-100字的具体事件描述。
+
+      **输出格式:**
+      - 请严格使用"第X章: [剧情摘要]"的格式。
+      - **只输出逐章节大纲**，不要重复宏观规划或添加任何解释性文字。
+    `;
+    const plannerResponse = await openai.chat.completions.create({
+      model: activeConfig.model, // 可以考虑为策划师使用更强的模型
+      messages: [{ role: 'user', content: plannerPrompt }],
+      temperature: settings.temperature,
+    });
+    const detailedChapterOutline = plannerResponse.choices[0].message.content;
+    if (!detailedChapterOutline) throw new Error("幕间策划师未能生成详细章节。");
+
+    // === STAGE 1C: COMBINE & FINALIZE ===
+    set({ generationTask: { ...get().generationTask, progress: 15, currentStep: '阶段3/3: 正在整合最终大纲...' } });
+    
+    // 调整顺序：宏观规划在前，逐章细纲在后，使用新的分隔符
+    const finalOutline = `${macroOutline.trim()}\n\n---\n**逐章细纲**\n---\n\n${detailedChapterOutline.trim()}`;
+
+    // 使用现有的处理函数清理最终大纲
+    const plotOutline = processOutline(finalOutline);
 
     await db.novels.update(novelId, { plotOutline });
     set({ generationTask: { ...get().generationTask, progress: 20, currentStep: '大纲创建完毕！' } });
@@ -318,6 +356,10 @@ export const generateNovelChapters = async (
             personality: char.personality || '未知性格',
             backgroundStory: char.backgroundStory || '无背景故事',
             appearance: '',
+            relationships: '',
+            description: '',
+            background: '',
+            status: 'active',
             createdAt: new Date(),
             updatedAt: new Date()
           };
@@ -347,7 +389,7 @@ export const generateNovelChapters = async (
           for (let i = 0; i < nameMatches.length; i++) {
             const nameMatch = nameMatches[i].match(/"name"\s*:\s*"([^"]+)"/);
             const name = nameMatch ? nameMatch[1] : `角色${i+1}`;
-            
+
             const coreSettingMatch = coreSettingMatches && i < coreSettingMatches.length ? 
               coreSettingMatches[i].match(/"coreSetting"\s*:\s*"([^"]+)"/) : null;
             const coreSetting = coreSettingMatch ? coreSettingMatch[1] : '无核心设定';
@@ -366,6 +408,8 @@ export const generateNovelChapters = async (
               coreSetting: coreSetting,
               personality: personality,
               backgroundStory: backgroundStory,
+              description: '',
+              background: '',
               appearance: '',
               createdAt: new Date(),
               updatedAt: new Date()
@@ -399,7 +443,9 @@ export const generateNovelChapters = async (
     for (const i of chaptersToGenerate) {
       // 在每次循环开始时获取最新的上下文
       const allCharacters = await db.characters.where('novelId').equals(novelId).toArray();
-      const generationContext = { plotOutline, characters: allCharacters, settings };
+      // 使用 extractDetailedAndMacro 分离出纯粹的详细大纲供章节生成器使用
+      const { detailed: detailedOutline } = extractDetailedAndMacro(plotOutline);
+      const generationContext = { plotOutline: detailedOutline, characters: allCharacters, settings };
 
       const chapterProgress = 40 + (i / chaptersToGenerateCount) * 60;
       set({
@@ -448,4 +494,4 @@ export const generateNovelChapters = async (
       get().resetGenerationTask();
     }, 3000);
   }
-}; 
+};

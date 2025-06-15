@@ -187,20 +187,9 @@ export const parseJsonFromAiResponse = (content: string): any => {
  */
 export const processOutline = (content: string): string => {
   if (!content) return '';
-  
-  // 移除可能的AI回复前缀，如"好的，身为一位经验丰富的小说编辑..."
-  // 匹配从开头到第一个"第X章:"出现之前的所有内容
-  // 使用更宽松的正则表达式，匹配更多格式的章节标记
-  let cleanedContent = content.replace(/^[\s\S]*?(?=第\s*\d+\s*\.?\s*章[:\：]?)/i, '');
-  
-  // 如果没有找到章节标记，返回原始内容
-  if (cleanedContent === content && !content.match(/第\s*\d+\s*\.?\s*章[:\：]?/i)) {
-    console.log('[大纲处理] 未找到章节标记，返回原始内容');
-    return content;
-  }
-  
-  // 去除可能的额外空行
-  cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n');
+
+  // 从原始内容开始，移除之前错误的、会删除宏观规划的清理步骤
+  let cleanedContent = content;
   
   // 标准化章节标记格式
   // 将各种格式的章节标记统一为"第X章: "格式
@@ -210,13 +199,25 @@ export const processOutline = (content: string): string => {
   
   console.log('[大纲处理] 章节标记标准化完成');
   
-  // 确保宏观叙事规划部分格式正确
-  if (cleanedContent.includes('宏观叙事规划')) {
-    // 分离章节详情和宏观规划
+  // 确保宏观叙事规划/逐章细纲部分格式正确
+  const newSeparatorRegex = /\n---\s*\*\*逐章细纲\*\*\s*---\n/i;
+
+  if (newSeparatorRegex.test(cleanedContent)) {
+    // 新格式: 宏观规划在前
+    const parts = cleanedContent.split(newSeparatorRegex);
+    if (parts.length >= 2) {
+      const macro = parts[0].trim();
+      const detailed = parts[1].trim();
+      // 标准化为新格式
+      cleanedContent = `${macro}\n\n---\n**逐章细纲**\n---\n\n${detailed}`;
+    }
+  } else if (cleanedContent.includes('宏观叙事规划')) {
+    // 旧格式回退: 详细大纲在前
     const parts = cleanedContent.split(MACRO_PLANNING_SEPARATOR_REGEX);
     if (parts.length >= 2) {
       const chapterDetail = parts[0].trim();
       const macroPlanning = parts[1].trim();
+      // 标准化为旧格式
       cleanedContent = `${chapterDetail}\n\n---\n**宏观叙事规划**\n---\n${macroPlanning}`;
     }
   }
@@ -346,21 +347,8 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   
   console.log(`[宏观规划提取] 开始提取宏观叙事规划，原始大纲长度: ${content.length}`);
   
-  // 检查是否包含宏观叙事规划部分
-  if (!content.includes('宏观叙事规划')) {
-    console.log(`[宏观规划提取] 未检测到宏观叙事规划分隔符`);
-    return [];
-  }
-  
-  // 分离宏观规划部分
-  const parts = content.split(MACRO_PLANNING_SEPARATOR_REGEX);
-  if (parts.length < 2) {
-    console.log(`[宏观规划提取] 无法分离宏观规划部分`);
-    return [];
-  }
-  
-  const macroPlanningPart = parts[1].trim();
-  console.log(`[宏观规划提取] 宏观规划部分长度: ${macroPlanningPart.length}`);
+  // 直接将传入的content作为宏观规划部分进行处理，移除之前错误的分割逻辑
+  const macroPlanningPart = content.trim();
   
   // 匹配多种宏观叙事阶段格式，核心是寻找括号内的 `xx-xx` 数字范围
   // 新版Regex通过匹配以章节范围结尾的整行来识别标题，更健壮
@@ -450,4 +438,39 @@ export const getCurrentNarrativeStage = (stages: NarrativeStage[], chapterNumber
   }
   
   return null;
+};
+
+/**
+ * 提取详细大纲和宏观规划
+ * @param outline - 完整的大纲内容
+ * @returns 包含详细大纲和宏观规划的对象
+ */
+export const extractDetailedAndMacro = (outline: string): { detailed: string, macro: string } => {
+  // 新的分隔符，用于切分宏观规划和详细章节大纲
+  const separatorRegex = /\n---\s*\*\*逐章细纲\*\*\s*---\n/i;
+  const parts = outline.split(separatorRegex);
+
+  if (parts.length >= 2) {
+    // 新格式：宏观规划在前 (parts[0])，详细大纲在后 (parts[1])
+    return {
+      macro: parts[0].trim(),
+      detailed: parts[1].trim()
+    };
+  } else {
+    const oldSeparatorRegex = /\n---\s*\*\*宏观叙事规划\*\*\s*---\n/i;
+    const oldParts = outline.split(oldSeparatorRegex);
+    if (oldParts.length >= 2) {
+      // 旧格式：详细大纲在前 (oldParts[0])，宏观规划在后 (oldParts[1])
+      return {
+        detailed: oldParts[0].trim(),
+        macro: oldParts[1].trim()
+      };
+    }
+
+    // 如果两种分隔符都找不到，则假定整个大纲都是详细大纲
+    return {
+      detailed: outline.trim(),
+      macro: ''
+    };
+  }
 }; 

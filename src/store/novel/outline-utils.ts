@@ -282,4 +282,54 @@ export const extractChapterNumbers = (outline: string): number[] => {
   }
   
   return numbers;
+};
+
+/**
+ * 从完整大纲中提取指定章节之后的所有内容。
+ * @param fullOutline - 完整的地块轮廓。
+ * @param startChapterIndex - 提取的起始章节号 (例如, 如果我们刚生成了第10章，这个值就是11)。
+ * @returns 包含从startChapterIndex开始的所有章节大纲的字符串。
+ */
+export const extractFutureOutline = (fullOutline: string, startChapterIndex: number): string => {
+  // 正则表达式查找 "第X章:"，X是起始章节号。
+  // 我们需要查找这个模式第一次出现的位置。
+  const regex = new RegExp(`第\\s*${startChapterIndex}\\s*章:`);
+  const matchIndex = fullOutline.search(regex);
+
+  if (matchIndex === -1) {
+    // 如果没有找到未来的章节，说明已经到了大纲末尾。
+    return "";
+  }
+
+  // 返回从找到的位置开始到字符串末尾的所有内容。
+  return fullOutline.substring(matchIndex).trim();
+};
+
+/**
+ * 将修正后的未来大纲与原始大纲的未变部分合并。
+ * @param originalOutline - 原始的完整大纲。
+ * @param revisedFutureOutline - 由"编辑AI"修正过的未来大纲部分。
+ * @param startChapterIndex - 未来大纲开始的章节号。
+ * @returns 一个新的、完整的、合并后的大纲。
+ */
+export const combineWithRevisedOutline = (
+  originalOutline: string,
+  revisedFutureOutline: string,
+  startChapterIndex: number
+): string => {
+  // 查找未来大纲部分在原始大纲中的起始位置。
+  const regex = new RegExp(`第\\s*${startChapterIndex}\\s*章:`);
+  const separatorIndex = originalOutline.search(regex);
+
+  // 如果找不到分割点，可能意味着我们在大纲的末尾，直接追加。
+  // 但更安全的方式是假设调用者逻辑正确，直接返回修正后的大纲，因为它就是全部的未来。
+  if (separatorIndex === -1) {
+    return revisedFutureOutline.trim();
+  }
+
+  // 提取原始大纲中，起始章节之前的所有内容。
+  const pastOutlinePart = originalOutline.substring(0, separatorIndex);
+
+  // 将过去的部分和修正后的未来部分拼接起来。
+  return `${pastOutlinePart.trim()}\n\n${revisedFutureOutline.trim()}`.trim();
 }; 
