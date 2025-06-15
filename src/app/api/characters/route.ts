@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const novelId = searchParams.get('novel_id');
+    const novelId = searchParams.get('novelId') || searchParams.get('novel_id');
 
     if (!novelId) {
       return NextResponse.json({ error: 'novel_id is required' }, { status: 400 });
