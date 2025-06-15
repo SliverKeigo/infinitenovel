@@ -5,27 +5,27 @@ export interface Character {
   /** 数据库自动生成的唯一ID */
   id?: number;
   /** 所属小说的ID */
-  novelId: number;
+  novel_id: number;
   /** 人物名称 */
   name: string;
   /** 人物核心设定（一句话描述） */
-  coreSetting: string;
+  core_setting: string;
   /** 人物性格 */
   personality: string;
   /** 人物背景故事 */
-  backgroundStory: string;
+  background_story: string;
   /** 人物外貌描述 */
   appearance: string;
   /** 人物头像的URL（可选） */
   avatar?: string;
   /** 创建时间 */
-  createdAt: Date;
+  created_at: Date;
   /** 最后更新时间 */
-  updatedAt: Date;
+  updated_at: Date;
   /** 人物描述 */
   description: string;
   /** 人物背景 */
   background: string;
   /** 首次出现章节（可选） */
-  firstAppearedInChapter?: number;
+  first_appeared_in_chapter?: number;
 } 

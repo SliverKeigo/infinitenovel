@@ -11,29 +11,29 @@ export interface Novel {
   /** 写作风格，例如：赛博朋克、悬疑 */
   style: string;
   /** 小说总字数 */
-  wordCount: number;
+  word_count: number;
   /** 已完成的章节数量 */
-  chapterCount: number;
+  chapter_count: number;
   /** 小说中的人物数量 */
-  characterCount: number;
+  character_count: number;
   /** 计划完成的总章节数 */
-  totalChapterGoal: number;
+  total_chapter_goal: number;
   /** 扩写次数 */
-  expansionCount: number;
+  expansion_count: number;
   /** 生成的剧情大纲 */
-  plotOutline?: string;
+  plot_outline?: string;
   /** 包含的情节线索数量 */
-  plotClueCount: number;
+  plot_clue_count: number;
   /** 小说简介 */
   description?: string;
   /** 用户的特殊要求或备注 */
-  specialRequirements?: string;
+  special_requirements?: string;
   /** AI生成的综合风格指导 */
-  styleGuide?: string;
+  style_guide?: string;
   /** AI生成的角色行为准则 */
-  characterBehaviorRules?: string;
+  character_behavior_rules?: string;
   /** 创建时间 */
-  createdAt: Date;
+  created_at: Date;
   /** 最后更新时间 */
-  updatedAt: Date;
-} 
+  updated_at: Date;
+}

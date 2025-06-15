@@ -10,11 +10,11 @@ export type PresetName = typeof PRESET_NAMES[number];
 
 export interface GenerationSettings {
   id: number;
-  maxTokens: number;
-  segmentsPerChapter: number;
+  max_tokens: number;
+  segments_per_chapter: number;
   temperature: number;
-  topP: number;
-  frequencyPenalty: number;
-  presencePenalty: number;
-  characterCreativity: number;
+  top_p: number;
+  frequency_penalty: number;
+  presence_penalty: number;
+  character_creativity: number;
 } 

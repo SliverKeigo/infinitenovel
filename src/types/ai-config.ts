@@ -1,14 +1,17 @@
 export interface AIConfig {
   id?: number;
   name: string;
-  apiKey: string;
+  api_key: string;
   model: string;
-  apiBaseUrl?: string;
-  useApiForEmbeddings: boolean;
-  embeddingModel: string;
-  useIndependentEmbeddingConfig: boolean;
-  embeddingApiKey?: string;
-  embeddingApiBaseUrl?: string;
+  api_base_url?: string;
+  vision_model?: string;
+  use_api_for_embeddings: boolean;
+  embedding_model: string;
+  use_independent_embedding_config: boolean;
+  embedding_api_key?: string;
+  embedding_api_base_url?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type EmbeddingSource = 'browser' | 'api';
@@ -18,4 +21,4 @@ export interface EmbeddingConfig {
   model: string;
   apiKey?: string;
   apiBaseUrl?: string;
-} 
+}

@@ -5,9 +5,9 @@ export interface Chapter {
   /** 数据库自动生成的唯一ID */
   id?: number;
   /** 所属小说的ID */
-  novelId: number;
+  novel_id: number;
   /** 章节序号 */
-  chapterNumber: number;
+  chapter_number: number;
   /** 章节标题 */
   title: string;
   /** 章节正文内容 */
@@ -17,11 +17,11 @@ export interface Chapter {
    */
   summary?: string;
   /** 章节字数 */
-  wordCount: number;
+  word_count: number;
   /** 章节状态 ('draft': 草稿, 'published': 已发布) */
   status: 'draft' | 'published';
   /** 创建时间 */
-  createdAt: Date;
+  created_at: Date;
   /** 最后更新时间 */
-  updatedAt: Date;
+  updated_at: Date;
 } 
