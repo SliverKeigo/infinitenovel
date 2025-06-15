@@ -28,4 +28,15 @@ export interface Character {
   background: string;
   /** 首次出现章节（可选） */
   first_appeared_in_chapter?: number;
-} 
+  /** 是否是主角 */
+  is_protagonist?: boolean;
+  /** 状态 */
+  status?: string;
+  /** 关系 */
+  relationships?: string;
+}
+
+/**
+ * 用于批量创建角色的数据结构，只包含前端需要发送的字段。
+ */
+export type CharacterCreationData = Omit<Character, 'id' | 'novel_id' | 'created_at' | 'updated_at' | 'background'>; 
