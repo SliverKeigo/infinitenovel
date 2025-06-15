@@ -116,43 +116,55 @@ export const expandPlotOutlineIfNeeded = async (
       `;
 
     try {
-      const response = await openai.chat.completions.create({
-        model: activeConfig.model,
-        messages: [{ role: 'user', content: expansionPrompt }],
-        temperature: 0.6,
+      const apiResponse = await fetch('/api/ai/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeConfigId: activeConfig.id,
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: expansionPrompt }],
+          temperature: 0.6,
+        }),
       });
 
-      const newOutlinePart = response.choices[0].message.content;
-      if (newOutlinePart) {
-        // 处理新增大纲，确保格式正确
-        const processedNewPart = processOutline(newOutlinePart);
-        console.log(`[大纲扩展] 新增大纲部分 (处理前 ${newOutlinePart.length} 字符, 处理后 ${processedNewPart.length} 字符)`);
-        
-        // 将新增内容与原大纲结合
-        const updatedOutline = `${novel.plotOutline}\n\n${processedNewPart.trim()}`;
-        await fetch(`/api/novels/${novelId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plot_outline: updatedOutline })
-        });
-        
-        // 验证扩展后的章节数量
-        const updatedChapterOnlyOutline = extractChapterDetailFromOutline(updatedOutline);
-        const updatedChapterCount = countDetailedChaptersInOutline(updatedChapterOnlyOutline);
-        console.log(`[大纲扩展] 扩展后大纲包含 ${updatedChapterCount} 个章节，理论上应有 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 个章节`);
-        
-        // 提取扩展后的章节编号，确认新章节已添加
-        const chapterNumbers = extractChapterNumbers(updatedChapterOnlyOutline);
-        console.log(`[大纲扩展] 扩展后的章节编号: ${JSON.stringify(chapterNumbers.slice(-OUTLINE_EXPAND_CHUNK_SIZE))}`);
-        
-        // 更新 Zustand store 中的 currentNovel
-        const currentNovel = get().currentNovel;
-        if (currentNovel && currentNovel.id === novel.id) {
-          await get().fetchNovelDetails(novel.id!);
-        }
-        toast.success("AI已构思好新的情节！");
-        console.log("大纲扩展成功！");
+      if (!apiResponse.ok) {
+        throw new Error(`API request failed: ${await apiResponse.text()}`);
       }
+      const response = await apiResponse.json();
+
+      let expandedContent = response.choices[0].message.content || "";
+      
+      // 清理AI返回的markdown
+      expandedContent = expandedContent.replace(/^#+\s+/, '').replace(/\n\n+/, '\n\n');
+      
+      // 处理新增大纲，确保格式正确
+      const processedNewPart = processOutline(expandedContent);
+      console.log(`[大纲扩展] 新增大纲部分 (处理前 ${expandedContent.length} 字符, 处理后 ${processedNewPart.length} 字符)`);
+      
+      // 将新增内容与原大纲结合
+      const updatedOutline = `${novel.plotOutline}\n\n${processedNewPart.trim()}`;
+      await fetch(`/api/novels/${novelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plot_outline: updatedOutline })
+      });
+      
+      // 验证扩展后的章节数量
+      const updatedChapterOnlyOutline = extractChapterDetailFromOutline(updatedOutline);
+      const updatedChapterCount = countDetailedChaptersInOutline(updatedChapterOnlyOutline);
+      console.log(`[大纲扩展] 扩展后大纲包含 ${updatedChapterCount} 个章节，理论上应有 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 个章节`);
+      
+      // 提取扩展后的章节编号，确认新章节已添加
+      const chapterNumbers = extractChapterNumbers(updatedChapterOnlyOutline);
+      console.log(`[大纲扩展] 扩展后的章节编号: ${JSON.stringify(chapterNumbers.slice(-OUTLINE_EXPAND_CHUNK_SIZE))}`);
+      
+      // 更新 Zustand store 中的 currentNovel
+      const currentNovel = get().currentNovel;
+      if (currentNovel && currentNovel.id === novel.id) {
+        await get().fetchNovelDetails(novel.id!);
+      }
+      toast.success("AI已构思好新的情节！");
+      console.log("大纲扩展成功！");
     } catch (error) {
       console.error("扩展大纲失败:", error);
       toast.error("AI构思后续情节时遇到了点麻烦...");

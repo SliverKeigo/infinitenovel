@@ -68,7 +68,7 @@ export function GenerationSettingsManager() {
     const handleSave = async () => {
         if (localSettings) {
             try {
-                const { id, ...settingsToSave } = localSettings;
+            const { id, ...settingsToSave } = localSettings;
                 await updateSettings(settingsToSave);
                 toast.success("设置已成功保存！");
             } catch (error) {

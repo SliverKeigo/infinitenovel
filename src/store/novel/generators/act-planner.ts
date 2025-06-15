@@ -62,27 +62,35 @@ export const planNextAct = async (
   `;
 
   // --- 步骤 3: 调用 AI ---
-  const openai = new OpenAI({
-    apiKey: activeConfig.api_key,
-    baseURL: activeConfig.api_base_url || undefined,
-    dangerouslyAllowBrowser: true,
+  const response = await fetch('/api/ai/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      activeConfigId: activeConfig.id,
+      model: activeConfig.model,
+      messages: [{ role: 'user', content: plannerPrompt }],
+      temperature: settings.temperature,
+    }),
   });
 
-  const plannerResponse = await openai.chat.completions.create({
-    model: activeConfig.model,
-    messages: [{ role: 'user', content: plannerPrompt }],
-    temperature: settings.temperature,
-  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+  }
 
-  const newDetailedOutlinePart = plannerResponse.choices[0].message.content;
-  if (!newDetailedOutlinePart) throw new Error(`幕间策划师未能为 "${actToPlan.stageName}" 生成详细章节。`);
+  const plannerResponse = await response.json();
+
+  const newPlan = plannerResponse.choices[0].message.content;
+  if (!newPlan) {
+    throw new Error('AI未能生成新的幕后大纲。');
+  }
   
-  console.log(`[Act Planner] 已为幕布 "${actToPlan.stageName}" 生成 ${newDetailedOutlinePart.length} 字节的细纲。`);
+  console.log(`[Act Planner] 已为幕布 "${actToPlan.stageName}" 生成 ${newPlan.length} 字节的细纲。`);
 
   // --- 步骤 4: 融合大纲 ---
   const { macro, detailed: existingDetailed } = extractDetailedAndMacro(currentPlotOutline);
   
-  const combinedDetailed = `${existingDetailed.trim()}\n\n${newDetailedOutlinePart.trim()}`;
+  const combinedDetailed = `${existingDetailed.trim()}\n\n${newPlan.trim()}`;
   
   const newFullOutline = `${macro.trim()}\n\n---\n**逐章细纲**\n---\n\n${combinedDetailed.trim()}`;
 

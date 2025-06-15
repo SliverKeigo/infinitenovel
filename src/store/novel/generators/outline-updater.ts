@@ -106,19 +106,26 @@ ${generatedChaptersContent}
       baseURL: activeConfig.api_base_url || undefined,
       dangerouslyAllowBrowser: true,
     });
-    const response = await openai.chat.completions.create({
-      model: activeConfig.model, // 使用一个强大的模型来保证分析质量
+    const apiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
+        model: activeConfig.model,
       messages: [{ role: 'user', content: driftReportPrompt }],
       response_format: { type: "json_object" },
+      })
     });
+    if (!apiResponse.ok) throw new Error(`API request failed: ${await apiResponse.text()}`);
+    const response = await apiResponse.json();
 
-    const reportJson = response.choices[0].message.content;
-    if (!reportJson) {
+    const reportContent = response.choices[0].message.content;
+    if (!reportContent) {
       console.error("分析师AI未能生成任何内容。");
       return { newCharacters: [], newPlotClues: [], plotTwists: [], relationshipChanges: [] };
     }
 
-    const parsedReport = parseJsonFromAiResponse(reportJson) as DriftReport;
+    const parsedReport = parseJsonFromAiResponse(reportContent) as DriftReport;
     console.log("分析师AI完成工作，漂移报告已生成:", parsedReport);
     return parsedReport;
 
@@ -254,21 +261,31 @@ ${futureOutline}
       baseURL: activeConfig.api_base_url || undefined,
       dangerouslyAllowBrowser: true,
     });
-    const response = await openai.chat.completions.create({
-      model: activeConfig.model, // 编辑工作需要强大的推理能力
+    const editorApiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
+        model: activeConfig.model,
       messages: [{ role: 'user', content: editorPrompt }],
-      temperature: 0.5, // 编辑工作需要更稳定、更注重逻辑的输出
+        temperature: 0.5,
+      })
     });
+    if (!editorApiResponse.ok) throw new Error(`Editor API request failed: ${await editorApiResponse.text()}`);
+    const response = await editorApiResponse.json();
 
-    const revisedOutline = response.choices[0].message.content;
+    let newContent = response.choices[0].message.content || "";
 
-    if (!revisedOutline) {
+    // 清理AI可能返回的markdown代码块标记
+    newContent = newContent.replace(/```[\s\S]*?```/g, '').trim();
+
+    if (!newContent) {
       console.error("编辑AI未能生成任何内容，将返回原始大纲。");
       return futureOutline;
     }
     
     console.log("编辑AI完成工作，未来大纲已修正。");
-    return revisedOutline.trim();
+    return newContent;
 
   } catch (error) {
     console.error("编辑AI在执行期间出错，将返回原始大纲:", error);

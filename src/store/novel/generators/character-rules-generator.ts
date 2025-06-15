@@ -56,25 +56,45 @@ export const generateCharacterRules = async (novel: Novel, activeConfig: AIConfi
 `;
 
     // 调用AI生成
-    const response = await callOpenAIWithRetry(() =>
-      openai.chat.completions.create({
+    // const response = await callOpenAIWithRetry(() =>
+    //   openai.chat.completions.create({
+    //     model: activeConfig.model,
+    //     messages: [{ role: 'user', content: prompt }],
+    //     temperature: 0.7,
+    //   })
+    // );
+    const apiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
         model: activeConfig.model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.7,
-      })
-    );
+      }),
+    });
 
-    const characterRules = response.choices[0].message.content || "";
+    if (!apiResponse.ok) {
+      const errorText = await apiResponse.text();
+      throw new Error(`API request failed with status ${apiResponse.status}: ${errorText}`);
+    }
+
+    const response = await apiResponse.json();
+
+    let rulesText = response.choices[0].message.content || "";
+    
+    // 清理AI可能返回的额外文本
+    rulesText = rulesText.replace(/【角色行为准则】/g, '').trim();
 
     // 保存生成的准则到小说数据中
     await fetch(`/api/novels/${novel.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character_behavior_rules: characterRules })
+      body: JSON.stringify({ character_behavior_rules: rulesText })
     });
 
-    console.log(`[角色准则] 角色行为准则生成成功，长度: ${characterRules.length}`);
-    return characterRules;
+    console.log(`[角色准则] 角色行为准则生成成功，长度: ${rulesText.length}`);
+    return rulesText;
   } catch (error) {
     console.error("[角色准则] 生成角色行为准则失败:", error);
     throw error;

@@ -65,26 +65,41 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
 请直接以【风格指导】开头，然后列出具体的指导原则，不要包含任何前缀说明或额外解释。
 `;
 
-    // 调用AI生成风格指导
-    const response = await callOpenAIWithRetry(() => 
-      openai.chat.completions.create({
-      model: activeConfig.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      })
-    );
+    // 调用AI
+    // const response = await callOpenAIWithRetry(() => 
+    //   openai.chat.completions.create({
+    //   model: activeConfig.model,
+    //   messages: [{ role: 'user', content: prompt }],
+    //   temperature: 0.7,
+    //   })
+    // );
+    const apiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+      }),
+    });
 
-    const styleGuide = response.choices[0].message.content || "";
+    if (!apiResponse.ok) {
+      throw new Error(`API request failed: ${await apiResponse.text()}`);
+    }
+    const response = await apiResponse.json();
+
+    const styleGuideText = response.choices[0].message.content || "";
 
     // 保存生成的风格指导到小说数据中
     await fetch(`/api/novels/${novelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ style_guide: styleGuide })
+      body: JSON.stringify({ style_guide: styleGuideText })
     });
 
-    console.log(`[风格指导] 风格指导生成成功，长度: ${styleGuide.length}`);
-    return styleGuide;
+    console.log(`[风格指导] 风格指导生成成功，长度: ${styleGuideText.length}`);
+    return styleGuideText;
   } catch (error) {
     console.error("[风格指导] 生成风格指导失败:", error);
     throw error;

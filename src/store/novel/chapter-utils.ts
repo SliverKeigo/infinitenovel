@@ -70,95 +70,91 @@ export const saveGeneratedChapter = async (
     updated_at: new Date(),
   };
 
-  // --- Step 2: Post-generation Analysis for new characters and plot clues ---
-  let newCharactersForApi: Omit<Character, "id">[] = [];
-  let newCluesForApi: Omit<PlotClue, "id">[] = [];
+  let newCharactersForApi: any[] = [];
+  let newCluesForApi: any[] = [];
 
+  // 后处理分析，提取新角色、新线索等
   try {
     const { configs, activeConfigId } = useAIConfigStore.getState();
     const activeConfig = configs.find((c: AIConfig) => c.id === activeConfigId);
-
-    const currentTask = get().generationTask;
-    if (currentTask.isActive) {
-      set({ generationTask: { ...currentTask, currentStep: '正在分析新角色与线索...' } });
+    if (!activeConfig) {
+      throw new Error("没有检测到活动的AI配置。");
     }
 
-    if (activeConfig && activeConfig.api_key) {
-      const openai = new OpenAI({
-        apiKey: activeConfig.api_key,
-        baseURL: activeConfig.api_base_url || undefined,
-        dangerouslyAllowBrowser: true,
-      });
-
       const analysisPrompt = `
-            你是一位目光如炬的文学分析师和图书管理员。
+你是一个小说分析引擎，你的任务是分析给定章节的内容，并以严格的JSON格式返回你的分析结果。
 
-            已知信息:
-            1. 小说名: 《${currentNovel.name}》
-            2. 当前已知的角色列表: [${characters.map((c: Character) => `"${c.name}"`).join(', ')}]
-            3. 刚刚生成的新章节内容:
-            """
-            ${content.substring(0, 4000)}
-            """
+**章节内容:**
+---
+${content}
+---
 
-            你的任务:
-            请仔细阅读上面的新章节内容，并以一个 JSON 对象的格式，返回你的分析结果。这个 JSON 对象应包含两个键： "newCharacters" 和 "newPlotClues"。
+**分析指令:**
+1.  **总结 (summary):** 为本章内容写一个简短的（不超过200字）摘要。
+2.  **新角色 (newCharacters):** 识别本章中首次出现的、值得记录的角色。如果一个角色非常次要（如没有名字的路人），则不要包含。每个角色应包含 "name" 和 "description"。如果本章没有新角色，则返回一个空数组 []。
+3.  **新线索 (newPlotClues):** 识别本章中出现的、可能对未来情节有影响的新线索或伏笔。每个线索应包含 "title" 和 "description"。如果本章没有新线索，则返回一个空数组 []。
 
-            1. "newCharacters": 这是一个数组。请找出章节中所有被明确提及、且不在"当前已知角色列表"中的新人物。如果章节中没有新人物，则返回一个空数组 []。对于每一个新人物，提供一个包含以下字段的对象：
-                - "name": 新人物的姓名。
-                - "coreSetting": 根据本章内容，用一句话描述他/她的身份或核心作用 (例如："黑风寨的三当家", "神秘的炼丹老人")。
-                - "initialRelationship": 根据本章内容，描述他/她与主角团的初次互动或关系 (例如："与主角发生冲突", "向主角发布了一个任务", "似乎在暗中观察主角")。
+**输出格式要求:**
+- 必须是单个JSON对象。
+- 不要包含任何解释、前缀或后缀。
+- 不要使用Markdown代码块。
+- 直接以 { 开始你的响应，以 } 结束。
 
-            2. "newPlotClues": 这是一个数组。请找出章节中新出现的、可能对未来剧情有影响的关键线索、物品、事件或未解之谜。如果章节中没有新线索，则返回一个空数组 []。对于每一个新线索，提供一个包含以下字段的对象：
-                - "title": 线索的简短标题 (例如："神秘的黑色铁片", "城东的废弃矿洞")。
-                - "description": 对线索的详细描述，并解释其潜在的重要性。
-
-            请严格按照此 JSON 格式返回，不要添加任何额外的解释或 Markdown 标记。
-            **JSON格式化黄金法则：如果任何字段的字符串值内部需要包含双引号(")，你必须使用反斜杠进行转义(\\")，否则会导致解析失败。**
+**JSON结构示例:**
+{
+  "summary": "本章的简要总结...",
+  "newCharacters": [
+    { "name": "角色A", "description": "角色A的简要描述和背景。" },
+    { "name": "角色B", "description": "角色B的简要描述和背景。" }
+  ],
+  "newPlotClues": [
+    { "title": "线索1的标题", "description": "对这个新线索的详细描述。" },
+    { "title": "线索2的标题", "description": "对这个新线索的详细描述。" }
+  ]
+}
           `;
 
-      const analysisResponse = await openai.chat.completions.create({
+    const aiApiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
         model: activeConfig.model,
         messages: [{ role: 'user', content: analysisPrompt }],
-        response_format: { type: "json_object" },
+        response_format: { type: 'json_object' },
         temperature: 0.3,
-      });
+      }),
+    });
 
-      const responseContent = analysisResponse.choices[0].message.content;
-      if (responseContent) {
-        const parsedJson = parseJsonFromAiResponse(responseContent);
-        const extractedCharacters = parsedJson.newCharacters || [];
-        const extractedClues = parsedJson.newPlotClues || [];
+    if (!aiApiResponse.ok) {
+      const errorText = await aiApiResponse.text();
+      throw new Error(`API request failed with status ${aiApiResponse.status}: ${errorText}`);
+    }
+    const analysisResponse = await aiApiResponse.json();
+    
+    const analysisResult = parseJsonFromAiResponse(analysisResponse.choices[0].message.content || '');
+    
+    // 用AI分析的结果更新章节数据
+    newChapterData.summary = analysisResult.summary || '';
 
-        if (Array.isArray(extractedCharacters) && extractedCharacters.length > 0) {
-          toast.success(`发现了 ${extractedCharacters.length} 位新角色！`);
-          newCharactersForApi = extractedCharacters.map((char: any) => ({
-            novel_id: novelId,
+    if (Array.isArray(analysisResult.newCharacters) && analysisResult.newCharacters.length > 0) {
+      toast.success(`发现了 ${analysisResult.newCharacters.length} 位新角色！`);
+      newCharactersForApi = analysisResult.newCharacters.map((char: any) => ({
+        novel_id: novelId,
             name: char.name || '未知姓名',
-            core_setting: char.core_setting || '无设定',
-            personality: '',
-            background_story: char.initial_relationship ? `初次登场关系：${char.initial_relationship}` : '',
-            appearance: '',
-            relationships: '',
-            description: char.description || '无描述',
-            background: char.background || '无背景',
-            status: 'active',
-            created_at: new Date(), // Add dummy date to satisfy type
-            updated_at: new Date(), // Add dummy date to satisfy type
+        description: char.description || '无',
+        is_protagonist: false,
           }));
         }
 
-        if (Array.isArray(extractedClues) && extractedClues.length > 0) {
-          toast.success(`发现了 ${extractedClues.length} 条新线索！`);
-          newCluesForApi = extractedClues.map((clue: any) => ({
-            novel_id: novelId,
+    if (Array.isArray(analysisResult.newPlotClues) && analysisResult.newPlotClues.length > 0) {
+      toast.success(`发现了 ${analysisResult.newPlotClues.length} 条新线索！`);
+      newCluesForApi = analysisResult.newPlotClues.map((clue: any) => ({
+        novel_id: novelId,
             title: clue.title || '无标题线索',
-            description: clue.description || '无描述',
-            created_at: new Date(), // Add dummy date to satisfy type
-            updated_at: new Date(), // Add dummy date to satisfy type
-          }));
-        }
-      }
+        description: clue.description || '无',
+        status: '未解开',
+      }));
     }
   } catch (error) {
     console.error("后处理分析失败：", error);
@@ -171,9 +167,9 @@ export const saveGeneratedChapter = async (
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-            chapter: newChapterData, 
-            newCharacters: newCharactersForApi,
-            newPlotClues: newCluesForApi,
+           chapter: newChapterData, 
+           newCharacters: newCharactersForApi,
+           newPlotClues: newCluesForApi,
         }),
     });
 
@@ -183,20 +179,20 @@ export const saveGeneratedChapter = async (
 
     const { savedChapter, savedCharacters, savedPlotClues } = await response.json();
 
-    // --- Step 3: Optimistic state update ---
-    set((state: any) => ({
-        chapters: [...state.chapters, savedChapter],
+  // --- Step 3: Optimistic state update ---
+  set((state: any) => ({
+    chapters: [...state.chapters, savedChapter],
         characters: [...state.characters, ...savedCharacters],
         plotClues: [...state.plotClues, ...savedPlotClues],
         generatedContent: null, // Clear saved content
-    }));
+  }));
 
-    // --- Step 4: Final novel stats update in DB ---
-    await get().updateNovelStats(novelId);
-    
-    // --- Step 5: Update vector index to include the new chapter ---
-    console.log(`[向量索引] 正在为新增章节更新向量索引...`);
-    await get().buildNovelIndex(novelId);
+  // --- Step 4: Final novel stats update in DB ---
+  await get().updateNovelStats(novelId);
+  
+  // --- Step 5: Update vector index to include the new chapter ---
+  console.log(`[向量索引] 正在为新增章节更新向量索引...`);
+  await get().buildNovelIndex(novelId);
 
   } catch (error) {
       console.error("Failed to save chapter via API:", error);
