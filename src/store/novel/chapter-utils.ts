@@ -145,6 +145,8 @@ export const saveGeneratedChapter = async (
             backgroundStory: char.initialRelationship ? `初次登场关系：${char.initialRelationship}` : '',
             appearance: '',
             relationships: '',
+            description: char.description || '无描述',
+            background: char.background || '无背景',
             status: 'active',
             createdAt: new Date(),
             updatedAt: new Date(),

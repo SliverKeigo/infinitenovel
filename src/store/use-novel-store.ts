@@ -47,6 +47,10 @@ import {
   deleteNovel as deleteNovelData
 } from './novel/data-utils';
 import { buildNovelIndex as buildIndex } from './novel/index-utils';
+import { planNextAct } from './novel/generators/act-planner';
+import { extractNarrativeStages, extractDetailedAndMacro } from './novel/parsers';
+
+const ACT_PLANNING_THRESHOLD = 10; // 当剩余规划章节少于10章时，开始规划下一幕
 
 interface DocumentToIndex {
   id: string;
@@ -74,6 +78,7 @@ interface NovelState {
   detailsLoading: boolean;
   indexLoading: boolean;
   generationLoading: boolean;
+  isPlanningAct: boolean; // 新增：用于追踪幕间规划状态
   generatedContent: string | null;
   generationTask: GenerationTask;
   fetchNovels: () => Promise<void>;
@@ -111,6 +116,7 @@ interface NovelState {
   forceExpandOutline: (novelId: number) => Promise<void>;
   resetGenerationTask: () => void;
   publishChapter: (chapterId: number) => Promise<void>;
+  checkForNextActPlanning: (novelId: number) => Promise<void>;
 }
 
 export const useNovelStore = create<NovelState>((set, get) => ({
@@ -125,6 +131,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   detailsLoading: true,
   indexLoading: false,
   generationLoading: false,
+  isPlanningAct: false, // 新增：初始化状态
   generatedContent: null,
   generationTask: {
     isActive: false,
@@ -183,6 +190,64 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   },
   forceExpandOutline: async (novelId: number) => {
     return forceExpand(get, set, novelId);
+  },
+  checkForNextActPlanning: async (novelId: number) => {
+    const { isPlanningAct } = get();
+    if (isPlanningAct) {
+      console.log("[Watcher] 幕间规划已在进行中，跳过本次检查。");
+      return;
+    }
+
+    try {
+      const novel = await db.novels.get(novelId);
+      if (!novel || !novel.plotOutline) return;
+
+      const nextChapterNumber = (await db.chapters.where('novelId').equals(novelId).count()) + 1;
+      
+      const { detailed } = extractDetailedAndMacro(novel.plotOutline);
+      const plannedChapters = extractChapterNumbers(detailed);
+      if (plannedChapters.length === 0) return;
+      
+      const lastPlannedChapter = Math.max(...plannedChapters);
+
+      if (lastPlannedChapter - nextChapterNumber > ACT_PLANNING_THRESHOLD) {
+        // 距离足够远，无需规划
+        return;
+      }
+
+      const allStages = extractNarrativeStages(novel.plotOutline);
+      if (allStages.length <= 1) return; // 只有一个幕或者没有幕，无需规划
+
+      // 寻找下一个需要规划的幕
+      const lastPlannedStage = allStages.find(stage => stage.chapterRange.end === lastPlannedChapter);
+      if (!lastPlannedStage) return;
+
+      const nextStageIndex = allStages.findIndex(stage => stage.stageName === lastPlannedStage.stageName) + 1;
+      if (nextStageIndex >= allStages.length) return; // 已经是最后一幕了
+
+      const nextStageToPlan = allStages[nextStageIndex];
+      
+      // 检查下一幕是否已经规划过了
+      if(plannedChapters.includes(nextStageToPlan.chapterRange.start)) {
+        console.log(`[Watcher] 检测到下一幕 "${nextStageToPlan.stageName}" 已被规划，跳过。`);
+        return;
+      }
+      
+      set({ isPlanningAct: true });
+      toast.info(`您已接近当前幕布的尾声，AI正在为您规划下一幕：${nextStageToPlan.stageName}`);
+
+      const newPlotOutline = await planNextAct(novelId, nextStageToPlan, novel.plotOutline);
+      
+      await db.novels.update(novelId, { plotOutline: newPlotOutline });
+      
+      toast.success(`下一幕 "${nextStageToPlan.stageName}" 已规划完毕！`);
+
+    } catch (error) {
+      console.error("[Watcher] 规划下一幕时发生错误:", error);
+      toast.error(`规划下一幕时发生错误: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      set({ isPlanningAct: false });
+    }
   },
   publishChapter: async (chapterId: number) => {
     try {

@@ -16,4 +16,6 @@ export interface PlotClue {
   createdAt: Date;
   /** 最后更新时间 */
   updatedAt: Date;
+  /** 首次提及的章节ID（可选） */
+  firstMentionedInChapter?: number;
 } 

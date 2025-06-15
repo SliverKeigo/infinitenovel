@@ -22,4 +22,10 @@ export interface Character {
   createdAt: Date;
   /** 最后更新时间 */
   updatedAt: Date;
+  /** 人物描述 */
+  description: string;
+  /** 人物背景 */
+  background: string;
+  /** 首次出现章节（可选） */
+  firstAppearedInChapter?: number;
 } 
