@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const presetDisplayNames: Record<PresetName, string> = {
     'Default': '默认模式',
@@ -64,10 +65,15 @@ export function GenerationSettingsManager() {
         }
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (localSettings) {
-            const { id, ...settingsToSave } = localSettings;
-            updateSettings(settingsToSave);
+            try {
+                const { id, ...settingsToSave } = localSettings;
+                await updateSettings(settingsToSave);
+                toast.success("设置已成功保存！");
+            } catch (error) {
+                toast.error(`保存失败: ${error instanceof Error ? error.message : '未知错误'}`);
+            }
         }
     };
 
@@ -101,13 +107,13 @@ export function GenerationSettingsManager() {
                 </CardHeader>
                 <CardContent className="space-y-8">
                     <div className="grid gap-2">
-                        <Label>最大Token数: {localSettings.maxTokens}</Label>
-                        <Slider value={[localSettings.maxTokens]} onValueChange={value => handleSliderChange('maxTokens', value)} min={512} max={16384} step={256} />
+                        <Label>最大Token数: {localSettings.max_tokens}</Label>
+                        <Slider value={[localSettings.max_tokens]} onValueChange={value => handleSliderChange('max_tokens', value)} min={512} max={16384} step={256} />
                         <p className="text-sm text-muted-foreground">单次API调用允许生成的最大内容长度。注意：过高可能导致API错误。</p>
                     </div>
                     <div className="grid gap-2">
-                        <Label>每章生成片段数: {localSettings.segmentsPerChapter}</Label>
-                        <Slider value={[localSettings.segmentsPerChapter]} onValueChange={value => handleSliderChange('segmentsPerChapter', value)} min={1} max={10} step={1} />
+                        <Label>每章生成片段数: {localSettings.segments_per_chapter}</Label>
+                        <Slider value={[localSettings.segments_per_chapter]} onValueChange={value => handleSliderChange('segments_per_chapter', value)} min={1} max={10} step={1} />
                         <p className="text-sm text-muted-foreground">将一章分为多个片段生成，总字数 ≈ (片段数 × Token数)。</p>
                     </div>
                 </CardContent>
@@ -125,13 +131,13 @@ export function GenerationSettingsManager() {
                         <p className="text-sm text-muted-foreground">越高结果越随机、越有创意；越低结果越稳定、越可预测。</p>
                     </div>
                      <div className="grid gap-2">
-                        <Label>核心采样 (Top P): {localSettings.topP}</Label>
-                        <Slider value={[localSettings.topP]} onValueChange={value => handleSliderChange('topP', value)} min={0.1} max={1.0} step={0.05} />
+                        <Label>核心采样 (Top P): {localSettings.top_p}</Label>
+                        <Slider value={[localSettings.top_p]} onValueChange={value => handleSliderChange('top_p', value)} min={0.1} max={1.0} step={0.05} />
                         <p className="text-sm text-muted-foreground">与创意度类似，但通过控制词汇选择范围来调整随机性，建议不要同时调高。</p>
                     </div>
                      <div className="grid gap-2">
-                        <Label>人物创意度: {localSettings.characterCreativity}</Label>
-                        <Slider value={[localSettings.characterCreativity]} onValueChange={value => handleSliderChange('characterCreativity', value)} min={0.1} max={1.0} step={0.05} />
+                        <Label>人物创意度: {localSettings.character_creativity}</Label>
+                        <Slider value={[localSettings.character_creativity]} onValueChange={value => handleSliderChange('character_creativity', value)} min={0.1} max={1.0} step={0.05} />
                         <p className="text-sm text-muted-foreground">影响人物设定（如性格、背景）的创新和丰富程度。</p>
                     </div>
                 </CardContent>
@@ -144,13 +150,13 @@ export function GenerationSettingsManager() {
                 </CardHeader>
                 <CardContent className="space-y-8">
                      <div className="grid gap-2">
-                        <Label>频率惩罚 (Frequency Penalty): {localSettings.frequencyPenalty}</Label>
-                        <Slider value={[localSettings.frequencyPenalty]} onValueChange={value => handleSliderChange('frequencyPenalty', value)} min={-2.0} max={2.0} step={0.1} />
+                        <Label>频率惩罚 (Frequency Penalty): {localSettings.frequency_penalty}</Label>
+                        <Slider value={[localSettings.frequency_penalty]} onValueChange={value => handleSliderChange('frequency_penalty', value)} min={-2.0} max={2.0} step={0.1} />
                         <p className="text-sm text-muted-foreground">正值会根据词汇在文本中出现的频率来惩罚新词，降低重复同样词语的可能性。</p>
                     </div>
                      <div className="grid gap-2">
-                        <Label>存在惩罚 (Presence Penalty): {localSettings.presencePenalty}</Label>
-                        <Slider value={[localSettings.presencePenalty]} onValueChange={value => handleSliderChange('presencePenalty', value)} min={-2.0} max={2.0} step={0.1} />
+                        <Label>存在惩罚 (Presence Penalty): {localSettings.presence_penalty}</Label>
+                        <Slider value={[localSettings.presence_penalty]} onValueChange={value => handleSliderChange('presence_penalty', value)} min={-2.0} max={2.0} step={0.1} />
                         <p className="text-sm text-muted-foreground">正值会惩罚文本中已出现的任何词汇，鼓励谈论新话题。</p>
                     </div>
                 </CardContent>

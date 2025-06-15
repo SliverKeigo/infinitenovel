@@ -45,7 +45,7 @@ export const ChapterViewer = ({ chapter, onClose }: ChapterViewerProps) => {
     }}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{`第 ${chapter.chapterNumber} 章: ${chapter.title}`}</DialogTitle>
+          <DialogTitle>{`第 ${chapter.chapter_number} 章: ${chapter.title}`}</DialogTitle>
         </DialogHeader>
         <ScrollArea className="h-[70vh] rounded-md border p-4">
            <p className="text-base leading-relaxed whitespace-pre-wrap font-sans">

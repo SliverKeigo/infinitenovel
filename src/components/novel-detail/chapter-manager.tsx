@@ -71,16 +71,16 @@ export function ChapterManager() {
     return chapters
       .filter(chapter => 
         chapter.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        `第 ${chapter.chapterNumber} 章`.includes(searchTerm)
+          `第 ${chapter.chapter_number} 章`.includes(searchTerm)
       )
       .filter(chapter => 
         statusFilter === 'all' || chapter.status === statusFilter
       )
       .sort((a, b) => {
         if (sortOrder === 'asc') {
-          return a.chapterNumber - b.chapterNumber;
+          return a.chapter_number - b.chapter_number;
         }
-        return b.chapterNumber - a.chapterNumber;
+        return b.chapter_number - a.chapter_number;
       });
   }, [chapters, searchTerm, sortOrder, statusFilter]);
   
@@ -307,7 +307,7 @@ export function ChapterManager() {
                   onClick={() => setViewingChapter(chapter)}
                 >
                   <div className="flex items-center">
-                    <span className="text-sm font-medium mr-2">第 {chapter.chapterNumber} 章</span>
+                    <span className="text-sm font-medium mr-2">第 {chapter.chapter_number} 章</span>
                     <span>{chapter.title}</span>
                     {isNonCompliant(chapterId) && (
                       <Badge variant="destructive" className="ml-2">
@@ -321,7 +321,7 @@ export function ChapterManager() {
                     ) : (
                       <Badge variant="default" className="font-normal bg-green-100 text-green-700">已发布</Badge>
                     )}
-                    <Badge variant="outline" className="font-normal">{chapter.wordCount.toLocaleString()}字</Badge>
+                    <Badge variant="outline" className="font-normal">{chapter.word_count.toLocaleString()}字</Badge>
                     {isNonCompliant(chapterId) && (
                       <Button
                         variant="ghost" 

@@ -38,16 +38,16 @@ export const BasicInfoCard = () => {
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-muted-foreground">创建时间</span>
-          <span className="font-semibold">{format(currentNovel.createdAt, 'yyyy/MM/dd HH:mm')}</span>
+          <span className="font-semibold">{format(currentNovel.created_at, 'yyyy/MM/dd HH:mm')}</span>
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-muted-foreground">目标章节</span>
-          <span className="font-semibold">{currentNovel.totalChapterGoal ?? 0} 章</span>
+          <span className="font-semibold">{currentNovel.total_chapter_goal ?? 0} 章</span>
         </div>
          <div className="flex flex-col gap-1">
           <span className="text-muted-foreground">当前状态</span>
           <div className="font-semibold">
-              {currentNovel.chapterCount >= currentNovel.totalChapterGoal ? <Badge variant="success">已完结</Badge> : <Badge variant="secondary">生成中</Badge>}
+              {currentNovel.chapter_count >= currentNovel.total_chapter_goal ? <Badge variant="success">已完结</Badge> : <Badge variant="secondary">生成中</Badge>}
           </div>
         </div>
       </CardContent>

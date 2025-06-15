@@ -24,10 +24,10 @@ export const KeyStats = () => {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard icon={BookCopy} label="已完成章节" value={novel.chapterCount} unit="章" />
-        <StatCard icon={BookUp} label="总字数" value={novel.wordCount} unit="字" />
-        <StatCard icon={Users} label="人物数量" value={novel.characterCount} unit="个" />
-        <StatCard icon={Repeat} label="扩写次数" value={novel.expansionCount} unit="次" />
+        <StatCard icon={BookCopy} label="已完成章节" value={novel.chapter_count} unit="章" />
+        <StatCard icon={BookUp} label="总字数" value={novel.word_count} unit="字" />
+        <StatCard icon={Users} label="人物数量" value={novel.character_count} unit="个" />
+        <StatCard icon={Repeat} label="扩写次数" value={novel.expansion_count} unit="次" />
     </div>
   );
 }; 

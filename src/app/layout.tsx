@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { Header } from "@/components/layout/Header";
 import { ClientProviders } from "@/components/layout/client-providers";
+import { AppInitializer } from "@/components/AppInitializer";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,9 +22,11 @@ export default function RootLayout({
     <html lang="zh-CN" suppressHydrationWarning>
       <body className={inter.className}>
         <ClientProviders>
-        <Header />
-        <main className="container mx-auto">{children}</main>
-        <Toaster />
+          <Header />
+          <AppInitializer>
+            <main className="container mx-auto">{children}</main>
+          </AppInitializer>
+          <Toaster />
         </ClientProviders>
       </body>
     </html>

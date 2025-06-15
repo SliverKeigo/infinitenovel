@@ -33,7 +33,7 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
 
   const handleGenerate = async () => {
     const novelId = currentNovel?.id;
-    if (!novelId || !currentNovel?.plotOutline) {
+    if (!novelId || !currentNovel?.plot_outline) {
       toast.error("缺少小说ID或故事大纲，无法生成。");
       return;
     }
@@ -45,7 +45,7 @@ export const ExpansionControlCenter = ({ onClose }: ExpansionControlCenterProps)
     }
 
     const context = {
-        plotOutline: currentNovel.plotOutline,
+        plotOutline: currentNovel.plot_outline,
         characters: characters,
         settings: settings,
     };

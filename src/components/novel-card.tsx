@@ -49,13 +49,13 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
   const router = useRouter();
 
   const wordsPerChapter =
-    novel.chapterCount > 0
-      ? Math.round(novel.wordCount / novel.chapterCount)
+    novel.chapter_count > 0
+      ? Math.round(novel.word_count / novel.chapter_count)
       : 0;
 
   const progressValue =
-    novel.totalChapterGoal > 0
-      ? (novel.chapterCount / novel.totalChapterGoal) * 100
+    novel.total_chapter_goal > 0
+      ? (novel.chapter_count / novel.total_chapter_goal) * 100
       : 0;
 
   return (
@@ -66,7 +66,7 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="default">{novel.genre}</Badge>
             <Badge variant="secondary">{novel.style}</Badge>
-            <span>创建于 {format(novel.createdAt, 'yyyy/M/d')}</span>
+            <span>创建于 {format(novel.created_at, 'yyyy/M/d')}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -100,11 +100,11 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
       <CardContent className="grid grid-cols-4 divide-x rounded-lg border bg-muted/50 p-4 text-sm">
         <div className="flex flex-col items-center gap-1">
           <BookText className="h-5 w-5 text-muted-foreground" />
-          <span>{novel.wordCount.toLocaleString()}字</span>
+          <span>{novel.word_count.toLocaleString()}字</span>
         </div>
         <div className="flex flex-col items-center gap-1">
           <Users className="h-5 w-5 text-muted-foreground" />
-          <span>{novel.characterCount}个人物</span>
+          <span>{novel.character_count}个人物</span>
         </div>
         <div className="flex flex-col items-center gap-1">
           <BarChart3 className="h-5 w-5 text-muted-foreground" />
@@ -112,14 +112,14 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
         </div>
         <div className="flex flex-col items-center gap-1">
           <Clock className="h-5 w-5 text-muted-foreground" />
-          <span>{formatUpdatedAt(novel.updatedAt)}</span>
+          <span>{formatUpdatedAt(novel.updated_at)}</span>
         </div>
       </CardContent>
       <CardFooter className="flex flex-col items-start gap-2 pt-6">
         <div className="flex w-full justify-between text-sm text-muted-foreground">
           <span>进度</span>
           <span>
-            {novel.chapterCount}/{novel.totalChapterGoal} 章
+            {novel.chapter_count}/{novel.total_chapter_goal} 章
           </span>
         </div>
         <Progress value={progressValue} aria-label={`${progressValue.toFixed(0)}% complete`} />

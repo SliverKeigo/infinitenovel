@@ -13,7 +13,6 @@ import {
   SheetFooter,
   SheetClose,
 } from '@/components/ui/sheet';
-import { db } from '@/lib/db';
 import { toast } from 'sonner';
 import { Textarea } from "@/components/ui/textarea";
 
@@ -57,7 +56,11 @@ export function DbEditorSheet({
   const handleSave = async () => {
     if (!tableName || !formData || !formData.id) return;
     try {
-      await db.table(tableName).put(formData);
+      await fetch(`/api/db/${tableName}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
       toast.success(`在表 [${tableName}] 中成功更新记录 ID: ${formData.id}`);
       onSave();
     } catch (error: any) {
