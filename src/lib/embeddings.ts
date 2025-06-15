@@ -2,8 +2,6 @@ import { ModelLoader } from './model-loader';
 import { useAIConfigStore } from '@/store/ai-config';
 import { EmbeddingSource } from '@/types/ai-config';
 import OpenAI from 'openai';
-import { db } from './db';
-
 type Pooling = 'mean' | 'none' | 'cls';
 
 /**
@@ -34,33 +32,33 @@ class OpenAIEmbeddingService implements EmbeddingService {
   private apiKey: string;
   private model: string;
   private apiBaseUrl?: string;
-  
+
   constructor(apiKey: string, model: string, apiBaseUrl?: string) {
     this.apiKey = apiKey;
     this.model = model;
     this.apiBaseUrl = apiBaseUrl;
   }
-  
+
   async embed(text: string | string[]): Promise<number[][]> {
     if (!this.apiKey) {
       throw new Error("OpenAI API密钥未设置。请在AI配置中设置有效的API密钥。");
     }
-    
+
     const openai = new OpenAI({
       apiKey: this.apiKey,
       baseURL: this.apiBaseUrl,
       dangerouslyAllowBrowser: true,
     });
-    
+
     // 确保文本是数组形式
     const textArray = Array.isArray(text) ? text : [text];
-    
+
     try {
       const response = await openai.embeddings.create({
         model: this.model,
         input: textArray,
       });
-      
+
       // 提取嵌入向量
       return response.data.map(item => item.embedding);
     } catch (error) {
@@ -77,42 +75,43 @@ class EmbeddingServiceFactory {
   static async createService(): Promise<EmbeddingService> {
     const store = useAIConfigStore.getState();
     const config = store.getEmbeddingConfig();
-    
+
     if (config.source === 'browser') {
       return new BrowserEmbeddingService();
     } else if (config.source === 'api') {
       // 检查是否使用独立配置
-      if (store.useIndependentEmbeddingConfig && store.embeddingApiKey) {
+      if (store.use_independent_embedding_config && store.embedding_api_key) {
         return new OpenAIEmbeddingService(
-          store.embeddingApiKey, 
-          store.embeddingModel, 
-          store.embeddingApiBaseUrl || undefined
+          store.embedding_api_key,
+          store.embedding_model,
+          store.embedding_api_base_url || undefined
         );
       }
-      
+
       // 如果使用API但没有apiKey，尝试从数据库获取
       let apiKey = config.apiKey;
       let apiBaseUrl = config.apiBaseUrl;
-      
+
       if (!apiKey) {
         const activeConfigId = store.activeConfigId;
         if (activeConfigId) {
-          const activeConfig = await db.aiConfigs.get(activeConfigId);
+          const activeConfigResponse = await fetch(`/api/ai-configs/${activeConfigId}`);
+          const activeConfig = await activeConfigResponse.json();
           if (activeConfig) {
-            apiKey = activeConfig.apiKey;
-            apiBaseUrl = activeConfig.apiBaseUrl;
+            apiKey = activeConfig.api_key;
+            apiBaseUrl = activeConfig.api_base_url;
           }
         }
       }
-      
+
       if (!apiKey) {
         console.warn("未找到有效的API密钥，回退到浏览器嵌入模型");
         return new BrowserEmbeddingService();
       }
-      
+
       return new OpenAIEmbeddingService(apiKey, config.model, apiBaseUrl);
     }
-    
+
     // 默认使用浏览器嵌入
     return new BrowserEmbeddingService();
   }
@@ -123,18 +122,18 @@ class EmbeddingServiceFactory {
  */
 class EmbeddingManager {
   private static service: EmbeddingService | null = null;
-  
+
   static async getService(): Promise<EmbeddingService> {
     if (!this.service) {
       this.service = await EmbeddingServiceFactory.createService();
     }
     return this.service;
   }
-  
+
   static resetService() {
     this.service = null;
   }
-  
+
   static async embed(text: string | string[], options: { pooling?: Pooling; normalize?: boolean } = { pooling: 'mean', normalize: true }): Promise<number[][]> {
     const service = await this.getService();
     return service.embed(text, options);

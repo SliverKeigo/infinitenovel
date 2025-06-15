@@ -22,6 +22,7 @@ import {
 import { CHAPTER_WORD_TARGET, CHAPTER_WORD_TOLERANCE } from '../constants';
 import { retrieveRelevantContext, formatRetrievedContextForPrompt } from '../utils/rag-utils';
 import { callOpenAIWithRetry } from '../utils/ai-utils';
+import { Novel } from '@/types/novel';
 
 /**
  * 生成单个新章节的上下文接口
@@ -122,7 +123,7 @@ ${nextStage.coreSummary}
  * 生成单个新章节
  * @param get - Zustand的get函数
  * @param set - Zustand的set函数
- * @param novelId - 小说ID
+ * @param novel - 小说对象
  * @param context - 生成上下文
  * @param userPrompt - 用户提供的额外提示
  * @param chapterToGenerate - 要生成的章节编号
@@ -130,7 +131,7 @@ ${nextStage.coreSummary}
 export const generateNewChapter = async (
   get: () => any,
   set: (partial: any) => void,
-  novelId: number,
+  novel: Novel,
   context: ChapterGenerationContext,
   userPrompt: string | undefined,
   chapterToGenerate: number,
@@ -176,8 +177,8 @@ export const generateNewChapter = async (
   const actualSegmentsPerChapter = segments_per_chapter && segments_per_chapter > 0 ? segments_per_chapter : 1;
   console.log(`[诊断] 实际使用的每章场景数量: ${actualSegmentsPerChapter}`);
 
-  const novel = get().currentNovel;
-  if (!novel) throw new Error("未找到当前小说");
+  if (!novel) throw new Error("未找到当前小说，无法生成章节。");
+  if (!novel.id) throw new Error("小说ID无效，无法生成章节。");
 
   // [新增] 获取角色行为准则
   const characterBehaviorRules = await getOrCreateCharacterRules(novel.id);
@@ -245,26 +246,26 @@ ${start}...
   }
 
   // [新增] 最高优先级上下文（仅在第一章时注入）
-  const userRequirementsContext = (novel.specialRequirements && chapterToGenerate === 1) ? `
-【最高优先级上下文：用户核心要求】
-你必须首先阅读并完全理解以下由用户提供的核心设定。你生成的所有内容，都必须与此设定完美保持一致，尤其是关于主角的背景和故事的开篇事件。
----
-${novel.specialRequirements}
----
-` : '';
+  let userRequirementsContext = "";
+  if (userPrompt) {
+    userRequirementsContext = `【用户额外要求】\n${userPrompt}\n`;
+  } else if (novel.special_requirements) {
+    // 如果没有临时的用户要求，则使用小说自身的特殊要求
+    userRequirementsContext = `【小说核心设定】\n${novel.special_requirements}\n`;
+  }
 
   // [修改] 获取风格指导，优先使用保存的定制风格指导
   let styleGuide = "";
   try {
     // 如果小说已有保存的风格指导，则直接使用
-    if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
+    if (novel.style_guide && novel.style_guide.trim().length > 0) {
       console.log("[风格指导] 使用已保存的定制风格指导");
-      styleGuide = novel.styleGuide;
+      styleGuide = novel.style_guide;
     } else {
       // 如果是第一章，尝试生成并保存定制风格指导
       if (chapterToGenerate === 1) {
         console.log("[风格指导] 正在生成定制风格指导");
-        styleGuide = await getOrCreateStyleGuide(novelId);
+        styleGuide = await getOrCreateStyleGuide(novel.id);
       } else {
         // 如果不是第一章且没有保存的风格指导，使用默认生成方式
         console.log("[风格指导] 使用默认风格指导生成方式");
@@ -320,7 +321,7 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 ---
 
 **大纲进度追踪:**
-当前小说总体进度: 已完成 ${nextChapterNumber - 1} 章 / 计划总章节 ${novel.totalChapterGoal || "未知"} 章
+当前小说总体进度: 已完成 ${nextChapterNumber - 1} 章 / 计划总章节 ${novel.total_chapter_goal || "未知"} 章
 大纲中详细规划的章节数: ${countDetailedChaptersInOutline(chapterOnlyOutline)} 章
 根据预期进度，本章应实现的大纲内容: 第 ${nextChapterNumber} 章的全部内容
 ---
@@ -358,8 +359,26 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 }
       `;
 
-    const decompResponse = await callOpenAIWithRetry(() => 
-      openai.chat.completions.create({
+    // const decompResponse = await callOpenAIWithRetry(() => 
+    //   openai.chat.completions.create({
+    //     model: activeConfig.model,
+    //     messages: [
+    //       {
+    //         role: 'system',
+    //         content: '你是一个只输出JSON的助手。不要包含任何解释、前缀或后缀。不要使用Markdown代码块。直接以花括号{开始你的响应，以花括号}结束。不要添加任何额外的文本。'
+    //       },
+    //       { role: 'user', content: decompositionPrompt }
+    //     ],
+    //     response_format: { type: "json_object" },
+    //     temperature: 0.5,
+    //   })
+    // );
+    
+    const apiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
         model: activeConfig.model,
         messages: [
           {
@@ -371,7 +390,14 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
         response_format: { type: "json_object" },
         temperature: 0.5,
       })
-    );
+    });
+
+    if (!apiResponse.ok) {
+      const errorText = await apiResponse.text();
+      throw new Error(`API request failed with status ${apiResponse.status}: ${errorText}`);
+    }
+
+    const decompResponse = await apiResponse.json();
 
     const decompResult = parseJsonFromAiResponse(decompResponse.choices[0].message.content || "");
     chapterTitle = decompResult.title;
@@ -500,27 +526,82 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
       }
 
-      const stream = await callOpenAIWithRetry(() => 
-        openai.chat.completions.create({
+      // const stream = await callOpenAIWithRetry(() => 
+      //   openai.chat.completions.create({
+      //     model: activeConfig.model,
+      //     messages: [{ role: 'user', content: scenePrompt }],
+      //     stream: true, // 开启流式传输
+      //     max_tokens: max_tokens,
+      //     temperature,
+      //     top_p: top_p,
+      //     frequency_penalty: frequency_penalty,
+      //     presence_penalty: presence_penalty,
+      //   })
+      // );
+      
+      const response = await fetch('/api/ai/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeConfigId: activeConfig.id,
           model: activeConfig.model,
           messages: [{ role: 'user', content: scenePrompt }],
-          stream: true, // 开启流式传输
+          stream: true,
           max_tokens: max_tokens,
           temperature,
-          top_p: top_p,
-          frequency_penalty: frequency_penalty,
-          presence_penalty: presence_penalty,
+          top_p,
+          frequency_penalty,
+          presence_penalty,
         })
-      );
+      });
 
+      if (!response.ok || !response.body) {
+        const errorText = await response.text();
+        throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
       let currentSceneContent = "";
-      for await (const chunk of stream) {
-        const token = chunk.choices[0]?.delta?.content || "";
-        if (token) {
-          set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + token }));
-          currentSceneContent += token;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep the last, possibly incomplete line
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.substring(6);
+            if (data.trim() === '[DONE]') {
+              // End of stream signal
+              break;
+            }
+            try {
+              const chunk = JSON.parse(data);
+              const token = chunk.choices[0]?.delta?.content || "";
+              if (token) {
+                set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + token }));
+                currentSceneContent += token;
+              }
+            } catch (e) {
+              // console.error("Failed to parse stream chunk", data, e);
+            }
+          }
         }
       }
+
+      // let currentSceneContent = "";
+      // for await (const chunk of stream) {
+      //   const token = chunk.choices[0]?.delta?.content || "";
+      //   if (token) {
+      //     set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + token }));
+      //     currentSceneContent += token;
+      //   }
+      // }
       // 当前场景流式结束后，将其完整内容更新到内部累积器中
       completedScenesContent += (i > 0 ? "\n\n" : "") + currentSceneContent;
 

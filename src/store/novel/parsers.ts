@@ -342,26 +342,17 @@ export interface NarrativeStage {
  * @returns 宏观叙事规划的各个阶段
  */
 export const extractNarrativeStages = (content: string): NarrativeStage[] => {
-  if (!content) return [];
-  
-  console.log(`[宏观规划提取] 开始提取宏观叙事规划，原始大纲长度: ${content.length}`);
-  
-  // 直接将传入的content作为宏观规划部分进行处理，移除之前错误的分割逻辑
-  const macroPlanningPart = content.trim();
-  
-  // 匹配多种宏观叙事阶段格式，核心是寻找括号内的 `xx-xx` 数字范围
-  // 新版Regex通过匹配以章节范围结尾的整行来识别标题，更健壮
-  const stageRegex = /^\s*(?:\*\*)?(.+?)\s*\([^)\d]*(\d+)\s*-\s*(\d+)[^)\d]*\)(?:\*\*)?\s*$/gm;
-  const stages: NarrativeStage[] = [];
-  console.log(`[宏观规划提取] 开始匹配宏观叙事阶段`);
-  
-  // 使用字符串的match方法获取所有匹配，避免使用exec的状态
-  const allMatches = Array.from(macroPlanningPart.matchAll(stageRegex));
-  console.log(`[宏观规划提取] 找到 ${allMatches.length} 个阶段匹配`);
+  console.log("[宏观规划提取] 开始匹配宏观叙事阶段");
 
-  for (let i = 0; i < allMatches.length; i++) {
-    const match = allMatches[i];
-    
+  // 将内容按详细章节大纲的分隔符分割
+  const parts = content.split(/---\s*\*\*逐章细纲\*\*\s*---/);
+  const macroPlanningPart = parts[0].trim();
+
+  const stages: NarrativeStage[] = [];
+  const regex = /^\s*\*\*(.*?)\*\*\s*\(.*?(\d+)\s*-\s*(\d+).*?\)\s*$/gm;
+  let match;
+
+  while ((match = regex.exec(macroPlanningPart)) !== null) {
     // 从第一个捕获组中分离出 stageName 和 stageTitle
     const fullTitle = match[1].trim();
     const titleParts = fullTitle.split(/:\s*/, 2);
@@ -376,8 +367,8 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
     let stageEnd = macroPlanningPart.length;
     
     // 寻找下一个阶段的开始位置
-    if (i < allMatches.length - 1) {
-      stageEnd = allMatches[i + 1].index!;
+    if (match.index! + match[0].length < macroPlanningPart.length) {
+      stageEnd = match.index! + match[0].length;
     }
    
     // 提取阶段内容

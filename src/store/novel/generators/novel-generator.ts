@@ -12,9 +12,10 @@ import {
   extractDetailedAndMacro,
   extractNarrativeStages
 } from '../parsers';
-import type { Character } from '@/types/character';
+import type { Character, CharacterCreationData } from '@/types/character';
 import { INITIAL_CHAPTER_GENERATION_COUNT } from '../constants';
 import { getOrCreateCharacterRules } from './character-rules-generator';
+import { generateNewChapter } from './chapter-generator';
 
 /**
  * 生成整本小说的章节
@@ -71,6 +72,7 @@ export const generateNovelChapters = async (
     if (!novel) {
       throw new Error("小说信息未找到。");
     }
+    set({ currentNovel: novel });
 
     // --- STAGE 0: GENERATE CUSTOM STYLE GUIDE ---
     set({ generationTask: { ...get().generationTask, progress: 2, currentStep: '正在生成定制风格指导...' } });
@@ -87,12 +89,12 @@ export const generateNovelChapters = async (
       const updatedNovel = await updatedNovelResponse.json();
       if (updatedNovel) {
         novel = updatedNovel;
+        set({ currentNovel: novel });
       } else {
         console.error("[风格指导] 无法重新获取小说对象");
       }
     } catch (error) {
       console.error("[风格指导] 定制风格指导生成失败，将使用默认风格指导:", error);
-      // 生成失败时不中断整个流程，后续会使用默认风格指导
     }
 
     // --- STAGE 1: CREATE PLOT OUTLINE ---
@@ -149,25 +151,34 @@ export const generateNovelChapters = async (
       - 核心剧情概述: [对第二幕的剧情概述]
       ...
     `;
-    const architectResponse = await openai.chat.completions.create({
-      model: activeConfig.model,
-      messages: [{ role: 'user', content: architectPrompt }],
-      temperature: settings.temperature,
+    const architectApiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: architectPrompt }],
+        temperature: settings.temperature,
+      })
     });
-    const macroOutline = architectResponse.choices[0].message.content;
-    if (!macroOutline) throw new Error("大建筑师未能生成宏观蓝图。");
-    
+    if (!architectApiResponse.ok) throw new Error(`Architect AI failed: ${await architectApiResponse.text()}`);
+    const architectResponse = await architectApiResponse.json();
+
+    let worldSetting = architectResponse.choices[0].message.content || "";
+    worldSetting = worldSetting.replace(/```markdown/g, "").replace(/```/g, "").trim();
+    set({ generationTask: { ...get().generationTask, progress: 0.2, currentStep: `世界观已构建: ${worldSetting.substring(0, 30)}...` } });
+
     // === STAGE 1B: THE ACT PLANNER ===
     set({ generationTask: { ...get().generationTask, progress: 10, currentStep: '阶段2/3: 正在策划第一幕详细情节...' } });
     
     // 从宏观蓝图中提取第一幕的信息
     const firstActRegex = /\*\*第一幕:[\s\S]*?(?=\n\n\*\*第二幕:|\s*$)/;
-    const firstActMatch = macroOutline.match(firstActRegex);
+    const firstActMatch = worldSetting.match(firstActRegex);
     if (!firstActMatch) throw new Error("无法从宏观蓝图中解析出第一幕。");
     const firstActInfo = firstActMatch[0];
 
     // 使用 extractNarrativeStages 函数来解析章节范围，代替手动正则
-    const stages = extractNarrativeStages(macroOutline);
+    const stages = extractNarrativeStages(worldSetting);
     
     let actOneStart = 1;
     let actOneEnd = 100; // 默认值
@@ -199,29 +210,38 @@ export const generateNovelChapters = async (
       - 请严格使用"第X章: [剧情摘要]"的格式。
       - **只输出逐章节大纲**，不要重复宏观规划或添加任何解释性文字。
     `;
-    const plannerResponse = await openai.chat.completions.create({
-      model: activeConfig.model, // 可以考虑为策划师使用更强的模型
-      messages: [{ role: 'user', content: plannerPrompt }],
-      temperature: settings.temperature,
+    const plannerApiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: plannerPrompt }],
+        temperature: settings.temperature,
+      })
     });
-    const detailedChapterOutline = plannerResponse.choices[0].message.content;
-    if (!detailedChapterOutline) throw new Error("幕间策划师未能生成详细章节。");
+    if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
+    const plannerResponse = await plannerApiResponse.json();
+
+    let plotOutline = plannerResponse.choices[0].message.content || "";
+    plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
+    set({ generationTask: { ...get().generationTask, progress: 0.4, currentStep: `故事大纲已生成...` } });
 
     // === STAGE 1C: COMBINE & FINALIZE ===
     set({ generationTask: { ...get().generationTask, progress: 15, currentStep: '阶段3/3: 正在整合最终大纲...' } });
     
     // 调整顺序：宏观规划在前，逐章细纲在后，使用新的分隔符
-    const finalOutline = `${macroOutline.trim()}\n\n---\n**逐章细纲**\n---\n\n${detailedChapterOutline.trim()}`;
+    const finalOutline = `${worldSetting.trim()}\n\n---\n**逐章细纲**\n---\n\n${plotOutline.trim()}`;
 
     // 使用现有的处理函数清理最终大纲
-    const plotOutline = processOutline(finalOutline);
+    const processedOutline = processOutline(finalOutline);
 
     await fetch(`/api/novels/${novelId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plot_outline: plotOutline })
+      body: JSON.stringify({ plot_outline: processedOutline })
     });
-    set({ generationTask: { ...get().generationTask, progress: 20, currentStep: '大纲创建完毕！' } });
+    set({ generationTask: { ...get().generationTask, progress: 0.6, currentStep: '大纲创建完毕！' } });
 
     // --- STAGE 1.5: CREATE NOVEL DESCRIPTION ---
     set({ generationTask: { ...get().generationTask, progress: 22, currentStep: '正在生成小说简介...' } });
@@ -247,7 +267,7 @@ export const generateNovelChapters = async (
       - 小说名称: 《${novel.name}》
       - 小说类型: ${novel.genre}
       - 写作风格: ${novel.style}
-      - 故事大纲: ${plotOutline.substring(0, 1500)}...
+      - 故事大纲: ${processedOutline.substring(0, 1500)}...
       
       ${descriptionStyleGuide}
       
@@ -259,14 +279,23 @@ export const generateNovelChapters = async (
       
       请直接输出简介内容，不要包含任何额外的标题或解释。
     `;
-
-    const descriptionResponse = await openai.chat.completions.create({
-      model: activeConfig.model,
-      messages: [{ role: 'user', content: descriptionPrompt }],
-      temperature: settings.temperature,
+    const descriptionApiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: descriptionPrompt }],
+        temperature: settings.temperature,
+      })
     });
+    if (!descriptionApiResponse.ok) throw new Error(`Description AI failed: ${await descriptionApiResponse.text()}`);
+    const descriptionResponse = await descriptionApiResponse.json();
 
-    const description = descriptionResponse.choices[0].message.content;
+    let description = descriptionResponse.choices[0].message.content || "";
+    description = description.trim();
+    set({ generationTask: { ...get().generationTask, progress: 0.8, currentStep: '小说简介已完成...' } });
+
     if (description) {
       await fetch(`/api/novels/${novelId}`, {
         method: 'PUT',
@@ -274,7 +303,6 @@ export const generateNovelChapters = async (
         body: JSON.stringify({ description })
       });
     }
-    set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '简介已生成！' } });
 
     // --- STAGE 2: CREATE CHARACTERS ---
     set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '正在创建核心角色...' } });
@@ -293,7 +321,7 @@ export const generateNovelChapters = async (
       你是一位顶级角色设计师。基于下面的小说信息和故事大纲，设计出核心角色。
       - 小说名称: 《${novel.name}》
       - 小说类型: ${novel.genre}
-      - 故事大纲: ${plotOutline.substring(0, 2000)}...
+      - 故事大纲: ${processedOutline.substring(0, 2000)}...
 
       ${characterStyleGuide}
       ${characterRules}
@@ -338,44 +366,51 @@ export const generateNovelChapters = async (
         ]
       }
     `;
-
-    const charactersResponse = await openai.chat.completions.create({
-      model: activeConfig.model,
-      messages: [
-        {
-          role: 'system',
-          content: '你是一个只输出JSON的助手。不要包含任何解释、前缀或后缀。不要使用Markdown代码块。直接以花括号{开始你的响应，以花括号}结束。不要添加任何额外的文本。'
-        },
-        { role: 'user', content: characterPrompt }
-      ],
-      response_format: { type: "json_object" },
-      temperature: settings.character_creativity,
+    const charactersApiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
+        model: activeConfig.model,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个只输出JSON的助手。不要包含任何解释、前缀或后缀。不要使用Markdown代码块。直接以花括号{开始你的响应，以花括号}结束。不要添加任何额外的文本。'
+          },
+          { role: 'user', content: characterPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: settings.character_creativity,
+      })
     });
+    if (!charactersApiResponse.ok) throw new Error(`Character AI failed: ${await charactersApiResponse.text()}`);
+    const charactersResponse = await charactersApiResponse.json();
 
-    const charactersText = charactersResponse.choices[0].message.content;
-    if (!charactersText) throw new Error("未能生成人物。");
+    const characterData = parseJsonFromAiResponse(charactersResponse.choices[0].message.content || "");
+    const initialCharacters = characterData.characters || [];
+    set({ generationTask: { ...get().generationTask, progress: 0.8, currentStep: '主角团已创建...' } });
 
-    let newCharacters: Omit<Character, 'id'>[] = [];
+    let newCharacters: CharacterCreationData[] = [];
     try {
-      const parsedCharacters = parseJsonFromAiResponse(charactersText);
+      const parsedCharacters = parseJsonFromAiResponse(charactersResponse.choices[0].message.content || "");
       
       const charactersData = parsedCharacters.characters || [];
 
       if (Array.isArray(charactersData)) {
-        newCharacters = charactersData.map((char: any) => {
+        newCharacters = charactersData.map((char: any, index: number) => {
+          // The first character generated is assumed to be the protagonist.
+          const isProtagonist = index === 0;
+          
           return {
-            novel_id: novelId,
             name: char.name || '未知姓名',
-            core_setting: char.core_setting || '无核心设定',
+            core_setting: char.coreSetting || '无核心设定', // Correctly map from camelCase
             personality: char.personality || '未知性格',
-            background_story: char.background_story || '无背景故事',
-            appearance: '',
-            relationships: '',
-            description: '',
-            background: '',
+            background_story: char.backgroundStory || '无背景故事', // Correctly map from camelCase
+            appearance: char.appearance || '',
+            relationships: char.relationships || '',
+            is_protagonist: isProtagonist,
             status: 'active',
-            created_at: new Date(),
-            updated_at: new Date()
+            description: char.description || ''
           };
         });
       } else {
@@ -384,51 +419,40 @@ export const generateNovelChapters = async (
       }
     } catch (e) {
       console.error("[角色生成] 解析AI生成的角色JSON失败:", e);
-      console.error("[角色生成] 问题响应内容:", charactersText);
+      console.error("[角色生成] 问题响应内容:", charactersResponse.choices[0].message.content);
       
       // 尝试手动解析作为最后的补救措施
       try {
         console.log("[角色生成] 尝试手动解析角色数据");
         
         // 简单的正则表达式提取角色信息
-        const nameMatches = charactersText.match(/"name"\s*:\s*"([^"]+)"/g);
-        const coreSettingMatches = charactersText.match(/"coreSetting"\s*:\s*"([^"]+)"/g);
-        const personalityMatches = charactersText.match(/"personality"\s*:\s*"([^"]+)"/g);
-        const backgroundStoryMatches = charactersText.match(/"backgroundStory"\s*:\s*"([^"]+)"/g);
+        const nameMatches = charactersResponse.choices[0].message.content?.match(/"name"\s*:\s*"([^"]+)"/g);
+        const coreSettingMatches = charactersResponse.choices[0].message.content?.match(/"coreSetting"\s*:\s*"([^"]+)"/g);
+        const personalityMatches = charactersResponse.choices[0].message.content?.match(/"personality"\s*:\s*"([^"]+)"/g);
+        const backgroundStoryMatches = charactersResponse.choices[0].message.content?.match(/"backgroundStory"\s*:\s*"([^"]+)"/g);
         
         if (nameMatches && nameMatches.length > 0) {
           console.log("[角色生成] 手动提取到角色名称:", nameMatches.length, "个");
           
           // 创建简单的角色对象
-          for (let i = 0; i < nameMatches.length; i++) {
-            const nameMatch = nameMatches[i].match(/"name"\s*:\s*"([^"]+)"/);
-            const name = nameMatch ? nameMatch[1] : `角色${i+1}`;
-
-            const coreSettingMatch = coreSettingMatches && i < coreSettingMatches.length ? 
-              coreSettingMatches[i].match(/"coreSetting"\s*:\s*"([^"]+)"/) : null;
-            const coreSetting = coreSettingMatch ? coreSettingMatch[1] : '无核心设定';
+          newCharacters = nameMatches.map((_: string, index: number) => {
+            const name = nameMatches[index]?.match(/"([^"]+)"$/)?.[1] || '未知';
+            const coreSetting = coreSettingMatches?.[index]?.match(/"([^"]+)"$/)?.[1] || '';
+            const personality = personalityMatches?.[index]?.match(/"([^"]+)"$/)?.[1] || '';
+            const backgroundStory = backgroundStoryMatches?.[index]?.match(/"([^"]+)"$/)?.[1] || '';
             
-            const personalityMatch = personalityMatches && i < personalityMatches.length ? 
-              personalityMatches[i].match(/"personality"\s*:\s*"([^"]+)"/) : null;
-            const personality = personalityMatch ? personalityMatch[1] : '未知性格';
-            
-            const backgroundStoryMatch = backgroundStoryMatches && i < backgroundStoryMatches.length ? 
-              backgroundStoryMatches[i].match(/"backgroundStory"\s*:\s*"([^"]+)"/) : null;
-            const backgroundStory = backgroundStoryMatch ? backgroundStoryMatch[1] : '无背景故事';
-            
-            newCharacters.push({
-              novel_id: novelId,
+            return {
               name: name,
               core_setting: coreSetting,
               personality: personality,
               background_story: backgroundStory,
               description: '',
-              background: '',
               appearance: '',
-              created_at: new Date(),
-              updated_at: new Date()
-            });
-          }
+              relationships: '',
+              is_protagonist: false,
+              status: 'active',
+            };
+          });
           
           console.log("[角色生成] 手动创建了", newCharacters.length, "个角色");
         } else {
@@ -442,20 +466,20 @@ export const generateNovelChapters = async (
 
     if (newCharacters.length > 0) {
       console.log("[角色生成] 成功创建", newCharacters.length, "个角色，准备保存到数据库");
-      await fetch(`/api/characters`, {
+      await fetch('/api/characters/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCharacters)
+        body: JSON.stringify({ characters: newCharacters, novelId }),
       });
       await fetch(`/api/novels/${novelId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ character_count: newCharacters.length })
       });
-      set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '核心人物创建完毕！' } });
+      set({ generationTask: { ...get().generationTask, progress: 0.8, currentStep: '核心人物创建完毕！' } });
     } else {
       console.warn("[角色生成] 未能创建任何角色");
-      set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '未生成核心人物，继续...' } });
+      set({ generationTask: { ...get().generationTask, progress: 0.8, currentStep: '未生成核心人物，继续...' } });
     }
 
     // --- STAGE 3: GENERATE CHAPTERS ---
@@ -470,21 +494,28 @@ export const generateNovelChapters = async (
       }
       const allCharacters = await allCharactersResponse.json();
       // 使用 extractDetailedAndMacro 分离出纯粹的详细大纲供章节生成器使用
-      const { detailed: detailedOutline } = extractDetailedAndMacro(plotOutline);
+      const { detailed: detailedOutline } = extractDetailedAndMacro(processedOutline);
       const generationContext = { plotOutline: detailedOutline, characters: allCharacters, settings };
 
-      const chapterProgress = 40 + (i / chaptersToGenerateCount) * 60;
+      const chapterProgress = 0.8 + (i / chaptersToGenerateCount) * 0.2;
       set({
         generationTask: {
           ...get().generationTask,
-          progress: Math.floor(chapterProgress),
+          progress: Math.floor(chapterProgress * 100),
           currentStep: `正在生成第 ${i + 1} / ${chaptersToGenerateCount} 章...`,
         },
       });
 
-      await get().buildNovelIndex(novelId);
-
-      await get().generateNewChapter(novelId, generationContext, undefined, i + 1);
+      // await get().buildNovelIndex(novelId); // Commented out as it's called prematurely
+      
+      await generateNewChapter(
+        get,
+        set,
+        novel, // Pass the novel object directly
+        generationContext,
+        undefined,
+        i + 1
+      );
       await get().saveGeneratedChapter(novelId);
     }
 
