@@ -1,8 +1,6 @@
 /**
  * 小说整体生成模块
  */
-import { db } from '@/lib/db';
-import { toast } from "sonner";
 import OpenAI from 'openai';
 import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
@@ -51,21 +49,25 @@ export const generateNovelChapters = async (
     }
     
     // 确保场景数量至少为1
-    if (!settings.segmentsPerChapter || settings.segmentsPerChapter <= 0) {
-      settings.segmentsPerChapter = 1;
+    if (!settings.segments_per_chapter || settings.segments_per_chapter <= 0) {
+      settings.segments_per_chapter = 1;
     }
 
-    const { activeConfigId } = useAIConfigStore.getState();
+    const { configs, activeConfigId } = useAIConfigStore.getState();
     if (!activeConfigId) {
       throw new Error("没有激活的AI配置，请先在AI配置页面选择。");
     }
-    const activeConfig = await db.aiConfigs.get(activeConfigId);
-    if (!activeConfig || !activeConfig.apiKey) {
+    const activeConfig = configs.find(c => c.id === activeConfigId);
+    if (!activeConfig || !activeConfig.api_key) {
       throw new Error("有效的AI配置未找到或API密钥缺失。");
     }
 
     // 获取初始小说信息
-    let novel = await db.novels.get(novelId);
+    const novelResponse = await fetch(`/api/novels/${novelId}`);
+    if (!novelResponse.ok) {
+      throw new Error("获取小说信息失败");
+    }
+    let novel = await novelResponse.json();
     if (!novel) {
       throw new Error("小说信息未找到。");
     }
@@ -78,7 +80,11 @@ export const generateNovelChapters = async (
       await generateCustomStyleGuide(novelId);
       
       // 重新获取novel对象，确保获取到最新的风格指导
-      const updatedNovel = await db.novels.get(novelId);
+      const updatedNovelResponse = await fetch(`/api/novels/${novelId}`);
+      if (!updatedNovelResponse.ok) {
+        throw new Error("获取小说信息失败");
+      }
+      const updatedNovel = await updatedNovelResponse.json();
       if (updatedNovel) {
         novel = updatedNovel;
       } else {
@@ -107,8 +113,8 @@ export const generateNovelChapters = async (
     const characterRules = await getOrCreateCharacterRules(novelId);
 
     const openai = new OpenAI({
-      apiKey: activeConfig.apiKey,
-      baseURL: activeConfig.apiBaseUrl || undefined,
+      apiKey: activeConfig.api_key,
+      baseURL: activeConfig.api_base_url || undefined,
       dangerouslyAllowBrowser: true,
     });
 
@@ -210,7 +216,11 @@ export const generateNovelChapters = async (
     // 使用现有的处理函数清理最终大纲
     const plotOutline = processOutline(finalOutline);
 
-    await db.novels.update(novelId, { plotOutline });
+    await fetch(`/api/novels/${novelId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plot_outline: plotOutline })
+    });
     set({ generationTask: { ...get().generationTask, progress: 20, currentStep: '大纲创建完毕！' } });
 
     // --- STAGE 1.5: CREATE NOVEL DESCRIPTION ---
@@ -258,7 +268,11 @@ export const generateNovelChapters = async (
 
     const description = descriptionResponse.choices[0].message.content;
     if (description) {
-      await db.novels.update(novelId, { description });
+      await fetch(`/api/novels/${novelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description })
+      });
     }
     set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '简介已生成！' } });
 
@@ -335,7 +349,7 @@ export const generateNovelChapters = async (
         { role: 'user', content: characterPrompt }
       ],
       response_format: { type: "json_object" },
-      temperature: settings.characterCreativity,
+      temperature: settings.character_creativity,
     });
 
     const charactersText = charactersResponse.choices[0].message.content;
@@ -350,18 +364,18 @@ export const generateNovelChapters = async (
       if (Array.isArray(charactersData)) {
         newCharacters = charactersData.map((char: any) => {
           return {
-            novelId: novelId,
+            novel_id: novelId,
             name: char.name || '未知姓名',
-            coreSetting: char.coreSetting || '无核心设定',
+            core_setting: char.core_setting || '无核心设定',
             personality: char.personality || '未知性格',
-            backgroundStory: char.backgroundStory || '无背景故事',
+            background_story: char.background_story || '无背景故事',
             appearance: '',
             relationships: '',
             description: '',
             background: '',
             status: 'active',
-            createdAt: new Date(),
-            updatedAt: new Date()
+            created_at: new Date(),
+            updated_at: new Date()
           };
         });
       } else {
@@ -403,16 +417,16 @@ export const generateNovelChapters = async (
             const backgroundStory = backgroundStoryMatch ? backgroundStoryMatch[1] : '无背景故事';
             
             newCharacters.push({
-              novelId: novelId,
+              novel_id: novelId,
               name: name,
-              coreSetting: coreSetting,
+              core_setting: coreSetting,
               personality: personality,
-              backgroundStory: backgroundStory,
+              background_story: backgroundStory,
               description: '',
               background: '',
               appearance: '',
-              createdAt: new Date(),
-              updatedAt: new Date()
+              created_at: new Date(),
+              updated_at: new Date()
             });
           }
           
@@ -428,8 +442,16 @@ export const generateNovelChapters = async (
 
     if (newCharacters.length > 0) {
       console.log("[角色生成] 成功创建", newCharacters.length, "个角色，准备保存到数据库");
-      await db.characters.bulkAdd(newCharacters as Character[]);
-      await db.novels.update(novelId, { characterCount: newCharacters.length });
+      await fetch(`/api/characters`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCharacters)
+      });
+      await fetch(`/api/novels/${novelId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character_count: newCharacters.length })
+      });
       set({ generationTask: { ...get().generationTask, progress: 40, currentStep: '核心人物创建完毕！' } });
     } else {
       console.warn("[角色生成] 未能创建任何角色");
@@ -442,7 +464,11 @@ export const generateNovelChapters = async (
 
     for (const i of chaptersToGenerate) {
       // 在每次循环开始时获取最新的上下文
-      const allCharacters = await db.characters.where('novelId').equals(novelId).toArray();
+      const allCharactersResponse = await fetch(`/api/characters?novelId=${novelId}`);
+      if (!allCharactersResponse.ok) {
+        throw new Error("获取角色信息失败");
+      }
+      const allCharacters = await allCharactersResponse.json();
       // 使用 extractDetailedAndMacro 分离出纯粹的详细大纲供章节生成器使用
       const { detailed: detailedOutline } = extractDetailedAndMacro(plotOutline);
       const generationContext = { plotOutline: detailedOutline, characters: allCharacters, settings };
@@ -477,6 +503,8 @@ export const generateNovelChapters = async (
       get().resetGenerationTask();
     }, 1000);
 
+    return { plotOutline };
+
   } catch (error) {
     console.error("Failed to generate novel chapters:", error);
     set({
@@ -493,5 +521,7 @@ export const generateNovelChapters = async (
     setTimeout(() => {
       get().resetGenerationTask();
     }, 3000);
+
+    return { plotOutline: null };
   }
 };

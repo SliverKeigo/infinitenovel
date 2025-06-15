@@ -3,7 +3,6 @@
  * 负责在小说写作过程中，动态地为即将到来的幕布生成详细的逐章大纲。
  */
 import OpenAI from 'openai';
-import { db } from '@/lib/db';
 import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
 import { extractDetailedAndMacro, type NarrativeStage, processOutline } from '../parsers';
@@ -27,13 +26,16 @@ export const planNextAct = async (
   const settings = await useGenerationSettingsStore.getState().getSettings();
   if (!settings) throw new Error("生成设置未找到。");
 
-  const { activeConfigId } = useAIConfigStore.getState();
+  const { configs, activeConfigId } = useAIConfigStore.getState();
   if (!activeConfigId) throw new Error("没有激活的AI配置。");
-
-  const activeConfig = await db.aiConfigs.get(activeConfigId);
-  if (!activeConfig || !activeConfig.apiKey) throw new Error("有效的AI配置未找到或API密钥缺失。");
+  const activeConfig = configs.find(c => c.id === activeConfigId);
+  if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到或API密钥缺失。");
   
-  const novel = await db.novels.get(novelId);
+  const novelResponse = await fetch(`/api/novels/${novelId}`);
+  if (!novelResponse.ok) {
+    throw new Error("获取小说信息失败。");
+  }
+  const novel = await novelResponse.json();
   if (!novel) throw new Error("小说信息未找到。");
 
   // --- 步骤 2: 构建提示词 ---
@@ -61,8 +63,8 @@ export const planNextAct = async (
 
   // --- 步骤 3: 调用 AI ---
   const openai = new OpenAI({
-    apiKey: activeConfig.apiKey,
-    baseURL: activeConfig.apiBaseUrl || undefined,
+    apiKey: activeConfig.api_key,
+    baseURL: activeConfig.api_base_url || undefined,
     dangerouslyAllowBrowser: true,
   });
 

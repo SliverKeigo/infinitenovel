@@ -2,7 +2,6 @@
  * 大纲生成和扩展相关的函数
  */
 
-import { db } from '@/lib/db';
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
 import { toast } from "sonner";
@@ -24,11 +23,15 @@ export const expandPlotOutlineIfNeeded = async (
   novelId: number, 
   force = false
 ) => {
-  const { activeConfigId } = useAIConfigStore.getState();
-  const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
-  const novel = await db.novels.get(novelId);
+  const { configs, activeConfigId } = useAIConfigStore.getState();
+  const activeConfig = activeConfigId ? configs.find(c => c.id === activeConfigId) : null;
+  const novelResponse = await fetch(`/api/novels/${novelId}`);
+  if (!novelResponse.ok) {
+    throw new Error("获取小说信息失败");
+  }
+  const novel = await novelResponse.json();
 
-  if (!novel || !activeConfig || !activeConfig.apiKey || !novel.plotOutline) {
+  if (!novel || !activeConfig || !activeConfig.api_key || !novel.plotOutline) {
     console.warn("无法扩展大纲：缺少小说、有效配置或现有大纲。");
     return;
   }
@@ -60,8 +63,8 @@ export const expandPlotOutlineIfNeeded = async (
     console.log(`[大纲扩展] 计划新增 ${OUTLINE_EXPAND_CHUNK_SIZE} 个章节，从第 ${detailedChaptersInOutline + 1} 章开始`);
 
     const openai = new OpenAI({
-      apiKey: activeConfig.apiKey,
-      baseURL: activeConfig.apiBaseUrl || undefined,
+      apiKey: activeConfig.api_key,
+      baseURL: activeConfig.api_base_url || undefined,
       dangerouslyAllowBrowser: true,
     });
 
@@ -127,7 +130,11 @@ export const expandPlotOutlineIfNeeded = async (
         
         // 将新增内容与原大纲结合
         const updatedOutline = `${novel.plotOutline}\n\n${processedNewPart.trim()}`;
-        await db.novels.update(novel.id!, { plotOutline: updatedOutline });
+        await fetch(`/api/novels/${novelId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plot_outline: updatedOutline })
+        });
         
         // 验证扩展后的章节数量
         const updatedChapterOnlyOutline = extractChapterDetailFromOutline(updatedOutline);

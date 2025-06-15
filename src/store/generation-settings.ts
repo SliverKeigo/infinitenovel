@@ -1,98 +1,115 @@
 import { create } from 'zustand';
-import { db } from '@/lib/db';
 import { GenerationSettings, PresetName } from '@/types/generation-settings';
+import { toast } from "sonner";
 
-const initialState: GenerationSettings = {
+const defaultInitialState: GenerationSettings = {
   id: 1,
-  maxTokens: 4096,
-  segmentsPerChapter: 3,
+  max_tokens: 4096,
+  segments_per_chapter: 3,
   temperature: 0.7,
-  topP: 1,
-  frequencyPenalty: 0,
-  presencePenalty: 0.2,
-  characterCreativity: 0.6,
+  top_p: 1,
+  frequency_penalty: 0,
+  presence_penalty: 0.2,
+  character_creativity: 0.6,
 };
 
 const presets: Record<PresetName, Omit<GenerationSettings, 'id'>> = {
   'Default': {
-    maxTokens: 4096,
-    segmentsPerChapter: 3,
+    max_tokens: 4096,
+    segments_per_chapter: 3,
     temperature: 0.7,
-    topP: 1,
-    frequencyPenalty: 0.2,
-    presencePenalty: 0.2,
-    characterCreativity: 0.6,
+    top_p: 1,
+    frequency_penalty: 0.2,
+    presence_penalty: 0.2,
+    character_creativity: 0.6,
   },
   'Creativity First': {
-    maxTokens: 4096,
-    segmentsPerChapter: 3,
+    max_tokens: 4096,
+    segments_per_chapter: 3,
     temperature: 0.9,
-    topP: 1,
-    frequencyPenalty: 0,
-    presencePenalty: 0.5,
-    characterCreativity: 0.9,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0.5,
+    character_creativity: 0.9,
   },
   'Logic First': {
-    maxTokens: 8000,
-    segmentsPerChapter: 2,
+    max_tokens: 8000,
+    segments_per_chapter: 2,
     temperature: 0.4,
-    topP: 0.9,
-    frequencyPenalty: 0.3,
-    presencePenalty: 0.3,
-    characterCreativity: 0.4,
+    top_p: 0.9,
+    frequency_penalty: 0.3,
+    presence_penalty: 0.3,
+    character_creativity: 0.4,
   },
   'Long-form Novel': {
-    maxTokens: 8191,
-    segmentsPerChapter: 4,
+    max_tokens: 8191,
+    segments_per_chapter: 4,
     temperature: 0.75,
-    topP: 1,
-    frequencyPenalty: 0.1,
-    presencePenalty: 0.1,
-    characterCreativity: 0.5,
+    top_p: 1,
+    frequency_penalty: 0.1,
+    presence_penalty: 0.1,
+    character_creativity: 0.5,
   },
   'Short Story': {
-    maxTokens: 4096,
-    segmentsPerChapter: 2,
+    max_tokens: 4096,
+    segments_per_chapter: 2,
     temperature: 0.8,
-    topP: 1,
-    frequencyPenalty: 0,
-    presencePenalty: 0,
-    characterCreativity: 0.7,
+    top_p: 1,
+    frequency_penalty: 0,
+    presence_penalty: 0,
+    character_creativity: 0.7,
   },
 };
 
 interface GenerationSettingsStore {
-  updateSettings: (settings: Partial<Omit<GenerationSettings, 'id'>>) => Promise<void>;
+  settings: GenerationSettings;
+  fetchSettings: () => Promise<void>;
+  updateSettings: (newSettings: Partial<Omit<GenerationSettings, 'id'>>) => Promise<void>;
   applyPreset: (presetName: PresetName) => Promise<void>;
-  getSettings: () => Promise<GenerationSettings>;
-  initializeSettings: () => Promise<void>;
+  getSettings: () => GenerationSettings;
 }
 
-export const useGenerationSettingsStore = create<GenerationSettingsStore>((set) => ({
-  updateSettings: async (settings) => {
-    const existingSettings = await db.generationSettings.get(1) || initialState;
-    await db.generationSettings.put({ ...existingSettings, ...settings, id: 1 });
+export const useGenerationSettingsStore = create<GenerationSettingsStore>((set, get) => ({
+  settings: defaultInitialState,
+  fetchSettings: async () => {
+    try {
+      const response = await fetch('/api/generation-settings');
+      if (!response.ok) {
+        throw new Error('Failed to fetch settings');
+      }
+      const settings = await response.json();
+      set({ settings });
+    } catch (error) {
+      console.error("Error fetching generation settings:", error);
+    }
+  },
+  updateSettings: async (newSettings) => {
+    try {
+      const response = await fetch('/api/generation-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to update settings' }));
+        throw new Error(errorData.error);
+      }
+      const updatedSettings = await response.json();
+      set({ settings: updatedSettings });
+    } catch (error) {
+      console.error("Error updating generation settings:", error);
+      throw error;
+    }
   },
   applyPreset: async (presetName) => {
     const presetSettings = presets[presetName];
     if (presetSettings) {
-      await db.generationSettings.put({ ...presetSettings, id: 1 });
+      await get().updateSettings(presetSettings);
     }
   },
-  getSettings: async () => {
-    const settings = await db.generationSettings.get(1);
-    if (!settings) {
-      return { ...presets['Default'], id: 1 };
-    }
-    return settings;
+  getSettings: () => {
+    return get().settings;
   },
-  initializeSettings: async () => {
-    const settings = await db.generationSettings.get(1);
-    if (!settings) {
-      console.log('未找到生成设置，正在初始化为默认值...');
-      await db.generationSettings.put({ ...presets['Default'], id: 1 });
-    }
-  }
 }));
 
 export const defaultSettings = presets['Default']; 

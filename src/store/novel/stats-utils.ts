@@ -1,7 +1,6 @@
 /**
  * 小说统计信息管理工具
  */
-import { db } from '@/lib/db';
 
 /**
  * 更新小说统计信息
@@ -12,25 +11,16 @@ export const updateNovelStats = async (
   get: () => any,
   novelId: number
 ) => {
-  const novel = await db.novels.get(novelId);
-  if (!novel) return;
-
-  const chapters = await db.chapters.where('novelId').equals(novelId).toArray();
-  const characters = await db.characters.where('novelId').equals(novelId).toArray();
-  const plotClues = await db.plotClues.where('novelId').equals(novelId).toArray();
-
-  const totalWordCount = chapters.reduce((sum, chapter) => sum + (chapter.wordCount || 0), 0);
-
-  await db.novels.update(novelId, {
-    chapterCount: chapters.length,
-    characterCount: characters.length,
-    plotClueCount: plotClues.length,
-    wordCount: totalWordCount,
-    updatedAt: new Date(),
-  });
-
-  // After updating the source of truth, refresh the state
-  await get().fetchNovelDetails(novelId);
+  try {
+    const response = await fetch(`/api/novels/${novelId}/stats`, { method: 'POST' });
+    if (!response.ok) {
+      console.error('Failed to trigger novel stats update on the server.');
+    }
+    // After updating the source of truth, refresh the state
+    await get().fetchNovelDetails(novelId);
+  } catch (error) {
+    console.error('Error calling stats update API:', error);
+  }
 };
 
 /**
@@ -42,12 +32,13 @@ export const recordExpansion = async (
   get: () => any,
   novelId: number
 ) => {
-  const novel = await db.novels.get(novelId);
-  if (novel) {
-    await db.novels.update(novelId, {
-      expansionCount: novel.expansionCount + 1,
-      updatedAt: new Date(),
-    });
+  try {
+    const response = await fetch(`/api/novels/${novelId}/record-expansion`, { method: 'POST' });
+    if (!response.ok) {
+      console.error('Failed to trigger expansion record on the server.');
+    }
     await get().fetchNovelDetails(novelId);
+  } catch (error) {
+    console.error('Error calling record expansion API:', error);
   }
 }; 

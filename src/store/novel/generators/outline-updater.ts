@@ -1,4 +1,3 @@
-import { db } from "@/lib/db";
 import type { Novel } from "@/types/novel";
 import OpenAI from "openai";
 import { parseJsonFromAiResponse } from "../parsers";
@@ -97,14 +96,14 @@ ${generatedChaptersContent}
 `;
 
   try {
-    const { activeConfigId } = useAIConfigStore.getState();
+    const { configs, activeConfigId } = useAIConfigStore.getState();
     if (!activeConfigId) throw new Error("没有激活的AI配置。");
-    const activeConfig = await db.aiConfigs.get(activeConfigId);
-    if (!activeConfig || !activeConfig.apiKey) throw new Error("有效的AI配置未找到。");
+    const activeConfig = configs.find(c => c.id === activeConfigId);
+    if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到。");
     
     const openai = new OpenAI({
-      apiKey: activeConfig.apiKey,
-      baseURL: activeConfig.apiBaseUrl || undefined,
+      apiKey: activeConfig.api_key,
+      baseURL: activeConfig.api_base_url || undefined,
       dangerouslyAllowBrowser: true,
     });
     const response = await openai.chat.completions.create({
@@ -146,7 +145,10 @@ const updateDatabaseWithDriftReport = async (
     // 1. 更新新角色
     if (driftReport.newCharacters && driftReport.newCharacters.length > 0) {
       for (const char of driftReport.newCharacters) {
-        await db.characters.add({
+        await fetch(`/api/characters`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
           name: char.name,
           description: char.description,
           coreSetting: char.description, // 使用description作为核心设定的初始值
@@ -158,6 +160,7 @@ const updateDatabaseWithDriftReport = async (
           firstAppearedInChapter: currentChapter,
           createdAt: new Date(),
           updatedAt: new Date(),
+          })
         });
         console.log(`新角色 "${char.name}" 已添加至数据库。`);
       }
@@ -166,13 +169,17 @@ const updateDatabaseWithDriftReport = async (
     // 2. 更新新情节线索
     if (driftReport.newPlotClues && driftReport.newPlotClues.length > 0) {
       for (const clue of driftReport.newPlotClues) {
-        await db.plotClues.add({
+        await fetch(`/api/plotClues`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
           title: clue.content,
           description: clue.details || '待补充',
           novelId: novelId,
           firstMentionedInChapter: currentChapter,
           createdAt: new Date(),
           updatedAt: new Date(),
+          })
         });
         console.log(`新线索 "${clue.content}" 已添加至数据库。`);
       }
@@ -237,14 +244,14 @@ ${futureOutline}
 `;
 
   try {
-    const { activeConfigId } = useAIConfigStore.getState();
+    const { configs, activeConfigId } = useAIConfigStore.getState();
     if (!activeConfigId) throw new Error("没有激活的AI配置。");
-    const activeConfig = await db.aiConfigs.get(activeConfigId);
-    if (!activeConfig || !activeConfig.apiKey) throw new Error("有效的AI配置未找到。");
+    const activeConfig = configs.find(c => c.id === activeConfigId);
+    if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到。");
     
     const openai = new OpenAI({
-      apiKey: activeConfig.apiKey,
-      baseURL: activeConfig.apiBaseUrl || undefined,
+      apiKey: activeConfig.api_key,
+      baseURL: activeConfig.api_base_url || undefined,
       dangerouslyAllowBrowser: true,
     });
     const response = await openai.chat.completions.create({

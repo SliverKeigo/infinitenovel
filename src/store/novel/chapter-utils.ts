@@ -1,7 +1,6 @@
 /**
  * 章节管理和处理工具
  */
-import { db } from '@/lib/db';
 import { toast } from "sonner";
 import OpenAI from 'openai';
 import type { Chapter } from '@/types/chapter';
@@ -9,6 +8,7 @@ import type { Character } from '@/types/character';
 import type { PlotClue } from '@/types/plot-clue';
 import { useAIConfigStore } from '@/store/ai-config';
 import { parseJsonFromAiResponse } from './parsers';
+import type { AIConfig } from "@/types/ai-config";
 
 /**
  * 保存生成的章节并分析新角色和线索
@@ -56,43 +56,37 @@ export const saveGeneratedChapter = async (
     return;
   }
 
-  // --- Step 1: Save the new chapter text first ---
+  // Chapter object to be sent to the API
   const newChapterNumber = (chapters[chapters.length - 1]?.chapterNumber || 0) + 1;
-  const newChapter: Omit<Chapter, 'id'> = {
-    novelId,
-    chapterNumber: newChapterNumber,
+  const newChapterData: Omit<Chapter, 'id' | 'createdAt' | 'updatedAt'> = {
+    novel_id: novelId,
+    chapter_number: newChapterNumber,
     title: title,
     content: content,
-    summary: content.substring(0, 200),
+    summary: '', // Summary is generated on backend
     status: 'draft',
-    wordCount: content.length,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    word_count: content.length,
+    created_at: new Date(),
+    updated_at: new Date(),
   };
-  const newChapterId = await db.chapters.add(newChapter as Chapter);
-  const savedChapter = { ...newChapter, id: newChapterId };
 
   // --- Step 2: Post-generation Analysis for new characters and plot clues ---
-  let charactersWithIds: Character[] = [];
-  let cluesWithIds: PlotClue[] = [];
+  let newCharactersForApi: Omit<Character, "id">[] = [];
+  let newCluesForApi: Omit<PlotClue, "id">[] = [];
 
   try {
-    let newCharacters: Omit<Character, "id">[] = [];
-    let newClues: Omit<PlotClue, "id">[] = [];
+    const { configs, activeConfigId } = useAIConfigStore.getState();
+    const activeConfig = configs.find((c: AIConfig) => c.id === activeConfigId);
 
-    const { activeConfigId } = useAIConfigStore.getState();
-    const activeConfig = activeConfigId ? await db.aiConfigs.get(activeConfigId) : null;
-
-    // 子任务状态上报
     const currentTask = get().generationTask;
     if (currentTask.isActive) {
       set({ generationTask: { ...currentTask, currentStep: '正在分析新角色与线索...' } });
     }
 
-    if (activeConfig && activeConfig.apiKey) {
+    if (activeConfig && activeConfig.api_key) {
       const openai = new OpenAI({
-        apiKey: activeConfig.apiKey,
-        baseURL: activeConfig.apiBaseUrl || undefined,
+        apiKey: activeConfig.api_key,
+        baseURL: activeConfig.api_base_url || undefined,
         dangerouslyAllowBrowser: true,
       });
 
@@ -136,68 +130,76 @@ export const saveGeneratedChapter = async (
         const extractedCharacters = parsedJson.newCharacters || [];
         const extractedClues = parsedJson.newPlotClues || [];
 
-        if (Array.isArray(extractedCharacters)) {
-          newCharacters = extractedCharacters.map((char: any) => ({
-            novelId,
+        if (Array.isArray(extractedCharacters) && extractedCharacters.length > 0) {
+          toast.success(`发现了 ${extractedCharacters.length} 位新角色！`);
+          newCharactersForApi = extractedCharacters.map((char: any) => ({
+            novel_id: novelId,
             name: char.name || '未知姓名',
-            coreSetting: char.coreSetting || '无设定',
+            core_setting: char.core_setting || '无设定',
             personality: '',
-            backgroundStory: char.initialRelationship ? `初次登场关系：${char.initialRelationship}` : '',
+            background_story: char.initial_relationship ? `初次登场关系：${char.initial_relationship}` : '',
             appearance: '',
             relationships: '',
             description: char.description || '无描述',
             background: char.background || '无背景',
             status: 'active',
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            created_at: new Date(), // Add dummy date to satisfy type
+            updated_at: new Date(), // Add dummy date to satisfy type
           }));
         }
 
-        if (Array.isArray(extractedClues)) {
-          newClues = extractedClues.map((clue: any) => ({
-            novelId,
+        if (Array.isArray(extractedClues) && extractedClues.length > 0) {
+          toast.success(`发现了 ${extractedClues.length} 条新线索！`);
+          newCluesForApi = extractedClues.map((clue: any) => ({
+            novel_id: novelId,
             title: clue.title || '无标题线索',
             description: clue.description || '无描述',
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            created_at: new Date(), // Add dummy date to satisfy type
+            updated_at: new Date(), // Add dummy date to satisfy type
           }));
-        }
-
-        if (newCharacters.length > 0) {
-          toast.success(`发现了 ${newCharacters.length} 位新角色！`);
-          const addedCharIds = await db.characters.bulkAdd(newCharacters as Character[], { allKeys: true });
-          charactersWithIds = newCharacters.map((char, index) => ({
-            ...char,
-            id: addedCharIds[index],
-          })) as Character[];
-        }
-        if (newClues.length > 0) {
-          toast.success(`发现了 ${newClues.length} 条新线索！`);
-          const addedClueIds = await db.plotClues.bulkAdd(newClues as PlotClue[], { allKeys: true });
-          cluesWithIds = newClues.map((clue, index) => ({
-            ...clue,
-            id: addedClueIds[index],
-          })) as PlotClue[];
         }
       }
     }
   } catch (error) {
     console.error("后处理分析失败：", error);
-    toast.error("分析新章节时出错，但章节已保存。");
+    toast.error("分析新章节时出错，但章节数据仍会尝试保存。");
   }
 
-  // --- Step 3: Optimistic state update ---
-  set((state: any) => ({
-    chapters: [...state.chapters, savedChapter],
-    characters: [...state.characters, ...charactersWithIds],
-    plotClues: [...state.plotClues, ...cluesWithIds],
-    generatedContent: null, // 清理已保存的内容
-  }));
+  try {
+    // --- Step 1 & 2 Combined: Save chapter, new characters, and clues via API ---
+    const response = await fetch('/api/chapters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            chapter: newChapterData, 
+            newCharacters: newCharactersForApi,
+            newPlotClues: newCluesForApi,
+        }),
+    });
 
-  // --- Step 4: Final novel stats update in DB ---
-  await get().updateNovelStats(novelId);
-  
-  // --- Step 5: Update vector index to include the new chapter ---
-  console.log(`[向量索引] 正在为新增章节更新向量索引...`);
-  await get().buildNovelIndex(novelId);
+    if (!response.ok) {
+        throw new Error(`API Error: ${response.statusText}`);
+    }
+
+    const { savedChapter, savedCharacters, savedPlotClues } = await response.json();
+
+    // --- Step 3: Optimistic state update ---
+    set((state: any) => ({
+        chapters: [...state.chapters, savedChapter],
+        characters: [...state.characters, ...savedCharacters],
+        plotClues: [...state.plotClues, ...savedPlotClues],
+        generatedContent: null, // Clear saved content
+    }));
+
+    // --- Step 4: Final novel stats update in DB ---
+    await get().updateNovelStats(novelId);
+    
+    // --- Step 5: Update vector index to include the new chapter ---
+    console.log(`[向量索引] 正在为新增章节更新向量索引...`);
+    await get().buildNovelIndex(novelId);
+
+  } catch (error) {
+      console.error("Failed to save chapter via API:", error);
+      toast.error("保存章节失败，请检查网络连接或查看控制台。");
+  }
 }; 

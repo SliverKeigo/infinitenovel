@@ -4,29 +4,19 @@
  */
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
-import { db } from '@/lib/db';
 import { callOpenAIWithRetry } from '../utils/ai-utils';
+import type { Novel } from '@/types/novel';
+import type { AIConfig } from '@/types/ai-config';
 
 /**
  * 为小说生成定制化的角色行为准则
- * @param novelId - 小说ID
+ * @param novel - 小说对象
+ * @param activeConfig - 激活的AI配置
  * @returns 生成的角色行为准则字符串
  */
-export const generateCharacterRules = async (novelId: number): Promise<string> => {
+export const generateCharacterRules = async (novel: Novel, activeConfig: AIConfig): Promise<string> => {
   try {
-    // 获取小说信息
-    const novel = await db.novels.get(novelId);
-    if (!novel) {
-      throw new Error("小说信息未找到");
-    }
-
-    // 获取AI配置
-    const { activeConfigId } = useAIConfigStore.getState();
-    if (!activeConfigId) {
-      throw new Error("没有激活的AI配置");
-    }
-    const activeConfig = await db.aiConfigs.get(activeConfigId);
-    if (!activeConfig || !activeConfig.apiKey) {
+    if (!activeConfig.api_key) {
       throw new Error("有效的AI配置未找到或API密钥缺失");
     }
 
@@ -34,8 +24,8 @@ export const generateCharacterRules = async (novelId: number): Promise<string> =
 
     // 创建OpenAI客户端实例
     const openai = new OpenAI({
-      apiKey: activeConfig.apiKey,
-      baseURL: activeConfig.apiBaseUrl,
+      apiKey: activeConfig.api_key,
+      baseURL: activeConfig.api_base_url || undefined,
       dangerouslyAllowBrowser: true,
     });
 
@@ -48,7 +38,7 @@ export const generateCharacterRules = async (novelId: number): Promise<string> =
 - 类型: ${novel.genre}
 - 写作风格: ${novel.style}
 - 简介: ${novel.description || '无'}
-- 特殊要求: ${novel.specialRequirements || '无'}
+- 特殊要求: ${novel.special_requirements || '无'}
 
 **你的任务:**
 创建一套包含5-8条核心原则的角色行为准则。这些准则应该能够指导AI在创作时，正确处理不同角色（或阵营、种族）的思维方式、对话风格和行为逻辑。
@@ -66,7 +56,7 @@ export const generateCharacterRules = async (novelId: number): Promise<string> =
 `;
 
     // 调用AI生成
-    const response = await callOpenAIWithRetry(() => 
+    const response = await callOpenAIWithRetry(() =>
       openai.chat.completions.create({
         model: activeConfig.model,
         messages: [{ role: 'user', content: prompt }],
@@ -77,7 +67,11 @@ export const generateCharacterRules = async (novelId: number): Promise<string> =
     const characterRules = response.choices[0].message.content || "";
 
     // 保存生成的准则到小说数据中
-    await db.novels.update(novelId, { characterBehaviorRules: characterRules });
+    await fetch(`/api/novels/${novel.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_behavior_rules: characterRules })
+    });
 
     console.log(`[角色准则] 角色行为准则生成成功，长度: ${characterRules.length}`);
     return characterRules;
@@ -94,18 +88,24 @@ export const generateCharacterRules = async (novelId: number): Promise<string> =
  * @returns 角色行为准则字符串
  */
 export const getOrCreateCharacterRules = async (novelId: number): Promise<string> => {
-  // 获取小说信息
-  const novel = await db.novels.get(novelId);
-  if (!novel) {
-    throw new Error("小说信息未找到");
-  }
+  // 1. 获取小说信息
+  const novelResponse = await fetch(`/api/novels/${novelId}`);
+  if (!novelResponse.ok) throw new Error("获取小说信息失败");
+  const novel = await novelResponse.json();
+  if (!novel) throw new Error("小说信息未找到");
 
-  // 如果已有保存的准则且不为空，则直接返回
-  if (novel.characterBehaviorRules && novel.characterBehaviorRules.trim().length > 0) {
+  // 2. 如果已有保存的准则且不为空，则直接返回
+  if (novel.character_behavior_rules && novel.character_behavior_rules.trim().length > 0) {
     console.log("[角色准则] 使用已保存的定制角色行为准则");
-    return novel.characterBehaviorRules;
+    return novel.character_behavior_rules;
   }
 
-  // 否则生成新的准则
-  return await generateCharacterRules(novelId);
+  // 3. 获取AI配置
+  const { configs, activeConfigId } = useAIConfigStore.getState();
+  if (!activeConfigId) throw new Error("没有激活的AI配置");
+  const activeConfig = configs.find(c => c.id === activeConfigId);
+  if (!activeConfig) throw new Error("有效的AI配置未找到");
+
+  // 4. 否则生成新的准则
+  return await generateCharacterRules(novel, activeConfig);
 }; 

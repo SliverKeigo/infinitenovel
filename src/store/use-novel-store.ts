@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { db } from '@/lib/db';
 import type { Novel } from '@/types/novel';
 import type { Chapter } from '@/types/chapter';
 import type { Character } from '@/types/character';
@@ -106,7 +105,7 @@ interface NovelState {
     userPrompt: string | undefined,
     chapterToGenerate: number,
   ) => Promise<void>;
-  generateNovelChapters: (novelId: number, goal: number, initialChapterGoal?: number) => Promise<void>;
+  generateNovelChapters: (novelId: number, goal: number, initialChapterGoal?: number) => Promise<{ plotOutline: string; } | { plotOutline: null; }>;
   saveGeneratedChapter: (novelId: number) => Promise<void>;
   addNovel: (novel: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline' | 'plotClueCount'>) => Promise<number | undefined>;
   deleteNovel: (id: number) => Promise<void>;
@@ -115,8 +114,8 @@ interface NovelState {
   expandPlotOutlineIfNeeded: (novelId: number, force?: boolean) => Promise<void>;
   forceExpandOutline: (novelId: number) => Promise<void>;
   resetGenerationTask: () => void;
-  publishChapter: (chapterId: number) => Promise<void>;
   checkForNextActPlanning: (novelId: number) => Promise<void>;
+  publishChapter: (chapterId: number) => Promise<void>;
 }
 
 export const useNovelStore = create<NovelState>((set, get) => ({
@@ -199,49 +198,26 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     }
 
     try {
-      const novel = await db.novels.get(novelId);
-      if (!novel || !novel.plotOutline) return;
-
-      const nextChapterNumber = (await db.chapters.where('novelId').equals(novelId).count()) + 1;
-      
-      const { detailed } = extractDetailedAndMacro(novel.plotOutline);
-      const plannedChapters = extractChapterNumbers(detailed);
-      if (plannedChapters.length === 0) return;
-      
-      const lastPlannedChapter = Math.max(...plannedChapters);
-
-      if (lastPlannedChapter - nextChapterNumber > ACT_PLANNING_THRESHOLD) {
-        // 距离足够远，无需规划
-        return;
-      }
-
-      const allStages = extractNarrativeStages(novel.plotOutline);
-      if (allStages.length <= 1) return; // 只有一个幕或者没有幕，无需规划
-
-      // 寻找下一个需要规划的幕
-      const lastPlannedStage = allStages.find(stage => stage.chapterRange.end === lastPlannedChapter);
-      if (!lastPlannedStage) return;
-
-      const nextStageIndex = allStages.findIndex(stage => stage.stageName === lastPlannedStage.stageName) + 1;
-      if (nextStageIndex >= allStages.length) return; // 已经是最后一幕了
-
-      const nextStageToPlan = allStages[nextStageIndex];
-      
-      // 检查下一幕是否已经规划过了
-      if(plannedChapters.includes(nextStageToPlan.chapterRange.start)) {
-        console.log(`[Watcher] 检测到下一幕 "${nextStageToPlan.stageName}" 已被规划，跳过。`);
-        return;
-      }
-      
       set({ isPlanningAct: true });
-      toast.info(`您已接近当前幕布的尾声，AI正在为您规划下一幕：${nextStageToPlan.stageName}`);
-
-      const newPlotOutline = await planNextAct(novelId, nextStageToPlan, novel.plotOutline);
       
-      await db.novels.update(novelId, { plotOutline: newPlotOutline });
-      
-      toast.success(`下一幕 "${nextStageToPlan.stageName}" 已规划完毕！`);
+      const response = await fetch(`/api/novels/${novelId}/plan-next-act`, {
+        method: 'POST',
+      });
 
+      if (!response.ok) {
+        throw new Error('API call failed');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.info(`AI已为您规划好下一幕：${result.message}`);
+        // 刷新小说数据以获取更新后的大纲
+        await get().fetchNovelDetails(novelId);
+      } else {
+        // 后端跳过了规划，打印消息但不是错误
+        console.log(`[Watcher] ${result.message}`);
+      }
     } catch (error) {
       console.error("[Watcher] 规划下一幕时发生错误:", error);
       toast.error(`规划下一幕时发生错误: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -251,7 +227,16 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   },
   publishChapter: async (chapterId: number) => {
     try {
-      await db.chapters.update(chapterId, { status: 'published' });
+      const response = await fetch(`/api/chapters/${chapterId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'published' }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to publish chapter');
+      }
+
       set((state) => ({
         chapters: state.chapters.map((chapter) =>
           chapter.id === chapterId ? { ...chapter, status: 'published' } : chapter

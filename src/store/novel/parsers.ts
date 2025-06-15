@@ -2,7 +2,6 @@
  * 解析相关的工具函数
  */
 
-import { log } from "console";
 
 // 标准化用于分割宏观叙事规划的正则表达式，以确保所有函数使用统一、健壮的逻辑
 const MACRO_PLANNING_SEPARATOR_REGEX = /\s*(?:---)?\s*(?:\*\*)?\s*宏观叙事规划\s*(?:\*\*)?\s*(?:---)?\s*/i;

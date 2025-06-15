@@ -7,10 +7,8 @@ import type { Character } from '@/types/character';
 import type { GenerationSettings } from '@/types/generation-settings';
 import OpenAI from "openai";
 import { useAIConfigStore } from "@/store/ai-config";
-import { db } from "@/lib/db";
 import { runOutlineUpdateCycle } from "./outline-updater";
 import { extractFutureOutline, combineWithRevisedOutline } from "../outline-utils";
-import { log } from "console";
 
 const BATCH_SIZE = 5; // 每5章执行一次大纲修正
 
@@ -51,16 +49,16 @@ export const generateChapters = async (
   });
 
   try {
-    const { activeConfigId } = useAIConfigStore.getState();
+    const { configs, activeConfigId } = useAIConfigStore.getState();
     if (!activeConfigId) throw new Error("没有激活的AI配置。");
-    const activeConfig = await db.aiConfigs.get(activeConfigId);
-    if (!activeConfig || !activeConfig.apiKey) throw new Error("有效的AI配置未找到。");
+    const activeConfig = configs.find(c => c.id === activeConfigId);
+    if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到或API密钥缺失。");
     
-    const openai = new OpenAI({
-      apiKey: activeConfig.apiKey,
-      baseURL: activeConfig.apiBaseUrl || undefined,
-      dangerouslyAllowBrowser: true,
-    });
+      const openai = new OpenAI({
+        apiKey: activeConfig.api_key,
+        baseURL: activeConfig.api_base_url || undefined,
+        dangerouslyAllowBrowser: true,
+      });
 
     let mutableOutline = context.plotOutline;
 
@@ -124,7 +122,13 @@ export const generateChapters = async (
           );
 
           mutableOutline = combineWithRevisedOutline(mutableOutline, revisedFutureOutline, nextChapterAfterBatch);
-          await db.novels.update(novelId, { plotOutline: mutableOutline });
+          if (mutableOutline !== novelForCycle.plotOutline) {
+            await fetch(`/api/novels/${novelId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ plot_outline: mutableOutline })
+            });
+          }
           get().fetchNovelDetails(novelId); // Refresh store with new outline
           console.log("大纲已动态修正并更新。");
         }

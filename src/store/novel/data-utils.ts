@@ -1,11 +1,8 @@
 /**
- * 小说数据管理工具
+ * 小说数据管理工具 (API-based)
  */
-import { db } from '@/lib/db';
-import { Voy } from 'voy-search';
 import type { Novel } from '@/types/novel';
-import type { Chapter } from '@/types/chapter';
-import type { Character } from '@/types/character';
+import { toast } from 'sonner';
 
 /**
  * 获取所有小说列表
@@ -15,8 +12,18 @@ export const fetchNovels = async (
   set: (partial: any) => void
 ) => {
   set({ loading: true });
-  const novels = await db.novels.orderBy('updatedAt').reverse().toArray();
-  set({ novels, loading: false });
+  try {
+    const response = await fetch('/api/novels');
+    if (!response.ok) {
+      throw new Error('获取小说列表失败');
+    }
+    const novels = await response.json();
+    set({ novels, loading: false });
+  } catch (error) {
+    console.error(error);
+    toast.error('加载小说列表时出错。');
+    set({ loading: false, novels: [] });
+  }
 };
 
 /**
@@ -33,24 +40,11 @@ export const fetchNovelDetails = async (
 ) => {
   set({ detailsLoading: true });
   try {
-    const novel = await db.novels.get(id);
-    if (!novel) throw new Error('Novel not found');
-
-    const chapters = await db.chapters.where('novelId').equals(id).sortBy('chapterNumber');
-    const characters = await db.characters.where('novelId').equals(id).toArray();
-    const plotClues = await db.plotClues.where('novelId').equals(id).toArray();
-    const savedIndexRecord = await db.novelVectorIndexes.get({ novelId: id });
-
-    // 尝试加载已保存的向量索引
-    let voyIndex: Voy | null = null;
-    if (savedIndexRecord && savedIndexRecord.indexDump) {
-      try {
-        voyIndex = Voy.deserialize(savedIndexRecord.indexDump);
-        console.log(`成功为小说ID ${id} 加载了已保存的向量索引。`);
-      } catch (e) {
-        console.error(`为小说ID ${id} 加载向量索引失败:`, e);
-      }
+    const response = await fetch(`/api/novels/${id}`);
+    if (!response.ok) {
+      throw new Error(`获取小说详情失败 (ID: ${id})`);
     }
+    const { novel, chapters, characters, plotClues } = await response.json();
 
     set({
       currentNovel: novel,
@@ -58,14 +52,15 @@ export const fetchNovelDetails = async (
       characters,
       plotClues,
       detailsLoading: false,
-      currentNovelIndex: voyIndex, // 设置加载到的索引或null
+      currentNovelIndex: null, // 客户端向量索引已弃用
     });
     return { novel, chapters, characters };
   } catch (error) {
-    console.error("Failed to fetch novel details:", error);
+    console.error("获取小说详情失败:", error);
+    toast.error("加载小说详情时出错。");
     set({ detailsLoading: false });
     return null;
-  } 
+  }
 };
 
 /**
@@ -76,25 +71,30 @@ export const fetchNovelDetails = async (
  */
 export const addNovel = async (
   get: () => any,
-  novelData: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline' | 'plotClueCount'>
+  novelData: Omit<Novel, 'id' | 'createdAt' | 'updatedAt' | 'wordCount' | 'chapterCount' | 'characterCount' | 'expansionCount' | 'plotOutline' | 'plotClueCount' | 'description' | 'specialRequirements'> & { description?: string; specialRequirements?: string; }
 ) => {
-  // novelData 的类型是 Omit<Novel, ...>，只包含Novel本身的属性
-  const newNovel: Omit<Novel, 'id'> = {
-    ...novelData,
-    wordCount: 0,
-    chapterCount: 0,
-    characterCount: 0,
-    expansionCount: 0,
-    plotOutline: '',
-    plotClueCount: 0,
-    description: '',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    specialRequirements: novelData.specialRequirements || '',
-  };
-  const newId = await db.novels.add(newNovel as Novel);
-  await get().fetchNovels();
-  return newId;
+  try {
+    const response = await fetch('/api/novels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(novelData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || '创建新小说失败');
+    }
+
+    const newNovel = await response.json();
+    toast.success(`小说《${newNovel.name}》已创建！`);
+
+    await get().fetchNovels(); // 刷新列表
+    return newNovel.id;
+  } catch (error: any) {
+    console.error("添加小说失败:", error);
+    toast.error(`添加小说失败: ${error.message}`);
+    return null;
+  }
 };
 
 /**
@@ -106,12 +106,22 @@ export const deleteNovel = async (
   set: (partial: any) => void,
   id: number
 ) => {
-  await db.novels.delete(id);
-  await db.chapters.where('novelId').equals(id).delete();
-  await db.characters.where('novelId').equals(id).delete();
-  await db.plotClues.where('novelId').equals(id).delete();
-  await db.novelVectorIndexes.where('novelId').equals(id).delete();
-  set((state: any) => ({
-    novels: state.novels.filter((novel: Novel) => novel.id !== id),
-  }));
+  try {
+    const response = await fetch(`/api/novels/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || '删除小说失败');
+    }
+
+    toast.success('小说已成功删除。');
+    set((state: any) => ({
+      novels: state.novels.filter((novel: Novel) => novel.id !== id),
+    }));
+  } catch (error: any) {
+    console.error("删除小说失败:", error);
+    toast.error(`删除小说失败: ${error.message}`);
+  }
 }; 

@@ -4,7 +4,6 @@
  */
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
-import { db } from '@/lib/db';
 import { callOpenAIWithRetry } from '../utils/ai-utils';
 
 /**
@@ -15,18 +14,22 @@ import { callOpenAIWithRetry } from '../utils/ai-utils';
 export const generateCustomStyleGuide = async (novelId: number): Promise<string> => {
   try {
     // 获取小说信息
-    const novel = await db.novels.get(novelId);
+    const novelResponse = await fetch(`/api/novels/${novelId}`);
+    if (!novelResponse.ok) {
+      throw new Error("获取小说信息失败");
+    }
+    const novel = await novelResponse.json();
     if (!novel) {
       throw new Error("小说信息未找到");
     }
 
     // 获取AI配置
-    const { activeConfigId } = useAIConfigStore.getState();
+    const { configs, activeConfigId } = useAIConfigStore.getState();
     if (!activeConfigId) {
       throw new Error("没有激活的AI配置");
     }
-    const activeConfig = await db.aiConfigs.get(activeConfigId);
-    if (!activeConfig || !activeConfig.apiKey) {
+    const activeConfig = configs.find(c => c.id === activeConfigId);
+    if (!activeConfig || !activeConfig.api_key) {
       throw new Error("有效的AI配置未找到或API密钥缺失");
     }
 
@@ -34,8 +37,8 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
 
     // 创建OpenAI客户端实例
     const openai = new OpenAI({
-      apiKey: activeConfig.apiKey,
-      baseURL: activeConfig.apiBaseUrl,
+      apiKey: activeConfig.api_key,
+      baseURL: activeConfig.api_base_url || undefined,
       dangerouslyAllowBrowser: true,
     });
 
@@ -74,7 +77,11 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
     const styleGuide = response.choices[0].message.content || "";
 
     // 保存生成的风格指导到小说数据中
-    await db.novels.update(novelId, { styleGuide });
+    await fetch(`/api/novels/${novelId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ style_guide: styleGuide })
+    });
 
     console.log(`[风格指导] 风格指导生成成功，长度: ${styleGuide.length}`);
     return styleGuide;
@@ -92,7 +99,11 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
  */
 export const getOrCreateStyleGuide = async (novelId: number): Promise<string> => {
   // 获取小说信息
-  const novel = await db.novels.get(novelId);
+  const novelResponse = await fetch(`/api/novels/${novelId}`);
+  if (!novelResponse.ok) {
+    throw new Error("获取小说信息失败");
+  }
+  const novel = await novelResponse.json();
   if (!novel) {
     throw new Error("小说信息未找到");
   }

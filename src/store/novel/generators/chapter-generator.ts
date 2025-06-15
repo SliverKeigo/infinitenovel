@@ -2,7 +2,6 @@
  * 章节生成相关的函数
  */
 
-import { db } from '@/lib/db';
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
 import { toast } from "sonner";
@@ -140,14 +139,14 @@ export const generateNewChapter = async (
 
   console.log("[诊断] 进入 generateNewChapter (单次完整生成模式)。");
 
-  const { activeConfigId } = useAIConfigStore.getState();
-  if (!activeConfigId) throw new Error("没有激活的AI配置");
-  const activeConfig = await db.aiConfigs.get(activeConfigId);
-  if (!activeConfig || !activeConfig.apiKey) throw new Error("AI配置或API密钥无效");
-
+  const { configs, activeConfigId } = useAIConfigStore.getState();
+  if (!activeConfigId) throw new Error("没有激活的AI配置。");
+  const activeConfig = configs.find(c => c.id === activeConfigId);
+  if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到或API密钥缺失。");
+  
   const openai = new OpenAI({
-    apiKey: activeConfig.apiKey,
-    baseURL: activeConfig.apiBaseUrl,
+    apiKey: activeConfig.api_key,
+    baseURL: activeConfig.api_base_url || undefined,
     dangerouslyAllowBrowser: true,
   });
 
@@ -162,19 +161,19 @@ export const generateNewChapter = async (
   const narrativeStageGuidance = generateNarrativeStageGuidance(fullOutline, chapterToGenerate);
   
   const {
-    maxTokens,
+    max_tokens,
     temperature,
-    topP,
-    frequencyPenalty,
-    presencePenalty,
-    segmentsPerChapter,
+    top_p,
+    frequency_penalty,
+    presence_penalty,
+    segments_per_chapter,
   } = settings;
 
   // 添加诊断日志，输出实际使用的场景数量设置
-  console.log(`[诊断] 用户设置的每章场景数量: ${segmentsPerChapter}`);
+  console.log(`[诊断] 用户设置的每章场景数量: ${segments_per_chapter}`);
   
   // 确保场景数量至少为1
-  const actualSegmentsPerChapter = segmentsPerChapter && segmentsPerChapter > 0 ? segmentsPerChapter : 1;
+  const actualSegmentsPerChapter = segments_per_chapter && segments_per_chapter > 0 ? segments_per_chapter : 1;
   console.log(`[诊断] 实际使用的每章场景数量: ${actualSegmentsPerChapter}`);
 
   const novel = get().currentNovel;
@@ -506,11 +505,11 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
           model: activeConfig.model,
           messages: [{ role: 'user', content: scenePrompt }],
           stream: true, // 开启流式传输
-          max_tokens: maxTokens,
+          max_tokens: max_tokens,
           temperature,
-          top_p: topP,
-          frequency_penalty: frequencyPenalty,
-          presence_penalty: presencePenalty,
+          top_p: top_p,
+          frequency_penalty: frequency_penalty,
+          presence_penalty: presence_penalty,
         })
       );
 

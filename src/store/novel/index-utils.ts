@@ -1,7 +1,6 @@
 /**
  * 小说向量索引管理工具
  */
-import { db } from '@/lib/db';
 import { Voy } from 'voy-search';
 import { EmbeddingPipeline } from '@/lib/embeddings';
 import type { Chapter } from '@/types/chapter';
@@ -30,7 +29,10 @@ export const buildNovelIndex = async (
     }
 
     const { chapters, characters } = fetchedData;
-    const plotClues = await db.plotClues.where('novelId').equals(id).toArray();
+    
+    const plotCluesResponse = await fetch(`/api/plot-clues?novel_id=${id}`);
+    if (!plotCluesResponse.ok) throw new Error('Failed to fetch plot clues');
+    const plotClues = await plotCluesResponse.json();
 
     interface DocumentToIndex {
       id: string;
@@ -42,14 +44,14 @@ export const buildNovelIndex = async (
 
     chapters.forEach((c: Chapter) => documentsToIndex.push({
       id: `chapter-${c.id}`,
-      title: `第${c.chapterNumber}章`,
+      title: `第${c.chapter_number}章`,
       text: c.summary || c.content.substring(0, 500)
     }));
 
     characters.forEach((c: Character) => documentsToIndex.push({
       id: `character-${c.id}`,
       title: c.name,
-      text: `姓名: ${c.name}, 核心设定: ${c.coreSetting}, 性格: ${c.personality}, 背景: ${c.backgroundStory}`
+      text: `姓名: ${c.name}, 核心设定: ${c.core_setting}, 性格: ${c.personality}, 背景: ${c.background_story}`
     }));
 
     plotClues.forEach((p: PlotClue) => documentsToIndex.push({
@@ -84,9 +86,10 @@ export const buildNovelIndex = async (
     try {
       const serializedIndex = newIndex.serialize();
       // 使用 put 并指定 novelId 作为查找键，实现覆盖更新
-      await db.novelVectorIndexes.put({
-        novelId: id,
-        indexDump: serializedIndex,
+      await fetch(`/api/novels/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vector_index_dump: serializedIndex })
       });
       console.log(`成功为小说ID ${id} 保存了向量索引。`);
     } catch (e) {

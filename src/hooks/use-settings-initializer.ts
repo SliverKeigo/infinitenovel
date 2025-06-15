@@ -9,7 +9,7 @@ import { useGenerationSettingsStore } from '@/store/generation-settings';
  */
 export const useSettingsInitializer = () => {
     const [isInitiated, setIsInitiated] = useState(false);
-    const initializeSettings = useGenerationSettingsStore((state) => state.initializeSettings);
+    const initializeSettings = useGenerationSettingsStore((state) => state.fetchSettings);
 
     useEffect(() => {
         if (isInitiated) return;
