@@ -138,7 +138,6 @@ export async function buildNovelIndex(
     };
 
     const documents: DocumentToIndex[] = [];
-    chapters.forEach(c => documents.push({ id: `ch_${c.id}`, title: `章节: ${c.title}`, text: c.content }));
     characters.forEach(c => documents.push({ id: `char_${c.id}`, title: `角色: ${c.name}`, text: c.description }));
     plotClues.forEach(p => documents.push({ id: `clue_${p.id}`, title: `线索: ${p.title}`, text: p.description }));
 
