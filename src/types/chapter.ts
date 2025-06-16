@@ -20,6 +20,8 @@ export interface Chapter {
   word_count: number;
   /** 章节状态 ('draft': 草稿, 'published': 已发布) */
   status: 'draft' | 'published';
+  /** 是否已发布 */
+  is_published: boolean;
   /** 创建时间 */
   created_at: Date;
   /** 最后更新时间 */

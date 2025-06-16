@@ -37,3 +37,10 @@ export interface Novel {
   /** 最后更新时间 */
   updated_at: Date;
 }
+
+export interface GenerationTask {
+  taskId: string | null;
+  status: 'idle' | 'running' | 'completed' | 'error';
+  progress: number;
+  error: string | null;
+}
