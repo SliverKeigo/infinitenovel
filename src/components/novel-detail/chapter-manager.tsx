@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { ExpansionControlCenter } from '../novel-detail/expansion-control-center';
 import { ChapterViewer } from '../novel-detail/chapter-viewer';
+import { set } from 'date-fns';
 
 // 定义每页显示的章节数量
 const ITEMS_PER_PAGE = 10;
@@ -57,6 +58,8 @@ export function ChapterManager() {
   const [isCheckingCompliance, setIsCheckingCompliance] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishingChapter, setPublishingChapter] = useState<Chapter | null>(null);
   
   // 分页状态
   const [currentPage, setCurrentPage] = useState(1);
@@ -74,7 +77,9 @@ export function ChapterManager() {
           `第 ${chapter.chapter_number} 章`.includes(searchTerm)
       )
       .filter(chapter => 
-        statusFilter === 'all' || chapter.status === statusFilter
+        statusFilter === 'all' || 
+        (statusFilter === 'draft' && !chapter.is_published) ||
+        (statusFilter === 'published' && chapter.is_published)
       )
       .sort((a, b) => {
         if (sortOrder === 'asc') {
@@ -316,7 +321,7 @@ export function ChapterManager() {
                         )}
                     </div>
                   <div className="flex items-center space-x-2">
-                    {chapter.status === 'draft' ? (
+                    {!chapter.is_published ? (
                       <Badge variant="secondary" className="font-normal border-yellow-500/50 text-yellow-600">草稿</Badge>
                     ) : (
                       <Badge variant="default" className="font-normal bg-green-100 text-green-700">已发布</Badge>
@@ -328,19 +333,21 @@ export function ChapterManager() {
                         size="icon"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleShowNonCompliantDetails(chapter);
+                          setPublishingChapter(chapter);
+                          setDialogOpen(true);
                         }}
                       >
                         <AlertCircle className="h-4 w-4" />
                       </Button>
                     )}
-                    {chapter.status === 'draft' && (
+                    {!chapter.is_published && (
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          publishChapter(chapterId);
+                          setPublishingChapter(chapter);
+                          setIsPublishing(true);
                         }}
                       >
                         <BookUp className="h-4 w-4 mr-1" />
@@ -352,7 +359,7 @@ export function ChapterManager() {
                       size="sm" 
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleChapterClick(chapterId);
+                        setViewingChapter(chapter);
                       }}
                     >
                       查看
@@ -394,6 +401,56 @@ export function ChapterManager() {
                 )}
             </CardContent>
       
+      {/* 发布确认对话框 */}
+      <Dialog open={isPublishing} onOpenChange={(open) => {
+        if (!open) {
+          setIsPublishing(false);
+          setPublishingChapter(null);
+        } else {
+          setIsPublishing(open);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认发布章节</DialogTitle>
+            <DialogDescription>
+              您确定要发布第 {publishingChapter?.chapter_number} 章 "{publishingChapter?.title}" 吗？
+              <br />
+              发布后将不能再编辑。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsPublishing(false);
+                setPublishingChapter(null);
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!publishingChapter?.id) {
+                  toast.error("无法获取章节信息");
+                  return;
+                }
+                try {
+                  await publishChapter(publishingChapter.id);
+                  toast.success("章节发布成功！");
+                  setIsPublishing(false);
+                  setPublishingChapter(null);
+                } catch (error) {
+                  toast.error(`发布失败: ${error instanceof Error ? error.message : '未知错误'}`);
+                }
+              }}
+            >
+              确认发布
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
       {/* 不符合规划详情对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
@@ -413,7 +470,10 @@ export function ChapterManager() {
       </Dialog>
       
       {/* 章节查看器 */}
-            <ChapterViewer chapter={viewingChapter} onClose={() => setViewingChapter(null)} />
+            <ChapterViewer
+              chapter={viewingChapter}
+              onClose={() => setViewingChapter(null)}
+            />
         </Card>
     );
 } 
