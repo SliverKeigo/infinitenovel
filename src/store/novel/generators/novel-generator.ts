@@ -221,11 +221,26 @@ export const generateNovelChapters = async (
       console.warn("[Act Planner] 未能从宏观大纲中解析出第一幕的章节范围，将使用默认值 1-100。");
     }
 
-    const plannerPrompt = `
+    // === 使用固定分块生成逐章节大纲 ===
+    const CHUNK_SIZE = 30; // 每块生成的章节数
+    const plotOutlineParts: string[] = [];
+    let prevTail = ""; // 用于衔接上一块尾部情节
+
+    for (let cur = actOneStart; cur <= actOneEnd; cur += CHUNK_SIZE) {
+      const chunkStart = cur;
+      const chunkEnd = Math.min(cur + CHUNK_SIZE - 1, actOneEnd);
+
+      const continuitySection = prevTail
+        ? `\n**已生成情节衔接:**\n${prevTail}\n(请从上述情节继续，保持逻辑连续，不要重复或跳跃)\n`
+        : "";
+
+      const chunkPrompt = `
       你是一位才华横溢、深谙故事节奏的总编剧。你的任务是为一部名为《${novel.name}》的小说的**第一幕**撰写详细的、逐章的剧情大纲。
 
       **第一幕的宏观规划:**
       ${firstActInfo}
+
+      ${continuitySection}
 
       **你的核心原则:**
       - **放慢节奏**: 这是最高指令！你必须将上述的"核心剧情概述"分解成无数个微小的步骤、挑战、人物互动和支线任务。
@@ -234,28 +249,45 @@ export const generateNovelChapters = async (
       - **遵守初始设定**: 如果小说的 "核心设定与特殊要求" (${novel.special_requirements || '无'}) 中包含了开篇情节，第一章必须严格遵循该设定。
 
       **你的任务:**
-      - 根据上述宏观规划，为第一幕（从第 ${actOneStart} 章到第 ${actOneEnd} 章）生成**逐章节**剧情大纲。
+      - 根据上述宏观规划，为第一幕（从第 ${chunkStart} 章到第 ${chunkEnd} 章）生成**逐章节**剧情大纲。
       - 每章大纲应为50-100字的具体事件描述。
 
       **输出格式:**
       - 请严格使用"第X章: [剧情摘要]"的格式。
       - **只输出逐章节大纲**，不要重复宏观规划或添加任何解释性文字。
-    `;
-    const plannerApiResponse = await fetch('/api/ai/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        activeConfigId: activeConfig.id,
-        model: activeConfig.model,
-        messages: [{ role: 'user', content: plannerPrompt }],
-        temperature: settings.temperature,
-      })
-    });
-    if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
-    const plannerResponse = await plannerApiResponse.json() as { choices: { message: { content: string } }[] };
+      `;
 
-    let plotOutline = plannerResponse.choices[0].message.content || "";
-    plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
+      const chunkResponse = await fetch('/api/ai/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeConfigId: activeConfig.id,
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: chunkPrompt }],
+          temperature: settings.temperature,
+        })
+      });
+      if (!chunkResponse.ok) throw new Error(`Planner AI failed (chunk ${chunkStart}-${chunkEnd}): ${await chunkResponse.text()}`);
+      const chunkJson = await chunkResponse.json() as { choices: { message: { content: string } }[] };
+      let chunkOutline = chunkJson.choices[0].message.content || "";
+      chunkOutline = chunkOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
+
+      plotOutlineParts.push(chunkOutline);
+
+      // 取当前块最后 3 章用于下一块衔接
+      const outlineLines = chunkOutline.split('\n').filter(Boolean);
+      prevTail = outlineLines.slice(-3).join('\n');
+
+      const progressRatio = (chunkEnd - actOneStart + 1) / (actOneEnd - actOneStart + 1);
+      set({ generationTask: { ...get().generationTask, progress: 10 + progressRatio * 30, currentStep: `已生成章节 ${chunkEnd}/${actOneEnd}...` } });
+    }
+
+    let plotOutline = plotOutlineParts.join('\n');
+
+    if (!plotOutline) throw new Error("未能生成任何章节大纲");
+
+    console.log(`[Act Planner] 分块生成完成，总章节 ${actOneEnd - actOneStart + 1}`);
+
     set({ generationTask: { ...get().generationTask, progress: 40, currentStep: `故事大纲已生成...` } });
 
     // === STAGE 1C: COMBINE & FINALIZE ===
