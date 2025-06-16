@@ -21,4 +21,4 @@ export interface EmbeddingConfig {
   model: string;
   apiKey?: string;
   apiBaseUrl?: string;
-}
+} 
