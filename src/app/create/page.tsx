@@ -157,7 +157,7 @@ export default function CreateNovelPage() {
       name: '',
       genre: '',
       style: '',
-      initialChapterGoal: 5,
+      initialChapterGoal: 3,
       totalChapterGoal: 200,
       specialRequirements: '',
     },
@@ -167,7 +167,21 @@ export default function CreateNovelPage() {
     setSubmittedValues(values);
     try {
       toast.info("正在创建小说设定...");
-      const newNovelId = await addNovel(values);
+      
+      // 构建完整的小说数据对象
+      const novelData = {
+        ...values,
+        total_chapter_goal: values.totalChapterGoal, // 重命名以匹配数据库字段
+        word_count: 0,                    // 初始字数为0
+        chapter_count: 0,                 // 初始章节数为0
+        character_count: 0,               // 初始角色数为0
+        expansion_count: 0,               // 初始扩写次数为0
+        plot_clue_count: 0,              // 初始线索数为0
+        created_at: new Date(),          // 创建时间
+        updated_at: new Date(),          // 更新时间
+      };
+      
+      const newNovelId = await addNovel(novelData);
       if (newNovelId) {
         toast.success("小说设定创建成功！正在启动生成引擎...");
         await generateNovelChapters(newNovelId, values.totalChapterGoal, values.initialChapterGoal);
@@ -175,9 +189,9 @@ export default function CreateNovelPage() {
         throw new Error('创建小说失败，未能获取到ID。');
       }
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : '未知错误';
-        console.error("Failed to create novel:", errorMessage);
-        toast.error(`创建失败: ${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      console.error("Failed to create novel:", errorMessage);
+      toast.error(`创建失败: ${errorMessage}`);
     }
   }
 
