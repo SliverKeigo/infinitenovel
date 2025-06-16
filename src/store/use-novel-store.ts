@@ -11,6 +11,7 @@ import OpenAI from 'openai';
 import { toast } from "sonner";
 import type { GenerationSettings } from '@/types/generation-settings';
 import { APIError } from 'openai/error';
+import type { GenerationTask } from '@/types/novel';
 
 // 导入拆分出去的常量和工具函数
 import {
@@ -55,14 +56,6 @@ interface DocumentToIndex {
   id: string;
   title: string;
   text: string;
-}
-
-interface GenerationTask {
-  isActive: boolean;
-  progress: number;
-  currentStep: string;
-  novelId: number | null;
-  mode: 'create' | 'continue' | 'idle'; // 添加mode字段，用于区分创建新小说和续写现有小说
 }
 
 interface NovelState {
@@ -139,10 +132,11 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   isPlanningAct: false,
   generatedContent: null,
   generationTask: {
-    taskId: null,
-    status: 'idle',
+    isActive: false,
     progress: 0,
-    error: null
+    currentStep: '空闲',
+    novelId: null,
+    mode: 'idle'
   },
 
   // 获取小说列表
