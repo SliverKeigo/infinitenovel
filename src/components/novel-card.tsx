@@ -13,7 +13,7 @@ import {
   BarChart3,
   Trash2,
 } from 'lucide-react';
-
+import { useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,9 +32,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
 import { useRouter } from 'next/navigation';
+
 interface NovelCardProps {
   novel: Novel;
-  onDelete: (novel: Novel) => void;
+  onDelete: (novel: Novel, e: React.MouseEvent<Element, MouseEvent>) => void;
 }
 
 export function NovelCard({ novel, onDelete }: NovelCardProps) {
@@ -58,8 +59,29 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
       ? (novel.chapter_count / novel.total_chapter_goal) * 100
       : 0;
 
+  const handleViewClick = useCallback((e: React.MouseEvent<Element, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(`/manage/${novel.id}`);
+  }, [novel.id, router]);
+
+  const handleDeleteClick = useCallback((e: React.MouseEvent<Element, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onDelete(novel, e);
+  }, [novel, onDelete]);
+
+  const handleDropdownTriggerClick = useCallback((e: React.MouseEvent<Element, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleCardClick = useCallback((e: React.MouseEvent<Element, MouseEvent>) => {
+    e.stopPropagation();
+  }, []);
+
   return (
-    <Card>
+    <Card onClick={handleCardClick}>
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl font-bold">{novel.name}</h2>
@@ -70,24 +92,24 @@ export function NovelCard({ novel, onDelete }: NovelCardProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push(`/manage/${novel.id}`)}>
+          <Button variant="outline" size="sm" onClick={handleViewClick}>
             <Eye className="mr-2 h-4 w-4" />
             查看
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" onClick={handleDropdownTriggerClick}>
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" onClick={handleCardClick}>
               <DropdownMenuLabel>更多操作</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-red-500"
+                onClick={handleDeleteClick}
                 onSelect={(e) => {
-                  e.stopPropagation();
-                  onDelete(novel);
+                  e.preventDefault();
                 }}
               >
                 <Trash2 className="mr-2 h-4 w-4" />

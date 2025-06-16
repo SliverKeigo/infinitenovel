@@ -40,17 +40,22 @@ export default function ManagePage() {
     }
   };
 
-  const handleDeleteRequest = (novel: Novel) => {
+  const handleDeleteRequest = (novel: Novel, e: React.MouseEvent<Element, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
     setSelectedNovel(novel);
     setShowDeleteDialog(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (selectedNovel?.id) {
-      deleteNovel(selectedNovel.id);
+      await deleteNovel(selectedNovel.id);
+      setShowDeleteDialog(false);
+      setSelectedNovel(null);
+      // 重新加载当前页面的数据
+      await fetchNovels(currentPage, pageSize);
     }
-    setShowDeleteDialog(false);
-    setSelectedNovel(null);
   };
 
   return (
@@ -73,12 +78,14 @@ export default function ManagePage() {
         ) : novels.length > 0 ? (
           <>
             {novels.map((novel) => (
-              <Link href={`/manage/${novel.id}`} key={novel.id} className="block">
-                <NovelCard
-                  novel={novel}
-                  onDelete={() => handleDeleteRequest(novel)}
-                />
-              </Link>
+              <div key={novel.id} className="relative" onClick={(e) => e.stopPropagation()}>
+                <Link href={`/manage/${novel.id}`} className="block">
+                  <NovelCard
+                    novel={novel}
+                    onDelete={handleDeleteRequest}
+                  />
+                </Link>
+              </div>
             ))}
             {totalPages > 1 && (
               <div className="flex justify-center mt-8">
@@ -132,7 +139,11 @@ export default function ManagePage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>删除</AlertDialogAction>
+            <AlertDialogAction asChild>
+              <form onSubmit={confirmDelete}>
+                <Button type="submit">删除</Button>
+              </form>
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
