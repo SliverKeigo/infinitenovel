@@ -51,7 +51,7 @@ export const generateNovelChapters = async (
     if (!settings) {
       throw new Error("生成设置未找到，请先在设置页面配置。");
     }
-    
+
     // 确保场景数量至少为1
     if (!settings.segments_per_chapter || settings.segments_per_chapter <= 0) {
       settings.segments_per_chapter = 1;
@@ -79,11 +79,11 @@ export const generateNovelChapters = async (
 
     // --- STAGE 0: GENERATE CUSTOM STYLE GUIDE ---
     set({ generationTask: { ...get().generationTask, progress: 2, currentStep: '正在生成定制风格指导...' } });
-    
+
     try {
       // 生成定制风格指导
       await generateCustomStyleGuide(novelId);
-      
+
       // 重新获取novel对象，确保获取到最新的风格指导
       const updatedNovelResponse = await fetch(`/api/novels/${novelId}`);
       if (!updatedNovelResponse.ok) {
@@ -127,13 +127,13 @@ export const generateNovelChapters = async (
     set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '阶段1/3: 正在构建宏观叙事蓝图...' } });
 
     console.log("[大纲生成] 开始生成宏观叙事蓝图");
-    console.log("[大纲生成] AI配置:", { 
+    console.log("[大纲生成] AI配置:", {
       modelName: activeConfig.model,
       baseUrl: activeConfig.api_base_url
     });
 
     const architectPrompt = `
-      你是一位顶级的世界构建师和叙事战略家。请为一部名为《${novel.name}》的小说设计一个分三到五幕的宏观叙事蓝图。
+      你是一位顶级的世界构建师和叙事战略家。请为一部名为《${novel.name}》的小说设计一个符合章节上限的分幕宏观叙事蓝图。
 
       **核心信息:**
       - 小说类型: ${novel.genre}
@@ -144,7 +144,9 @@ export const generateNovelChapters = async (
       - 角色行为准则: ${characterRules}
 
       **你的任务:**
-      1.  **分配章节**: 根据 "计划总章节数" (${goal})，将整个故事划分为 3 到 5 个幕。你需要自行决定每一幕的起始和结束章节号。
+      1.  **分配章节**: 请先计算所需幕数 \(N = ⌈计划总章节数 ÷ 80⌉\)，确保 **每一幕的章节数量 ≤ 80**。
+          - 如果 N < 3, 仍使用 3 幕结构；如果 N > 12, 可将后期剧情合并, 但总幕数不得超过 12 幕。
+          - **节奏要求**: 虽然幕数可能增加, 但仍需 **缓慢推进**；切勿在前两幕就完成过多关键里程碑。
       2.  **定义每一幕**:
           - 为每一幕设定一个标题。
           - 清晰地写出你为该幕分配的 **章节范围**。
@@ -170,21 +172,21 @@ export const generateNovelChapters = async (
         temperature: settings.temperature,
       })
     });
-    
+
     console.log("[大纲生成] AI响应状态:", architectApiResponse.status);
     if (!architectApiResponse.ok) {
       const errorText = await architectApiResponse.text();
       console.error("[大纲生成] AI调用失败:", errorText);
       throw new Error(`Architect AI failed: ${errorText}`);
     }
-    
+
     const architectResponse = await architectApiResponse.json() as { choices: { message: { content: string } }[] };
     console.log("[大纲生成] AI响应成功，开始处理响应");
 
     let worldSetting = architectResponse.choices[0].message.content || "";
     worldSetting = worldSetting.replace(/```markdown/g, "").replace(/```/g, "").trim();
     console.log("[大纲生成] 宏观叙事蓝图生成完成:", worldSetting.substring(0, 100) + "...");
-    
+
     if (!worldSetting) {
       console.error("[大纲生成] 宏观叙事蓝图生成失败：响应为空");
       throw new Error("宏观叙事蓝图生成失败：AI响应为空");
@@ -196,12 +198,12 @@ export const generateNovelChapters = async (
       console.log("[大纲生成] 实际内容:", worldSetting);
       throw new Error("宏观叙事蓝图格式错误：未找到第一幕标记");
     }
-    
+
     set({ generationTask: { ...get().generationTask, progress: 0.2, currentStep: `世界观已构建: ${worldSetting.substring(0, 30)}...` } });
 
     // === STAGE 1B: THE ACT PLANNER ===
     set({ generationTask: { ...get().generationTask, progress: 10, currentStep: '阶段2/3: 正在策划第一幕详细情节...' } });
-    
+
     // 从宏观蓝图中提取第一幕的信息
     const firstActRegex = /\*\*第一幕:[\s\S]*?(?=\n\n\*\*第二幕:|\s*$)/;
     const firstActMatch = worldSetting.match(firstActRegex);
@@ -210,10 +212,10 @@ export const generateNovelChapters = async (
 
     // 使用 extractNarrativeStages 函数来解析章节范围，代替手动正则
     const stages = extractNarrativeStages(worldSetting);
-    
+
     let actOneStart = 1;
     let actOneEnd = 100; // 默认值
-    
+
     if (stages.length > 0 && stages[0].chapterRange) {
       actOneStart = stages[0].chapterRange.start;
       actOneEnd = stages[0].chapterRange.end;
@@ -221,68 +223,42 @@ export const generateNovelChapters = async (
       console.warn("[Act Planner] 未能从宏观大纲中解析出第一幕的章节范围，将使用默认值 1-100。");
     }
 
-    // === 使用固定分块生成逐章节大纲 ===
-    const CHUNK_SIZE = 30; // 每块生成的章节数
-    const plotOutlineParts: string[] = [];
-    let prevTail = ""; // 用于衔接上一块尾部情节
+    // 生成逐章节大纲
+    const plannerPrompt = `
+    你是一位才华横溢、深谙故事节奏的总编剧。你的任务是为一部名为《${novel.name}》的小说的**第一幕**撰写详细的、逐章的剧情大纲。
 
-    for (let cur = actOneStart; cur <= actOneEnd; cur += CHUNK_SIZE) {
-      const chunkStart = cur;
-      const chunkEnd = Math.min(cur + CHUNK_SIZE - 1, actOneEnd);
+    **第一幕的宏观规划:**
+    ${firstActInfo}
 
-      const continuitySection = prevTail
-        ? `\n**已生成情节衔接:**\n${prevTail}\n(请从上述情节继续，保持逻辑连续，不要重复或跳跃)\n`
-        : "";
+    **你的核心原则:**
+    - **放慢节奏**: 这是最高指令！你必须将上述的"核心剧情概述"分解成无数个微小的步骤、挑战、人物互动和支线任务。
+    - **填充细节**: 不要让主角轻易达成目标。为他设置障碍，让他与各种人相遇，让他探索世界，让他用不止一个章节去解决一个看似简单的问题。
+    - **禁止剧情飞跃**: 严禁在短短几章内完成一个重大的里程碑。例如，"赢得皇帝的信任"这个目标，应该通过数十个章节的事件和任务逐步累积来实现。
+    - **遵守初始设定**: 如果小说的 "核心设定与特殊要求" (${novel.special_requirements || '无'}) 中包含了开篇情节，第一章必须严格遵循该设定。
 
-      const chunkPrompt = `
-      你是一位才华横溢、深谙故事节奏的总编剧。你的任务是为一部名为《${novel.name}》的小说的**第一幕**撰写详细的、逐章的剧情大纲。
+    **你的任务:**
+    - 根据上述宏观规划，为第一幕（从第 ${actOneStart} 章到第 ${actOneEnd} 章）生成**逐章节**剧情大纲。
+    - 每章大纲应为50-100字的具体事件描述。
 
-      **第一幕的宏观规划:**
-      ${firstActInfo}
+    **输出格式:**
+    - 请严格使用"第X章: [剧情摘要]"的格式。
+    - **只输出逐章节大纲**，不要重复宏观规划或添加任何解释性文字。
+  `;
+    const plannerApiResponse = await fetch('/api/ai/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeConfigId: activeConfig.id,
+        model: activeConfig.model,
+        messages: [{ role: 'user', content: plannerPrompt }],
+        temperature: settings.temperature,
+      })
+    });
+    if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
+    const plannerResponse = await plannerApiResponse.json() as { choices: { message: { content: string } }[] };
 
-      ${continuitySection}
-
-      **你的核心原则:**
-      - **放慢节奏**: 这是最高指令！你必须将上述的"核心剧情概述"分解成无数个微小的步骤、挑战、人物互动和支线任务。
-      - **填充细节**: 不要让主角轻易达成目标。为他设置障碍，让他与各种人相遇，让他探索世界，让他用不止一个章节去解决一个看似简单的问题。
-      - **禁止剧情飞跃**: 严禁在短短几章内完成一个重大的里程碑。例如，"赢得皇帝的信任"这个目标，应该通过数十个章节的事件和任务逐步累积来实现。
-      - **遵守初始设定**: 如果小说的 "核心设定与特殊要求" (${novel.special_requirements || '无'}) 中包含了开篇情节，第一章必须严格遵循该设定。
-
-      **你的任务:**
-      - 根据上述宏观规划，为第一幕（从第 ${chunkStart} 章到第 ${chunkEnd} 章）生成**逐章节**剧情大纲。
-      - 每章大纲应为50-100字的具体事件描述。
-
-      **输出格式:**
-      - 请严格使用"第X章: [剧情摘要]"的格式。
-      - **只输出逐章节大纲**，不要重复宏观规划或添加任何解释性文字。
-      `;
-
-      const chunkResponse = await fetch('/api/ai/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activeConfigId: activeConfig.id,
-          model: activeConfig.model,
-          messages: [{ role: 'user', content: chunkPrompt }],
-          temperature: settings.temperature,
-        })
-      });
-      if (!chunkResponse.ok) throw new Error(`Planner AI failed (chunk ${chunkStart}-${chunkEnd}): ${await chunkResponse.text()}`);
-      const chunkJson = await chunkResponse.json() as { choices: { message: { content: string } }[] };
-      let chunkOutline = chunkJson.choices[0].message.content || "";
-      chunkOutline = chunkOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
-
-      plotOutlineParts.push(chunkOutline);
-
-      // 取当前块最后 3 章用于下一块衔接
-      const outlineLines = chunkOutline.split('\n').filter(Boolean);
-      prevTail = outlineLines.slice(-3).join('\n');
-
-      const progressRatio = (chunkEnd - actOneStart + 1) / (actOneEnd - actOneStart + 1);
-      set({ generationTask: { ...get().generationTask, progress: 10 + progressRatio * 30, currentStep: `已生成章节 ${chunkEnd}/${actOneEnd}...` } });
-    }
-
-    let plotOutline = plotOutlineParts.join('\n');
+    let plotOutline = plannerResponse.choices[0].message.content || "";
+    plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
 
     if (!plotOutline) throw new Error("未能生成任何章节大纲");
 
@@ -292,7 +268,7 @@ export const generateNovelChapters = async (
 
     // === STAGE 1C: COMBINE & FINALIZE ===
     set({ generationTask: { ...get().generationTask, progress: 45, currentStep: '阶段3/3: 正在整合最终大纲...' } });
-    
+
     // 调整顺序：宏观规划在前，逐章细纲在后，使用新的分隔符
     const finalOutline = `${worldSetting.trim()}\n\n---\n**逐章细纲**\n---\n\n${plotOutline.trim()}`;
 
@@ -456,14 +432,14 @@ export const generateNovelChapters = async (
     let newCharacters: CharacterCreationData[] = [];
     try {
       const parsedCharacters = parseJsonFromAiResponse(charactersResponse.choices[0].message.content || "");
-      
+
       const charactersData = parsedCharacters.characters || [];
 
       if (Array.isArray(charactersData)) {
         newCharacters = charactersData.map((char: any, index: number) => {
           // The first character generated is assumed to be the protagonist.
           const isProtagonist = index === 0;
-          
+
           return {
             name: char.name || '未知姓名',
             core_setting: char.coreSetting || '无核心设定', // Correctly map from camelCase
@@ -483,27 +459,27 @@ export const generateNovelChapters = async (
     } catch (e) {
       console.error("[角色生成] 解析AI生成的角色JSON失败:", e);
       console.error("[角色生成] 问题响应内容:", charactersResponse.choices[0].message.content);
-      
+
       // 尝试手动解析作为最后的补救措施
       try {
         console.log("[角色生成] 尝试手动解析角色数据");
-        
+
         // 简单的正则表达式提取角色信息
         const nameMatches = charactersResponse.choices[0].message.content?.match(/"name"\s*:\s*"([^"]+)"/g);
         const coreSettingMatches = charactersResponse.choices[0].message.content?.match(/"coreSetting"\s*:\s*"([^"]+)"/g);
         const personalityMatches = charactersResponse.choices[0].message.content?.match(/"personality"\s*:\s*"([^"]+)"/g);
         const backgroundStoryMatches = charactersResponse.choices[0].message.content?.match(/"backgroundStory"\s*:\s*"([^"]+)"/g);
-        
+
         if (nameMatches && nameMatches.length > 0) {
           console.log("[角色生成] 手动提取到角色名称:", nameMatches.length, "个");
-          
+
           // 创建简单的角色对象
           newCharacters = nameMatches.map((_: string, index: number) => {
             const name = nameMatches[index]?.match(/"([^"]+)"$/)?.[1] || '未知';
             const coreSetting = coreSettingMatches?.[index]?.match(/"([^"]+)"$/)?.[1] || '';
             const personality = personalityMatches?.[index]?.match(/"([^"]+)"$/)?.[1] || '';
             const backgroundStory = backgroundStoryMatches?.[index]?.match(/"([^"]+)"$/)?.[1] || '';
-            
+
             return {
               name: name,
               core_setting: coreSetting,
@@ -516,7 +492,7 @@ export const generateNovelChapters = async (
               status: 'active',
             };
           });
-          
+
           console.log("[角色生成] 手动创建了", newCharacters.length, "个角色");
         } else {
           throw new Error("无法手动提取角色数据");
@@ -579,7 +555,7 @@ export const generateNovelChapters = async (
         throw new Error("获取角色信息失败");
       }
       const allCharacters = await allCharactersResponse.json();
-      
+
       const generationContext = { plotOutline: processedOutline, characters: allCharacters, settings };
 
       const nextChapterNumber = maxChapterNumber + i + 1;
@@ -619,7 +595,7 @@ export const generateNovelChapters = async (
         mode: 'create',
       },
     });
-    
+
     // 延迟1秒后重置状态，确保用户能看到完成消息
     setTimeout(() => {
       get().resetGenerationTask();
@@ -638,7 +614,7 @@ export const generateNovelChapters = async (
         mode: 'create',
       },
     });
-    
+
     // 延迟3秒后重置状态，确保用户能看到错误消息
     setTimeout(() => {
       get().resetGenerationTask();
