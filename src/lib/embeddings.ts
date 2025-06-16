@@ -148,6 +148,6 @@ export const EmbeddingPipeline = {
   resetService: () => {
     EmbeddingManager.resetService();
   }
-};
+}; 
 
 export { ModelLoader }; 

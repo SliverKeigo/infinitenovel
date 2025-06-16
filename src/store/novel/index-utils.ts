@@ -2,8 +2,8 @@
  * 小说向量索引管理工具
  */
 import type { StoreApi } from 'zustand';
-import { 
-  Voy, 
+import {
+  Voy,
   type SearchResult
 } from 'voy-search';
 import { EmbeddingPipeline } from '@/lib/embeddings';
@@ -60,18 +60,18 @@ const validateEmbeddings = (embeddings: number[][]): boolean => {
       console.error(`[RAG] 向量 ${index} 维度不一致：${embedding.length} != ${dimension}`);
       return false;
     }
-    
-    const isValid = embedding.every(value => 
-      typeof value === 'number' && 
-      !Number.isNaN(value) && 
+
+    const isValid = embedding.every(value =>
+      typeof value === 'number' &&
+      !Number.isNaN(value) &&
       Number.isFinite(value)
     );
-    
+
     if (!isValid) {
       console.error(`[RAG] 向量 ${index} 包含无效值`);
       return false;
     }
-    
+
     return true;
   });
 };
@@ -86,24 +86,24 @@ const createVoyIndex = async (
   try {
     // 增加一个短暂的延迟，以确保Wasm模块已准备好
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     console.log('[RAG] 开始创建 Voy 实例...');
-    
+
     if (!validateEmbeddings(embeddings)) {
       throw new Error('向量数据验证失败');
     }
 
     const resource = formatVoyResource(documents, embeddings);
-    
+
     const voyIndex = new Voy(resource);
     console.log('[RAG] Voy 实例创建成功');
-    
+
     const testQuery = new Float32Array(embeddings[0].length).fill(0);
     const testResult = voyIndex.search(testQuery, 1) as SearchResult;
     if (!testResult || !testResult.neighbors || testResult.neighbors.length === 0) {
       throw new Error('索引验证失败');
     }
-    
+
     return voyIndex;
   } catch (error: any) {
     console.error('[RAG] 创建 Voy 实例失败:', error);
@@ -136,7 +136,7 @@ export async function buildNovelIndex(
       characters: Character[];
       plotClues: PlotClue[];
     };
-    
+
     const documents: DocumentToIndex[] = [];
     chapters.forEach(c => documents.push({ id: `ch_${c.id}`, title: `章节: ${c.title}`, text: c.content }));
     characters.forEach(c => documents.push({ id: `char_${c.id}`, title: `角色: ${c.name}`, text: c.description }));
@@ -152,7 +152,7 @@ export async function buildNovelIndex(
     // 2. 生成向量
     console.log('[RAG] 正在生成文档向量...');
     const textsToEmbed = documents.map(d => `${d.title}\n${d.text}`);
-    
+
     // 使用 EmbeddingPipeline 统一处理
     const embeddings = await EmbeddingPipeline.embed(textsToEmbed);
 
@@ -172,7 +172,7 @@ export async function buildNovelIndex(
       currentNovelIndex: voyIndex,
       currentNovelDocuments: documents,
     });
-    
+
     toast.success('小说知识库构建完成！', { id: toastId });
     if (onSuccess) onSuccess();
 
