@@ -4,6 +4,7 @@
 
 import { Voy, type SearchResult, type Neighbor } from 'voy-search';
 import { EmbeddingPipeline } from '@/lib/embeddings';
+import { toast } from 'sonner';
 
 /**
  * 表示可被索引的文档
@@ -24,61 +25,94 @@ export interface RetrievedDocument {
 }
 
 /**
+ * 检查 WebAssembly 是否可用
+ */
+const checkWebAssembly = (): boolean => {
+  try {
+    if (typeof WebAssembly === 'object' &&
+      typeof WebAssembly.instantiate === 'function') {
+      const module = new WebAssembly.Module(new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0
+      ]));
+      if (module instanceof WebAssembly.Module) {
+        const instance = new WebAssembly.Instance(module);
+        return instance instanceof WebAssembly.Instance;
+      }
+    }
+  } catch (e) {
+    return false;
+  }
+  return false;
+};
+
+/**
  * 保存向量索引到数据库
  * @param novelId - 小说ID
  * @param index - Voy向量索引
  * @param maxRetries - 最大重试次数
  */
 export const saveVectorIndex = async (
-  novelId: number, 
+  novelId: number,
   index: Voy,
   maxRetries: number = 3
 ): Promise<void> => {
-  let retryCount = 0;
-  let lastError: Error | null = null;
-
-  while (retryCount < maxRetries) {
-    try {
-      console.log(`[RAG] 开始保存小说 ${novelId} 的向量索引 (尝试 ${retryCount + 1}/${maxRetries})`);
-      
-      // 序列化索引
-      const serializedIndex = index.serialize();
-      
-      // 发送到后端API
-      const response = await fetch(`/api/novels/${novelId}/vector-index`, {
-        method: 'PUT',
-        body: serializedIndex,
-        headers: {
-          'Content-Type': 'text/plain'
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`保存向量索引失败: ${errorData.error || response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log(`[RAG] 成功保存小说 ${novelId} 的向量索引 (ID: ${result.id})`);
-      return;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      console.error(`[RAG] 保存向量索引失败 (尝试 ${retryCount + 1}/${maxRetries}):`, error);
-      
-      if (retryCount < maxRetries - 1) {
-        // 使用指数退避策略
-        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        retryCount++;
-      } else {
-        break;
-      }
+  try {
+    console.log(`[RAG] 开始保存小说 ${novelId} 的向量索引`);
+    
+    const serializedIndex = index.serialize();
+    if (!serializedIndex || typeof serializedIndex !== 'string') {
+      throw new Error('序列化失败或结果不是字符串');
     }
-  }
 
-  // 所有重试都失败了
-  console.error(`[RAG] 保存向量索引失败，已达到最大重试次数 (${maxRetries})`);
-  throw lastError || new Error('保存向量索引失败，已达到最大重试次数');
+    // 验证数据在发送前是完好的
+    Voy.deserialize(serializedIndex);
+    console.log('[RAG] 本地序列化 -> 反序列化验证通过');
+
+    const response = await fetch(`/api/novels/${novelId}/vector-index`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ data: serializedIndex }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`保存向量索引失败: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    console.log(`[RAG] 成功将索引数据发送至后端保存`);
+    toast.success('知识库已成功构建并保存！');
+
+  } catch (error) {
+    console.error(`[RAG] 保存向量索引时发生错误:`, error);
+    toast.error(`保存知识库失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    throw error;
+  }
+};
+
+/**
+ * 删除数据库中的向量索引
+ * @param novelId - 小说ID
+ */
+export const deleteVectorIndex = async (novelId: number): Promise<void> => {
+  try {
+    console.log(`[RAG] 开始删除小说 ${novelId} 的向量索引`);
+
+    const response = await fetch(`/api/novels/${novelId}/vector-index`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok && response.status !== 404) {
+      // 404 Not Found 是可接受的，意味着索引已经不存在
+      throw new Error(`删除向量索引失败: ${response.status} ${response.statusText}`);
+    }
+
+    console.log(`[RAG] 成功删除小说 ${novelId} 的向量索引（或索引本不存在）`);
+  } catch (error) {
+    console.error('[RAG] 删除向量索引失败:', error);
+    throw error;
+  }
 };
 
 /**
@@ -89,28 +123,31 @@ export const saveVectorIndex = async (
 export const loadVectorIndex = async (novelId: number): Promise<Voy | null> => {
   try {
     console.log(`[RAG] 开始加载小说 ${novelId} 的向量索引`);
-    
+
     const response = await fetch(`/api/novels/${novelId}/vector-index`);
-    
+
     if (response.status === 204) {
       console.log(`[RAG] 小说 ${novelId} 没有向量索引`);
       return null;
     }
-    
+
     if (!response.ok) {
       throw new Error(`加载向量索引失败: ${response.statusText}`);
     }
 
-    // 获取Base64编码的数据
-    const base64Data = await response.text();
-    
     try {
-      // 将Base64转换回二进制数据
-      const binaryData = Buffer.from(base64Data, 'base64');
-      
-      // 反序列化数据到新的Voy实例
-      const index = Voy.deserialize(binaryData.toString());
-      
+      const data = await response.json() as { data: string };
+
+      if (!data || !data.data) {
+        throw new Error('响应数据格式无效');
+      }
+
+      // 从 Base64 解码
+      const binaryData = Buffer.from(data.data, 'base64');
+      // 转换为二进制保真字符串
+      const finalString = binaryData.toString('latin1');
+      const index = Voy.deserialize(finalString);
+
       console.log(`[RAG] 成功加载小说 ${novelId} 的向量索引`);
       return index;
     } catch (error) {
@@ -137,31 +174,47 @@ export const retrieveRelevantContext = async (
   query: string,
   limit: number = 3
 ): Promise<string> => {
-  if (!index || documents.length === 0) {
-    console.log("[RAG] 向量索引或文档为空，跳过检索");
+  // 验证输入参数
+  if (!query.trim()) {
+    console.log("[RAG] 检索查询为空，跳过检索");
+    return "";
+  }
+
+  if (!index) {
+    console.log("[RAG] 向量索引未初始化，跳过检索");
+    return "";
+  }
+
+  if (!documents || documents.length === 0) {
+    console.log("[RAG] 文档列表为空，跳过检索");
     return "";
   }
 
   try {
+    console.log(`[RAG] 开始检索，查询: "${query.substring(0, 100)}..."`);
+    console.log(`[RAG] 文档数量: ${documents.length}, 限制数量: ${limit}`);
+
     // 使用EmbeddingPipeline对查询进行向量化
     const queryEmbedding = await EmbeddingPipeline.embed(query);
-    
+
     // 使用Voy进行向量检索
-    // 根据voy-search的API，search方法返回的是包含neighbors数组的SearchResult对象
     const searchResult: SearchResult = index.search(queryEmbedding as unknown as Float32Array, limit);
-    
+
     if (!searchResult || !searchResult.neighbors || searchResult.neighbors.length === 0) {
       console.log("[RAG] 未找到相关内容");
       return "";
     }
-    
+
     // 将检索结果与原始文档匹配
     const retrievedDocs: RetrievedDocument[] = searchResult.neighbors
       .map((neighbor: Neighbor) => {
         const docId = neighbor.id;
         const doc = documents.find(d => d.id === docId);
-        if (!doc) return null;
-        
+        if (!doc) {
+          console.log(`[RAG] 警告：找不到ID为 ${docId} 的文档`);
+          return null;
+        }
+
         return {
           id: doc.id,
           title: doc.title,
@@ -169,17 +222,23 @@ export const retrieveRelevantContext = async (
         };
       })
       .filter(Boolean) as RetrievedDocument[];
-    
+
+    if (retrievedDocs.length === 0) {
+      console.log("[RAG] 未找到有效的匹配文档");
+      return "";
+    }
+
     // 格式化检索结果为字符串
     let contextText = "【检索到的相关上下文】\n";
     retrievedDocs.forEach((doc, index) => {
       contextText += `\n${index + 1}. ${doc.title}\n${doc.text}\n`;
     });
-    
+
     console.log(`[RAG] 成功检索到 ${retrievedDocs.length} 条相关内容`);
     return contextText;
   } catch (error) {
     console.error("[RAG] 检索失败:", error);
+    // 在检索失败时返回空字符串，不中断生成流程
     return "";
   }
 };
@@ -191,7 +250,7 @@ export const retrieveRelevantContext = async (
  */
 export const formatRetrievedContextForPrompt = (retrievedContext: string): string => {
   if (!retrievedContext) return "";
-  
+
   return `
 以下是从小说的历史章节、角色设定和情节线索中检索到的相关信息，请参考这些信息确保内容的连贯性和一致性：
 

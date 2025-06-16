@@ -39,10 +39,10 @@ export async function GET(
     }
 
     // 返回序列化的数据
-    return new NextResponse(result.rows[0].index_dump, {
-      headers: {
-        'Content-Type': 'text/plain'
-      }
+    const indexDump = result.rows[0].index_dump;
+    
+    return NextResponse.json({ 
+      data: indexDump 
     });
   } catch (error) {
     console.error('[向量索引] 获取向量索引失败:', error);
@@ -83,7 +83,8 @@ export async function PUT(
     }
 
     // 获取请求体中的数据
-    const indexData = await request.text();
+    const body = await request.json();
+    const indexData = body.data;
     
     // 验证数据格式
     if (!indexData) {

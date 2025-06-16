@@ -1,7 +1,7 @@
 import { ModelLoader } from './model-loader';
 import { useAIConfigStore } from '@/store/ai-config';
-import { EmbeddingSource } from '@/types/ai-config';
 import OpenAI from 'openai';
+import { AIConfig } from '@/types/ai-config';
 type Pooling = 'mean' | 'none' | 'cls';
 
 /**
@@ -96,7 +96,7 @@ class EmbeddingServiceFactory {
         const activeConfigId = store.activeConfigId;
         if (activeConfigId) {
           const activeConfigResponse = await fetch(`/api/ai-configs/${activeConfigId}`);
-          const activeConfig = await activeConfigResponse.json();
+          const activeConfig = await activeConfigResponse.json() as AIConfig;
           if (activeConfig) {
             apiKey = activeConfig.api_key;
             apiBaseUrl = activeConfig.api_base_url;
@@ -148,4 +148,6 @@ export const EmbeddingPipeline = {
   resetService: () => {
     EmbeddingManager.resetService();
   }
-}; 
+};
+
+export { ModelLoader }; 

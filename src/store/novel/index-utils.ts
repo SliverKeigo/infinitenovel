@@ -1,134 +1,204 @@
 /**
  * 小说向量索引管理工具
  */
-import { Voy } from 'voy-search';
+import type { StoreApi } from 'zustand';
+import { 
+  Voy, 
+  type SearchResult
+} from 'voy-search';
 import { EmbeddingPipeline } from '@/lib/embeddings';
 import type { Chapter } from '@/types/chapter';
 import type { Character } from '@/types/character';
 import type { PlotClue } from '@/types/plot-clue';
-import { saveVectorIndex } from './utils/rag-utils';
+import { saveVectorIndex, deleteVectorIndex as deleteIndexFile } from './utils/rag-utils';
 import { toast } from "sonner";
+import type { NovelState } from '../use-novel-store';
+
+interface DocumentToIndex {
+  id: string;
+  title: string;
+  text: string;
+}
+
+interface VoyResource {
+  embeddings: Array<{
+    id: string;
+    title: string;
+    url: string;
+    embeddings: Float32Array;
+  }>;
+}
 
 /**
- * 构建小说向量索引
- * @param get - Zustand的get函数
- * @param set - Zustand的set函数
- * @param id - 小说ID
- * @param onSuccess - 成功后的回调函数
+ * 格式化向量数据为 Voy 所需格式
  */
-export const buildNovelIndex = async (
-  get: () => any,
-  set: (partial: any) => void,
-  id: number,
-  onSuccess?: () => void
-) => {
-  set({ indexLoading: true, currentNovelIndex: null });
-  try {
-    console.log(`[RAG] 开始为小说 ${id} 构建向量索引`);
-    const fetchedData = await get().fetchNovelDetails(id);
+const formatVoyResource = (docs: DocumentToIndex[], embeddings: number[][]) => {
+  return {
+    embeddings: docs.map((doc, index) => {
+      return {
+        id: doc.id,
+        title: doc.title,
+        url: `/docs/${doc.id}`,
+        embeddings: embeddings[index]
+      };
+    })
+  };
+};
 
-    if (!fetchedData) {
-      throw new Error('获取小说数据失败，无法构建索引。');
+/**
+ * 验证向量数据
+ */
+const validateEmbeddings = (embeddings: number[][]): boolean => {
+  if (!Array.isArray(embeddings) || embeddings.length === 0) {
+    console.error('[RAG] 向量数据无效：空数组');
+    return false;
+  }
+
+  const dimension = embeddings[0].length;
+  return embeddings.every((embedding, index) => {
+    if (!Array.isArray(embedding) || embedding.length !== dimension) {
+      console.error(`[RAG] 向量 ${index} 维度不一致：${embedding.length} != ${dimension}`);
+      return false;
     }
-
-    const { chapters, characters } = fetchedData;
     
-    const plotCluesResponse = await fetch(`/api/plot-clues?novel_id=${id}`);
-    if (!plotCluesResponse.ok) {
-      throw new Error('获取剧情线索失败');
+    const isValid = embedding.every(value => 
+      typeof value === 'number' && 
+      !Number.isNaN(value) && 
+      Number.isFinite(value)
+    );
+    
+    if (!isValid) {
+      console.error(`[RAG] 向量 ${index} 包含无效值`);
+      return false;
     }
-    const plotClues = await plotCluesResponse.json();
+    
+    return true;
+  });
+};
 
-    interface DocumentToIndex {
-      id: string;
-      title: string;
-      text: string;
+/**
+ * 创建 Voy 索引实例 (底层)
+ */
+const createVoyIndex = async (
+  documents: DocumentToIndex[],
+  embeddings: number[][]
+): Promise<Voy | null> => {
+  try {
+    // 增加一个短暂的延迟，以确保Wasm模块已准备好
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    console.log('[RAG] 开始创建 Voy 实例...');
+    
+    if (!validateEmbeddings(embeddings)) {
+      throw new Error('向量数据验证失败');
     }
 
-    const documentsToIndex: DocumentToIndex[] = [];
+    const resource = formatVoyResource(documents, embeddings);
+    
+    const voyIndex = new Voy(resource);
+    console.log('[RAG] Voy 实例创建成功');
+    
+    const testQuery = new Float32Array(embeddings[0].length).fill(0);
+    const testResult = voyIndex.search(testQuery, 1) as SearchResult;
+    if (!testResult || !testResult.neighbors || testResult.neighbors.length === 0) {
+      throw new Error('索引验证失败');
+    }
+    
+    return voyIndex;
+  } catch (error: any) {
+    console.error('[RAG] 创建 Voy 实例失败:', error);
+    return null;
+  }
+}
 
-    // 添加章节内容到索引
-    chapters.forEach((c: Chapter) => {
-      if (c.content || c.summary) {
-        documentsToIndex.push({
-          id: `chapter-${c.id}`,
-          title: `第${c.chapter_number}章`,
-          text: c.summary || c.content.substring(0, 500)
-        });
-      }
-    });
+/**
+ * 构建并保存小说向量索引 (高层)
+ */
+export async function buildNovelIndex(
+  get: StoreApi<NovelState>['getState'],
+  set: StoreApi<NovelState>['setState'],
+  novelId: number,
+  onSuccess?: () => void
+): Promise<void> {
+  set({ indexLoading: true });
+  const toastId = `rag-build-${novelId}`;
+  toast.info('开始构建小说知识库...', { id: toastId });
 
-    // 添加角色信息到索引
-    characters.forEach((c: Character) => {
-      if (c.name) {
-        documentsToIndex.push({
-          id: `character-${c.id}`,
-          title: c.name,
-          text: `姓名: ${c.name}, 核心设定: ${c.core_setting || ''}, 性格: ${c.personality || ''}, 背景: ${c.background_story || ''}`
-        });
-      }
-    });
+  try {
+    // 1. 获取所有需要被索引的内容
+    console.log(`[RAG] 正在获取小说 ${novelId} 的内容...`);
+    const response = await fetch(`/api/novels/${novelId}/content-for-rag`);
+    if (!response.ok) {
+      throw new Error(`获取小说内容失败: ${response.statusText}`);
+    }
+    const { chapters, characters, plotClues } = await response.json() as {
+      chapters: Chapter[];
+      characters: Character[];
+      plotClues: PlotClue[];
+    };
+    
+    const documents: DocumentToIndex[] = [];
+    chapters.forEach(c => documents.push({ id: `ch_${c.id}`, title: `章节: ${c.title}`, text: c.content }));
+    characters.forEach(c => documents.push({ id: `char_${c.id}`, title: `角色: ${c.name}`, text: c.description }));
+    plotClues.forEach(p => documents.push({ id: `clue_${p.id}`, title: `线索: ${p.title}`, text: p.description }));
 
-    // 添加剧情线索到索引
-    plotClues.forEach((p: PlotClue) => {
-      if (p.title && p.description) {
-        documentsToIndex.push({
-          id: `plot-${p.id}`,
-          title: p.title,
-          text: p.description
-        });
-      }
-    });
-
-    set({ currentNovelDocuments: documentsToIndex });
-
-    if (documentsToIndex.length === 0) {
-      console.log(`[RAG] 小说 ${id} 没有可索引的内容，创建空索引`);
-      const emptyIndex = new Voy();
-      set({ currentNovelIndex: emptyIndex, indexLoading: false });
-      
-      // 保存空索引
-      try {
-        await saveVectorIndex(id, emptyIndex);
-        console.log(`[RAG] 成功为小说 ${id} 保存了空向量索引`);
-      } catch (e) {
-        console.error(`[RAG] 保存空向量索引失败:`, e);
-      }
-      
-      onSuccess?.();
+    if (documents.length === 0) {
+      toast.warning('没有可供索引的内容，已跳过知识库构建。', { id: toastId });
+      console.log('[RAG] 没有文档需要索引，流程结束。');
       return;
     }
+    console.log(`[RAG] 成功获取 ${documents.length} 篇文档用于索引`);
 
-    console.log(`[RAG] 开始为 ${documentsToIndex.length} 个文档生成向量嵌入`);
-    const embeddings = await EmbeddingPipeline.embed(documentsToIndex.map(d => d.text));
+    // 2. 生成向量
+    console.log('[RAG] 正在生成文档向量...');
+    const textsToEmbed = documents.map(d => `${d.title}\n${d.text}`);
+    
+    // 使用 EmbeddingPipeline 统一处理
+    const embeddings = await EmbeddingPipeline.embed(textsToEmbed);
 
-    const dataForVoy = documentsToIndex.map((doc, i) => ({
-      id: doc.id,
-      title: doc.title,
-      url: `#${doc.id}`,
-      embeddings: embeddings[i],
-    }));
+    console.log(`[RAG] 成功生成 ${embeddings.length} 个向量`);
 
-    console.log(`[RAG] 创建新的向量索引`);
-    const newIndex = new Voy({ embeddings: dataForVoy });
-
-    set({ currentNovelIndex: newIndex, indexLoading: false });
-
-    // 将新创建的索引持久化到数据库
-    try {
-      await saveVectorIndex(id, newIndex);
-      console.log(`[RAG] 成功为小说 ${id} 保存了向量索引`);
-    } catch (e) {
-      console.error(`[RAG] 保存向量索引失败:`, e);
-      // 虽然保存失败，但索引已经构建完成，所以不抛出错误
-      toast.error("向量索引保存失败，但不影响当前会话的使用");
+    // 3. 创建索引
+    const voyIndex = await createVoyIndex(documents, embeddings);
+    if (!voyIndex) {
+      throw new Error('创建向量索引实例失败');
     }
 
-    onSuccess?.();
+    // 4. 保存索引
+    await saveVectorIndex(novelId, voyIndex);
 
-  } catch (error) {
+    // 5. 更新Store
+    set({
+      currentNovelIndex: voyIndex,
+      currentNovelDocuments: documents,
+    });
+    
+    toast.success('小说知识库构建完成！', { id: toastId });
+    if (onSuccess) onSuccess();
+
+  } catch (error: any) {
     console.error('[RAG] 构建向量索引失败:', error);
+    toast.error(`构建知识库失败: ${error.message}`, { id: toastId });
+    set({ currentNovelIndex: null, currentNovelDocuments: [] });
+  } finally {
     set({ indexLoading: false });
-    toast.error(`构建向量索引失败: ${error instanceof Error ? error.message : '未知错误'}`);
+  }
+}
+
+/**
+ * 删除指定小说的向量索引
+ */
+export const deleteVectorIndex = async (
+  get: StoreApi<NovelState>['getState'],
+  set: StoreApi<NovelState>['setState'],
+  novelId: number
+) => {
+  try {
+    await deleteIndexFile(novelId);
+    set({ currentNovelIndex: null, currentNovelDocuments: [] });
+    toast.success('小说知识库已成功删除');
+  } catch (error: any) {
+    console.error(`[RAG] 删除向量索引失败:`, error);
+    toast.error(`删除知识库失败: ${error.message}`);
   }
 }; 
