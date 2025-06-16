@@ -11,23 +11,15 @@ export async function GET(
       return NextResponse.json({ error: '无效的小说ID' }, { status: 400 });
     }
 
-    const chaptersQuery = `
-      SELECT id, chapter_number, title, summary, word_count, md5(content) AS content_hash
-      FROM chapters
-      WHERE novel_id = $1
-      ORDER BY chapter_number ASC
-    `;
     const charactersQuery = 'SELECT * FROM characters WHERE novel_id = $1';
     const plotCluesQuery = 'SELECT * FROM plot_clues WHERE novel_id = $1';
 
-    const [chaptersResult, charactersResult, plotCluesResult] = await Promise.all([
-      query(chaptersQuery, [novelId]),
+    const [charactersResult, plotCluesResult] = await Promise.all([
       query(charactersQuery, [novelId]),
       query(plotCluesQuery, [novelId]),
     ]);
 
     return NextResponse.json({
-      chapters: chaptersResult.rows,
       characters: charactersResult.rows,
       plotClues: plotCluesResult.rows,
     });

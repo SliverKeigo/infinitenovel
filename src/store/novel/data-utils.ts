@@ -4,6 +4,7 @@
 import type { Novel } from '@/types/novel';
 import type { Chapter } from '@/types/chapter';
 import type { Character } from '@/types/character';
+import type { PlotClue } from '@/types/plot-clue';
 import { loadVectorIndex } from './utils/rag-utils';
 import { toast } from 'sonner';
 
@@ -80,6 +81,13 @@ export const fetchNovelDetails = async (
     }
     const characters = await charactersResponse.json() as Character[];
 
+    // 获取情节线索列表
+    const plotCluesResponse = await fetch(`/api/plot-clues?novel_id=${id}`);
+    if (!plotCluesResponse.ok) {
+      throw new Error('Failed to fetch plot clues');
+    }
+    const plotClues = await plotCluesResponse.json() as PlotClue[];
+
     // 如果提供了 get 和 set 函数，更新 store 状态
     if (get && set) {
       const safeCreateDate = (dateStr: string | Date | null | undefined): Date => {
@@ -102,10 +110,17 @@ export const fetchNovelDetails = async (
         updated_at: safeCreateDate(chapter.updated_at),
       }));
 
+      const hydratedPlotClues = plotClues.map((clue: any) => ({
+        ...clue,
+        created_at: safeCreateDate(clue.created_at),
+        updated_at: safeCreateDate(clue.updated_at),
+      }));
+
       set({
         currentNovel: hydratedNovel,
         chapters: hydratedChapters,
         characters,
+        plotClues: hydratedPlotClues,
       });
 
       // 尝试加载向量索引

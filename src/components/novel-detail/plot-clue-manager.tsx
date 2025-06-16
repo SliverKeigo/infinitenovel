@@ -11,10 +11,10 @@ import {
     CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 
+
 export const PlotClueManager = () => {
     const { plotClues } = useNovelStore();
     const [isOpen, setIsOpen] = useState(true)
-
     return (
         <Collapsible
             open={isOpen}

@@ -278,7 +278,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       set((state) => ({
         chapters: state.chapters.map((chapter) =>
           chapter.id === chapterId ? { ...chapter, is_published: true } : chapter
-        ),
+        )
       }));
     } catch (error) {
       console.error("发布章节失败:", error);
