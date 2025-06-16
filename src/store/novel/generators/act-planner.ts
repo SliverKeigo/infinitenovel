@@ -67,9 +67,9 @@ export const planNextAct = async (
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       activeConfigId: activeConfig.id,
-      model: activeConfig.model,
-      messages: [{ role: 'user', content: plannerPrompt }],
-      temperature: settings.temperature,
+    model: activeConfig.model,
+    messages: [{ role: 'user', content: plannerPrompt }],
+    temperature: settings.temperature,
     }),
   });
 

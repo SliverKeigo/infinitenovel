@@ -123,6 +123,12 @@ export const generateNovelChapters = async (
     // === STAGE 1A: THE GRAND ARCHITECT ===
     set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '阶段1/3: 正在构建宏观叙事蓝图...' } });
 
+    console.log("[大纲生成] 开始生成宏观叙事蓝图");
+    console.log("[大纲生成] AI配置:", { 
+      modelName: activeConfig.model,
+      baseUrl: activeConfig.api_base_url
+    });
+
     const architectPrompt = `
       你是一位顶级的世界构建师和叙事战略家。请为一部名为《${novel.name}》的小说设计一个分三到五幕的宏观叙事蓝图。
 
@@ -161,11 +167,33 @@ export const generateNovelChapters = async (
         temperature: settings.temperature,
       })
     });
-    if (!architectApiResponse.ok) throw new Error(`Architect AI failed: ${await architectApiResponse.text()}`);
+    
+    console.log("[大纲生成] AI响应状态:", architectApiResponse.status);
+    if (!architectApiResponse.ok) {
+      const errorText = await architectApiResponse.text();
+      console.error("[大纲生成] AI调用失败:", errorText);
+      throw new Error(`Architect AI failed: ${errorText}`);
+    }
+    
     const architectResponse = await architectApiResponse.json();
+    console.log("[大纲生成] AI响应成功，开始处理响应");
 
     let worldSetting = architectResponse.choices[0].message.content || "";
     worldSetting = worldSetting.replace(/```markdown/g, "").replace(/```/g, "").trim();
+    console.log("[大纲生成] 宏观叙事蓝图生成完成:", worldSetting.substring(0, 100) + "...");
+    
+    if (!worldSetting) {
+      console.error("[大纲生成] 宏观叙事蓝图生成失败：响应为空");
+      throw new Error("宏观叙事蓝图生成失败：AI响应为空");
+    }
+
+    // 验证大纲格式
+    if (!worldSetting.includes("**第一幕:")) {
+      console.error("[大纲生成] 宏观叙事蓝图格式错误，缺少第一幕标记");
+      console.log("[大纲生成] 实际内容:", worldSetting);
+      throw new Error("宏观叙事蓝图格式错误：未找到第一幕标记");
+    }
+    
     set({ generationTask: { ...get().generationTask, progress: 0.2, currentStep: `世界观已构建: ${worldSetting.substring(0, 30)}...` } });
 
     // === STAGE 1B: THE ACT PLANNER ===

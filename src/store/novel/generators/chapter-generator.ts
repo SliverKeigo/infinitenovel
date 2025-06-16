@@ -144,7 +144,7 @@ export const generateNewChapter = async (
   if (!activeConfigId) throw new Error("没有激活的AI配置。");
   const activeConfig = configs.find(c => c.id === activeConfigId);
   if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到或API密钥缺失。");
-  
+
   const openai = new OpenAI({
     apiKey: activeConfig.api_key,
     baseURL: activeConfig.api_base_url || undefined,
@@ -183,7 +183,15 @@ export const generateNewChapter = async (
   // [新增] 获取角色行为准则
   const characterBehaviorRules = await getOrCreateCharacterRules(novel.id);
 
-  const { chapters, currentNovelIndex, currentNovelDocuments } = get();
+  const stateFromGet = get();
+  console.log('[!!! 调试 !!!] get() 返回的完整状态:', stateFromGet);
+  
+  const { chapters = [], currentNovelIndex, currentNovelDocuments } = stateFromGet;
+
+  console.log(`[!!! 调试 !!!] 解构后的 'chapters' 变量类型: ${typeof chapters}, 是否是数组: ${Array.isArray(chapters)}`);
+  if (chapters === undefined) {
+    console.error("[!!! 调试 !!!] CRITICAL: chapters 变量在解构后仍然是 undefined！");
+  }
 
   // --- RAG 检索增强 (用于章节解构) ---
   const nextChapterNumber = chapterToGenerate;
@@ -582,11 +590,11 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
             }
             try {
               const chunk = JSON.parse(data);
-              const token = chunk.choices[0]?.delta?.content || "";
-              if (token) {
-                set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + token }));
-                currentSceneContent += token;
-              }
+        const token = chunk.choices[0]?.delta?.content || "";
+        if (token) {
+          set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + token }));
+          currentSceneContent += token;
+        }
             } catch (e) {
               // console.error("Failed to parse stream chunk", data, e);
             }

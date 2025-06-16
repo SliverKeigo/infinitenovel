@@ -5,6 +5,7 @@
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
 import { callOpenAIWithRetry } from '../utils/ai-utils';
+import { Novel } from '@/types/novel';
 
 /**
  * 为小说生成定制化的风格指导
@@ -14,7 +15,7 @@ import { callOpenAIWithRetry } from '../utils/ai-utils';
 export const generateCustomStyleGuide = async (novelId: number): Promise<string> => {
   try {
     // 获取小说信息
-    const novelResponse = await fetch(`/api/novels/${novelId}`);
+    const novelResponse = await fetch(`/api/novels/${novelId}`, { cache: 'no-store' });
     if (!novelResponse.ok) {
       throw new Error("获取小说信息失败");
     }
@@ -78,9 +79,9 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         activeConfigId: activeConfig.id,
-        model: activeConfig.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
+      model: activeConfig.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
       }),
     });
 
@@ -114,18 +115,18 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
  */
 export const getOrCreateStyleGuide = async (novelId: number): Promise<string> => {
   // 获取小说信息
-  const novelResponse = await fetch(`/api/novels/${novelId}`);
+  const novelResponse = await fetch(`/api/novels/${novelId}`, { cache: 'no-store' });
   if (!novelResponse.ok) {
     throw new Error("获取小说信息失败");
   }
-  const novel = await novelResponse.json();
+  const novel = await novelResponse.json() as Novel;
   if (!novel) {
     throw new Error("小说信息未找到");
   }
 
   // 如果已有保存的风格指导且不为空，则直接返回
-  if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
-    return novel.styleGuide;
+  if (novel.style_guide && novel.style_guide.trim().length > 0) {
+    return novel.style_guide;
   }
 
   // 否则生成新的风格指导
