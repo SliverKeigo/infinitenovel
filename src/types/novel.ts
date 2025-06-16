@@ -38,9 +38,18 @@ export interface Novel {
   updated_at: Date;
 }
 
+/**
+ * 生成任务的状态定义
+ */
 export interface GenerationTask {
-  taskId: string | null;
-  status: 'idle' | 'running' | 'completed' | 'error';
+  /** 任务是否处于活动状态 */
+  isActive: boolean;
+  /** 任务进度（0-100） */
   progress: number;
-  error: string | null;
+  /** 当前步骤的描述 */
+  currentStep: string;
+  /** 相关小说的ID */
+  novelId: number | null;
+  /** 任务模式 */
+  mode: 'create' | 'continue' | 'idle';
 }
