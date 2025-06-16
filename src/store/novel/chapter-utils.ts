@@ -11,15 +11,46 @@ import { parseJsonFromAiResponse } from './parsers';
 import type { AIConfig } from "@/types/ai-config";
 
 /**
+ * 获取小说当前的最大章节号
+ * @param novelId - 小说ID
+ * @returns 当前最大章节号
+ */
+export const getMaxChapterNumber = async (novelId: number): Promise<number> => {
+  const response = await fetch(`/api/chapters?novel_id=${novelId}`);
+  if (!response.ok) {
+    throw new Error("获取章节信息失败");
+  }
+  const chapters = await response.json();
+  return Math.max(...chapters.map((c: { chapter_number: number }) => c.chapter_number), 0);
+};
+
+/**
+ * 验证章节号是否可用
+ * @param novelId - 小说ID
+ * @param chapterNumber - 要验证的章节号
+ * @returns 如果章节号已存在返回false，否则返回true
+ */
+export const isChapterNumberAvailable = async (novelId: number, chapterNumber: number): Promise<boolean> => {
+  const response = await fetch(`/api/chapters?novel_id=${novelId}`);
+  if (!response.ok) {
+    throw new Error("验证章节号时获取章节信息失败");
+  }
+  const chapters = await response.json();
+  return !chapters.some((c: { chapter_number: number }) => c.chapter_number === chapterNumber);
+};
+
+/**
  * 保存生成的章节并分析新角色和线索
  * @param get - Zustand的get函数
  * @param set - Zustand的set函数
  * @param novelId - 小说ID
+ * @param expectedChapterNumber - 预期的章节号（可选，如果不提供则基于现有章节计算）
  */
 export const saveGeneratedChapter = async (
   get: () => any,
   set: (partial: any) => void,
-  novelId: number
+  novelId: number,
+  expectedChapterNumber?: number
 ) => {
   const { generatedContent, chapters = [], currentNovel, characters } = get();
   if (!generatedContent || !currentNovel) return;
@@ -46,7 +77,7 @@ export const saveGeneratedChapter = async (
     } else {
       // 最终兜底
       toast.error("AI返回格式完全无法识别，章节保存失败。");
-      title = `第 ${(chapters[chapters.length - 1]?.chapterNumber || 0) + 1} 章 (格式严重错误)`;
+      title = `第 ${expectedChapterNumber || (chapters[chapters.length - 1]?.chapterNumber || 0) + 1} 章 (格式严重错误)`;
       content = generatedContent;
     }
   }
@@ -56,8 +87,26 @@ export const saveGeneratedChapter = async (
     return;
   }
 
-  // Chapter object to be sent to the API
-  const newChapterNumber = (chapters[chapters.length - 1]?.chapterNumber || 0) + 1;
+  // 获取或验证章节号
+  let newChapterNumber = expectedChapterNumber;
+  if (!newChapterNumber) {
+    // 如果没有提供预期章节号，获取当前最大章节号并加1
+    newChapterNumber = await getMaxChapterNumber(novelId) + 1;
+  }
+
+  // 验证章节号是否可用
+  const isAvailable = await isChapterNumberAvailable(novelId, newChapterNumber);
+  if (!isAvailable) {
+    console.warn(`[章节保存] 检测到重复的章节号 ${newChapterNumber}，尝试获取新的章节号`);
+    // 获取新的可用章节号
+    newChapterNumber = await getMaxChapterNumber(novelId) + 1;
+    // 再次验证新章节号
+    const isNewNumberAvailable = await isChapterNumberAvailable(novelId, newChapterNumber);
+    if (!isNewNumberAvailable) {
+      throw new Error(`无法获取有效的章节号，请检查章节编号逻辑`);
+    }
+  }
+
   const newChapterData: Omit<Chapter, 'id' | 'createdAt' | 'updatedAt'> = {
     novel_id: novelId,
     chapter_number: newChapterNumber,

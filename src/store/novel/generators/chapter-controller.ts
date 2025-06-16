@@ -69,7 +69,9 @@ export const generateChapters = async (
 
       for (let j = 0; j < currentBatchSize; j++) {
         const overallProgress = ((i + j) / chaptersToGenerate) * 100;
-        const nextChapterNumber = (get().chapters.length || 0) + 1;
+        
+        // 获取下一个章节号
+        const nextChapterNumber = await get().getMaxChapterNumber(novelId) + 1;
 
         set((state: any) => ({
           generationTask: {
@@ -94,7 +96,8 @@ export const generateChapters = async (
         await get().generateNewChapter(novelId, currentContext, promptForThisChapter, nextChapterNumber);
         const generatedContentForChapter = get().generatedContent;
         if (generatedContentForChapter) {
-          await get().saveGeneratedChapter(novelId);
+          // 在保存章节时传入正确的章节号
+          await get().saveGeneratedChapter(novelId, nextChapterNumber);
           batchGeneratedContent += `\n\n--- 第 ${nextChapterNumber} 章 ---\n\n${generatedContentForChapter}`;
         } else {
           toast.warning(`第 ${nextChapterNumber} 章内容生成为空，任务中止。`);
