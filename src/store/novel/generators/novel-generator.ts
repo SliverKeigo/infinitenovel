@@ -17,6 +17,8 @@ import { INITIAL_CHAPTER_GENERATION_COUNT } from '../constants';
 import { getOrCreateCharacterRules } from './character-rules-generator';
 import { generateNewChapter } from './chapter-generator';
 import { toast } from 'sonner';
+import { Novel } from '@/types/novel';
+import type { Chapter } from '@/types/chapter';
 
 /**
  * 生成整本小说的章节
@@ -69,7 +71,7 @@ export const generateNovelChapters = async (
     if (!novelResponse.ok) {
       throw new Error("获取小说信息失败");
     }
-    let novel = await novelResponse.json();
+    let novel = await novelResponse.json() as Novel;
     if (!novel) {
       throw new Error("小说信息未找到。");
     }
@@ -87,7 +89,7 @@ export const generateNovelChapters = async (
       if (!updatedNovelResponse.ok) {
         throw new Error("获取小说信息失败");
       }
-      const updatedNovel = await updatedNovelResponse.json();
+      const updatedNovel = await updatedNovelResponse.json() as Novel;
       if (updatedNovel) {
         novel = updatedNovel;
         set({ currentNovel: novel });
@@ -137,7 +139,7 @@ export const generateNovelChapters = async (
       - 小说类型: ${novel.genre}
       - 写作风格: ${novel.style}
       - 计划总章节数: ${goal}
-      - 核心设定与特殊要求: ${novel.specialRequirements || '无'}
+      - 核心设定与特殊要求: ${novel.special_requirements || '无'}
       - 风格指导: ${outlineStyleGuide}
       - 角色行为准则: ${characterRules}
 
@@ -176,7 +178,7 @@ export const generateNovelChapters = async (
       throw new Error(`Architect AI failed: ${errorText}`);
     }
     
-    const architectResponse = await architectApiResponse.json();
+    const architectResponse = await architectApiResponse.json() as { choices: { message: { content: string } }[] };
     console.log("[大纲生成] AI响应成功，开始处理响应");
 
     let worldSetting = architectResponse.choices[0].message.content || "";
@@ -229,7 +231,7 @@ export const generateNovelChapters = async (
       - **放慢节奏**: 这是最高指令！你必须将上述的"核心剧情概述"分解成无数个微小的步骤、挑战、人物互动和支线任务。
       - **填充细节**: 不要让主角轻易达成目标。为他设置障碍，让他与各种人相遇，让他探索世界，让他用不止一个章节去解决一个看似简单的问题。
       - **禁止剧情飞跃**: 严禁在短短几章内完成一个重大的里程碑。例如，"赢得皇帝的信任"这个目标，应该通过数十个章节的事件和任务逐步累积来实现。
-      - **遵守初始设定**: 如果小说的 "核心设定与特殊要求" (${novel.specialRequirements || '无'}) 中包含了开篇情节，第一章必须严格遵循该设定。
+      - **遵守初始设定**: 如果小说的 "核心设定与特殊要求" (${novel.special_requirements || '无'}) 中包含了开篇情节，第一章必须严格遵循该设定。
 
       **你的任务:**
       - 根据上述宏观规划，为第一幕（从第 ${actOneStart} 章到第 ${actOneEnd} 章）生成**逐章节**剧情大纲。
@@ -250,7 +252,7 @@ export const generateNovelChapters = async (
       })
     });
     if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
-    const plannerResponse = await plannerApiResponse.json();
+    const plannerResponse = await plannerApiResponse.json() as { choices: { message: { content: string } }[] };
 
     let plotOutline = plannerResponse.choices[0].message.content || "";
     plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
@@ -278,8 +280,8 @@ export const generateNovelChapters = async (
     // 获取风格指导，优先使用已保存的定制风格指导
     let descriptionStyleGuide = "";
     // 如果小说已有保存的风格指导，则直接使用
-    if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
-      descriptionStyleGuide = novel.styleGuide;
+    if (novel.style_guide && novel.style_guide.trim().length > 0) {
+      descriptionStyleGuide = novel.style_guide;
     } else {
       // 否则使用默认风格指导
       descriptionStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
@@ -339,8 +341,8 @@ export const generateNovelChapters = async (
     // 获取风格指导，优先使用已保存的定制风格指导
     let characterStyleGuide = "";
     // 如果小说已有保存的风格指导，则直接使用
-    if (novel.styleGuide && novel.styleGuide.trim().length > 0) {
-      characterStyleGuide = novel.styleGuide;
+    if (novel.style_guide && novel.style_guide.trim().length > 0) {
+      characterStyleGuide = novel.style_guide;
     } else {
       // 否则使用默认风格指导
       characterStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
@@ -413,7 +415,7 @@ export const generateNovelChapters = async (
       })
     });
     if (!charactersApiResponse.ok) throw new Error(`Character AI failed: ${await charactersApiResponse.text()}`);
-    const charactersResponse = await charactersApiResponse.json();
+    const charactersResponse = await charactersApiResponse.json() as { choices: { message: { content: string } }[] };
 
     const characterData = parseJsonFromAiResponse(charactersResponse.choices[0].message.content || "");
     const initialCharacters = characterData.characters || [];
@@ -520,7 +522,7 @@ export const generateNovelChapters = async (
     if (!chaptersResponse.ok) {
       throw new Error("获取现有章节信息失败");
     }
-    const existingChapters = await chaptersResponse.json();
+    const existingChapters = await chaptersResponse.json() as Chapter[];
     const maxChapterNumber = Math.max(...existingChapters.map((c: { chapter_number: number }) => c.chapter_number), 0);
 
     // 验证章节保存的辅助函数
@@ -529,7 +531,7 @@ export const generateNovelChapters = async (
         await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒
         const response = await fetch(`/api/chapters?novel_id=${novelId}`);
         if (!response.ok) continue;
-        const chapters = await response.json();
+        const chapters = await response.json() as Chapter[];
         if (chapters.some((c: { chapter_number: number }) => c.chapter_number === chapterNumber)) {
           return true;
         }

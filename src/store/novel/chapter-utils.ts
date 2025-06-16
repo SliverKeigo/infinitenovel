@@ -20,7 +20,7 @@ export const getMaxChapterNumber = async (novelId: number): Promise<number> => {
   if (!response.ok) {
     throw new Error("获取章节信息失败");
   }
-  const chapters = await response.json();
+  const chapters = await response.json() as Chapter[];
   return Math.max(...chapters.map((c: { chapter_number: number }) => c.chapter_number), 0);
 };
 
@@ -35,7 +35,7 @@ export const isChapterNumberAvailable = async (novelId: number, chapterNumber: n
   if (!response.ok) {
     throw new Error("验证章节号时获取章节信息失败");
   }
-  const chapters = await response.json();
+  const chapters = await response.json() as Chapter[];
   return !chapters.some((c: { chapter_number: number }) => c.chapter_number === chapterNumber);
 };
 
@@ -180,7 +180,7 @@ ${content}
       const errorText = await aiApiResponse.text();
       throw new Error(`API request failed with status ${aiApiResponse.status}: ${errorText}`);
     }
-    const analysisResponse = await aiApiResponse.json();
+    const analysisResponse = await aiApiResponse.json() as { choices: { message: { content: string } }[] };
     
     const analysisResult = parseJsonFromAiResponse(analysisResponse.choices[0].message.content || '');
     
@@ -228,7 +228,7 @@ ${content}
         throw new Error(`API Error: ${response.statusText} - ${errorText}`);
     }
 
-    const responseData = await response.json();
+    const responseData = await response.json() as { chapter: Chapter, savedCharacters: Character[], savedPlotClues: PlotClue[] };
 
     // 安全地解构和设置默认值
     const savedChapter = responseData.chapter;

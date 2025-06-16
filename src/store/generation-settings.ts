@@ -77,7 +77,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsStore>((set, 
       if (!response.ok) {
         throw new Error('Failed to fetch settings');
       }
-      const settings = await response.json();
+      const settings = await response.json() as GenerationSettings;
       set({ settings });
     } catch (error) {
       console.error("Error fetching generation settings:", error);
@@ -94,7 +94,7 @@ export const useGenerationSettingsStore = create<GenerationSettingsStore>((set, 
         const errorData = await response.json().catch(() => ({ error: 'Failed to update settings' }));
         throw new Error(errorData.error);
       }
-      const updatedSettings = await response.json();
+      const updatedSettings = await response.json() as GenerationSettings;
       set({ settings: updatedSettings });
     } catch (error) {
       console.error("Error updating generation settings:", error);

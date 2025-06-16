@@ -48,7 +48,7 @@ export const useAIConfigStore = create<AIConfigStore>()(
           if (!response.ok) {
             throw new Error('Failed to fetch AI configurations.');
           }
-          const configs = await response.json();
+          const configs = await response.json() as AIConfig[];
           set({ configs, loading: false });
         } catch (error) {
           console.error(error);

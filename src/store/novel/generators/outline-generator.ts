@@ -31,17 +31,17 @@ export const expandPlotOutlineIfNeeded = async (
   if (!novelResponse.ok) {
     throw new Error("获取小说信息失败");
   }
-  const novel = await novelResponse.json();
+  const novel = await novelResponse.json() as Novel;
 
-  if (!novel || !activeConfig || !activeConfig.api_key || !novel.plotOutline) {
+  if (!novel || !activeConfig || !activeConfig.api_key || !novel.plot_outline) {
     console.warn("无法扩展大纲：缺少小说、有效配置或现有大纲。");
     return;
   }
 
-  const currentChapterCount = novel.chapterCount;
+  const currentChapterCount = novel.chapter_count;
   
   // 只计算章节部分的详细章节数量
-  const { detailed: chapterOnlyOutline } = extractDetailedAndMacro(novel.plotOutline);
+  const { detailed: chapterOnlyOutline } = extractDetailedAndMacro(novel.plot_outline);
   console.log(`[大纲扩展] 提取到的章节部分长度: ${chapterOnlyOutline.length} 字符`);
   
   // 输出章节部分的前200个字符，帮助诊断
@@ -51,7 +51,7 @@ export const expandPlotOutlineIfNeeded = async (
 
   console.log(`扩展检查：当前章节 ${currentChapterCount}, 大纲中章节 ${detailedChaptersInOutline}`);
 
-  if (detailedChaptersInOutline >= novel.totalChapterGoal) {
+  if (detailedChaptersInOutline >= novel.total_chapter_goal) {
     console.log("大纲已完成，无需扩展。");
     return;
   }
@@ -142,7 +142,7 @@ export const expandPlotOutlineIfNeeded = async (
       console.log(`[大纲扩展] 新增大纲部分 (处理前 ${expandedContent.length} 字符, 处理后 ${processedNewPart.length} 字符)`);
       
       // 将新增内容与原大纲结合
-      const updatedOutline = `${novel.plotOutline}\n\n${processedNewPart.trim()}`;
+      const updatedOutline = `${novel.plot_outline}\n\n${processedNewPart.trim()}`;
       await fetch(`/api/novels/${novelId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

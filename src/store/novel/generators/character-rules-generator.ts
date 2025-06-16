@@ -111,7 +111,7 @@ export const getOrCreateCharacterRules = async (novelId: number): Promise<string
   // 1. 获取小说信息
   const novelResponse = await fetch(`/api/novels/${novelId}`);
   if (!novelResponse.ok) throw new Error("获取小说信息失败");
-  const novel = await novelResponse.json();
+  const novel = await novelResponse.json() as Novel;
   if (!novel) throw new Error("小说信息未找到");
 
   // 2. 如果已有保存的准则且不为空，则直接返回

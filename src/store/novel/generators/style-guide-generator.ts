@@ -19,7 +19,7 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
     if (!novelResponse.ok) {
       throw new Error("获取小说信息失败");
     }
-    const novel = await novelResponse.json();
+    const novel = await novelResponse.json()   as Novel;
     if (!novel) {
       throw new Error("小说信息未找到");
     }
@@ -51,7 +51,7 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
 - 标题: 《${novel.name}》
 - 类型: ${novel.genre}
 - 写作风格: ${novel.style}
-- 特殊要求: ${novel.specialRequirements || '无'}
+- 特殊要求: ${novel.special_requirements || '无'}
 
 **你的任务:**
 创建一个详细的风格指导，包含7-10条具体指导原则，确保AI能够准确把握这部小说的风格特点。

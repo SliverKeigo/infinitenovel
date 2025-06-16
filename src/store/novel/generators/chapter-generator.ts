@@ -234,11 +234,13 @@ export const generateNewChapter = async (
 
   // --- 上下文三明治策略 (重新引入) ---
   let previousChapterContext = "";
-  const latestChapter = chapters[chapters.length - 1];
-  if (latestChapter && latestChapter.content) {
-    const start = latestChapter.content.substring(0, 500);
-    const end = latestChapter.content.substring(Math.max(0, latestChapter.content.length - 1500));
-    previousChapterContext = `
+  let latestChapter = null;
+  if (Array.isArray(chapters) && chapters.length > 0) {
+    latestChapter = chapters[chapters.length - 1];
+    if (latestChapter && latestChapter.content) {
+      const start = latestChapter.content.substring(0, 500);
+      const end = latestChapter.content.substring(Math.max(0, latestChapter.content.length - 1500));
+      previousChapterContext = `
 为了确保情节的绝对连贯，以下是上一章的开头和结尾的关键部分，你必须在此基础上进行续写：
 **上一章开头:**
 \`\`\`
@@ -249,6 +251,9 @@ ${start}...
 ...${end}
 \`\`\`
 `;
+    }
+  } else {
+    console.log("[诊断] 未在状态中找到章节列表或列表为空，跳过“上下文三明治”策略。");
   }
 
   // [新增] 最高优先级上下文（仅在第一章时注入）
@@ -403,7 +408,7 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
       throw new Error(`API request failed with status ${apiResponse.status}: ${errorText}`);
     }
 
-    const decompResponse = await apiResponse.json();
+    const decompResponse = await apiResponse.json() as { choices: { message: { content: string } }[] };
 
     const decompResult = parseJsonFromAiResponse(decompResponse.choices[0].message.content || "");
     chapterTitle = decompResult.title;
@@ -621,8 +626,9 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
   }
 
   // 步骤 3: 整合最终结果
-  // 此刻 generatedContent 已经包含了完整的、流式生成的所有章节正文
   const finalBody = get().generatedContent || "";
-  const finalContent = `${chapterTitle}\n|||CHAPTER_SEPARATOR|||\n${finalBody}`;
+  const separator = '\n|||CHAPTER_SEPARATOR|||\n';
+  const finalContent = `${chapterTitle}${separator}${finalBody}`;
   set({ generatedContent: finalContent });
+  toast.success(`第 ${nextChapterNumber} 章已生成完毕，准备保存...`);
 };

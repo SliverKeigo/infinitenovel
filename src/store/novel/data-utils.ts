@@ -25,7 +25,7 @@ export const fetchNovels = async (
     if (!response.ok) {
       throw new Error('获取小说列表失败');
     }
-    const data = await response.json();
+    const data = await response.json() as { novels: Novel[], total: number };
     set({ 
       novels: data.novels, 
       totalNovels: data.total,
@@ -64,21 +64,21 @@ export const fetchNovelDetails = async (
     if (!response.ok) {
       throw new Error('Failed to fetch novel details');
     }
-    const novel = await response.json();
+    const novel = await response.json() as Novel;
 
     // 获取章节列表
     const chaptersResponse = await fetch(`/api/chapters?novel_id=${id}`);
     if (!chaptersResponse.ok) {
       throw new Error('Failed to fetch chapters');
     }
-    const chapters = await chaptersResponse.json();
+    const chapters = await chaptersResponse.json() as Chapter[];
 
     // 获取角色列表
     const charactersResponse = await fetch(`/api/characters?novel_id=${id}`);
     if (!charactersResponse.ok) {
       throw new Error('Failed to fetch characters');
     }
-    const characters = await charactersResponse.json();
+    const characters = await charactersResponse.json() as Character[];
 
     // 如果提供了 get 和 set 函数，更新 store 状态
     if (get && set) {
@@ -160,7 +160,7 @@ export const addNovel = async (
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorData = await response.json() as { message: string };
       throw new Error(errorData.message || '创建新小说失败');
     }
 
@@ -191,7 +191,7 @@ export const deleteNovel = async (
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorData = await response.json() as { message: string };
       throw new Error(errorData.message || '删除小说失败');
     }
 

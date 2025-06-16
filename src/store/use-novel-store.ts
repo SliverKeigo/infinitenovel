@@ -46,7 +46,10 @@ import {
   addNovel as addNovelData,
   deleteNovel as deleteNovelData
 } from './novel/data-utils';
-import { buildNovelIndex as buildIndex } from './novel/index-utils';
+import { 
+  buildNovelIndex as buildNovelIndexUtil,
+  deleteVectorIndex as deleteNovelIndexUtil 
+} from './novel/index-utils';
 import { planNextAct } from './novel/generators/act-planner';
 import { extractNarrativeStages, extractDetailedAndMacro } from './novel/parsers';
 
@@ -58,7 +61,7 @@ interface DocumentToIndex {
   text: string;
 }
 
-interface NovelState {
+export interface NovelState {
   novels: Novel[];
   loading: boolean;
   currentNovel: Novel | null;
@@ -76,6 +79,7 @@ interface NovelState {
   fetchNovels: (page?: number, pageSize?: number) => Promise<void>;
   fetchNovelDetails: (id: number) => Promise<{ novel: Novel; chapters: Chapter[]; characters: Character[] } | null>;
   buildNovelIndex: (id: number, onSuccess?: () => void) => Promise<void>;
+  deleteNovelIndex: (id: number) => Promise<void>;
   generateChapters: (
     novelId: number,
     context: {
@@ -149,7 +153,11 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   },
 
   buildNovelIndex: async (id, onSuccess) => {
-    return buildIndex(get, set, id, onSuccess);
+    return buildNovelIndexUtil(get, set, id, onSuccess);
+  },
+
+  deleteNovelIndex: async (id) => {
+    return deleteNovelIndexUtil(get, set, id);
   },
 
   generateChapters: async (novelId, context, options) => {
@@ -224,7 +232,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         throw new Error('API call failed');
       }
 
-      const result = await response.json();
+      const result = await response.json() as { success: boolean, message: string };
       
       if (result.success) {
         toast.info(`AI已为您规划好下一幕：${result.message}`);
@@ -265,7 +273,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         throw new Error(`发布失败: ${error}`);
       }
 
-      const updatedChapter = await response.json();
+      const updatedChapter = await response.json() as Chapter;
 
       set((state) => ({
         chapters: state.chapters.map((chapter) =>

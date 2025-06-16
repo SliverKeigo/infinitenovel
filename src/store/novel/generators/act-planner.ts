@@ -6,6 +6,7 @@ import OpenAI from 'openai';
 import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
 import { extractDetailedAndMacro, type NarrativeStage, processOutline } from '../parsers';
+import { Novel } from '@/types/novel';
 
 /**
  * 为指定的幕布（Act）生成详细的逐章大纲，并将其与现有大纲融合。
@@ -35,7 +36,7 @@ export const planNextAct = async (
   if (!novelResponse.ok) {
     throw new Error("获取小说信息失败。");
   }
-  const novel = await novelResponse.json();
+  const novel = await novelResponse.json() as Novel;  
   if (!novel) throw new Error("小说信息未找到。");
 
   // --- 步骤 2: 构建提示词 ---
@@ -78,7 +79,7 @@ export const planNextAct = async (
     throw new Error(`API request failed with status ${response.status}: ${errorText}`);
   }
 
-  const plannerResponse = await response.json();
+  const plannerResponse = await response.json() as { choices: { message: { content: string } }[] };
 
   const newPlan = plannerResponse.choices[0].message.content;
   if (!newPlan) {
