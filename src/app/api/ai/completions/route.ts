@@ -22,13 +22,27 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { activeConfigId, stream, ...restOfBody } = body;
 
+    console.log("[API Completions] 收到请求:", { 
+      activeConfigId,
+      model: restOfBody.model,
+      stream,
+      messageCount: restOfBody.messages?.length
+    });
+
     if (!activeConfigId) {
+      console.error("[API Completions] 缺少 activeConfigId");
       return NextResponse.json({ error: 'activeConfigId is required' }, { status: 400 });
     }
 
     const activeConfig = await getAIConfig(activeConfigId);
+    console.log("[API Completions] 获取到AI配置:", { 
+      configFound: !!activeConfig,
+      model: activeConfig?.model,
+      baseUrl: activeConfig?.api_base_url
+    });
 
     if (!activeConfig || !activeConfig.api_key) {
+      console.error("[API Completions] AI配置无效或缺少API密钥");
       return NextResponse.json({ error: 'AI configuration not found or API key is missing.' }, { status: 500 });
     }
 
@@ -38,6 +52,7 @@ export async function POST(req: Request) {
     });
     
     const model = restOfBody.model || activeConfig.model;
+    console.log("[API Completions] 准备调用OpenAI:", { model });
 
     // 根据 stream 参数决定响应类型
     if (stream) {
@@ -69,15 +84,24 @@ export async function POST(req: Request) {
       });
 
     } else {
-      return NextResponse.json(await openai.chat.completions.create({
+      console.log("[API Completions] 开始非流式调用");
+      const response = await openai.chat.completions.create({
         ...restOfBody,
         model: model,
         stream: false,
-      }));
+      });
+      console.log("[API Completions] 调用成功，响应长度:", response.choices[0].message.content?.length);
+      return NextResponse.json(response);
     }
   } catch (error) {
     console.error('[API Completions] Error:', error);
     if (error instanceof OpenAI.APIError) {
+      console.error('[API Completions] OpenAI API Error:', {
+        status: error.status,
+        message: error.message,
+        code: error.code,
+        type: error.type
+      });
       return new NextResponse(error.message, { status: error.status });
     }
     return new NextResponse('Internal Server Error', { status: 500 });
