@@ -11,7 +11,12 @@ export async function GET(
       return NextResponse.json({ error: '无效的小说ID' }, { status: 400 });
     }
 
-    const chaptersQuery = 'SELECT * FROM chapters WHERE novel_id = $1';
+    const chaptersQuery = `
+      SELECT id, chapter_number, title, summary, word_count, md5(content) AS content_hash
+      FROM chapters
+      WHERE novel_id = $1
+      ORDER BY chapter_number ASC
+    `;
     const charactersQuery = 'SELECT * FROM characters WHERE novel_id = $1';
     const plotCluesQuery = 'SELECT * FROM plot_clues WHERE novel_id = $1';
 
