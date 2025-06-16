@@ -24,7 +24,8 @@ export async function GET(
     );
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ error: 'Vector index not found' }, { status: 404 });
+      // 找不到索引是正常情况，返回204 No Content
+      return new NextResponse(null, { status: 204 });
     }
 
     // 返回二进制数据

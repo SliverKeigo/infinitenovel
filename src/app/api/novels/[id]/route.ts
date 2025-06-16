@@ -7,10 +7,10 @@ import { NextResponse } from 'next/server';
  */
 export async function GET(
   request: Request,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(context.params.id, 10);
+    const id = parseInt(params.id, 10);
     if (isNaN(id)) {
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
     }
@@ -20,7 +20,7 @@ export async function GET(
     }
     return NextResponse.json(result.rows[0]);
   } catch (error) {
-    console.error(`Failed to fetch novel ${context.params.id}:`, error);
+    console.error(`Failed to fetch novel ${params.id}:`, error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
@@ -31,10 +31,10 @@ export async function GET(
  */
 export async function PUT(
   request: Request,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(context.params.id, 10);
+    const id = parseInt(params.id, 10);
     if (isNaN(id)) {
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
     }
@@ -72,7 +72,7 @@ export async function PUT(
 
     return NextResponse.json(result.rows[0]);
   } catch (error) {
-    console.error(`Failed to update novel ${context.params.id}:`, error);
+    console.error(`Failed to update novel ${params.id}:`, error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
@@ -83,10 +83,10 @@ export async function PUT(
  */
 export async function DELETE(
   request: Request,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
-    const id = parseInt(context.params.id, 10);
+    const id = parseInt(params.id, 10);
     if (isNaN(id)) {
       return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
     }
@@ -100,7 +100,7 @@ export async function DELETE(
 
     return NextResponse.json({ message: `Novel with id ${id} deleted successfully.` });
   } catch (error) {
-    console.error(`Failed to delete novel ${context.params.id}:`, error);
+    console.error(`Failed to delete novel ${params.id}:`, error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 } 

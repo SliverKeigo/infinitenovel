@@ -40,6 +40,7 @@ export const fetchNovelDetails = async (
   get?: () => any,
   set?: (partial: any) => void
 ) => {
+  if (set) set({ detailsLoading: true });
   try {
     // 获取小说基本信息
     const response = await fetch(`/api/novels/${id}`);
@@ -64,9 +65,29 @@ export const fetchNovelDetails = async (
 
     // 如果提供了 get 和 set 函数，更新 store 状态
     if (get && set) {
+      const safeCreateDate = (dateStr: string | Date | null | undefined): Date => {
+        if (dateStr && new Date(dateStr).toString() !== 'Invalid Date') {
+          return new Date(dateStr);
+        }
+        return new Date(0); 
+      };
+
+      // 在存入 store 之前，转换日期字符串为 Date 对象
+      const hydratedNovel = {
+        ...novel,
+        created_at: safeCreateDate(novel.created_at),
+        updated_at: safeCreateDate(novel.updated_at),
+      };
+      
+      const hydratedChapters = chapters.map((chapter: any) => ({
+        ...chapter,
+        created_at: safeCreateDate(chapter.created_at),
+        updated_at: safeCreateDate(chapter.updated_at),
+      }));
+
       set({
-        currentNovel: novel,
-        chapters,
+        currentNovel: hydratedNovel,
+        chapters: hydratedChapters,
         characters,
       });
 
@@ -99,6 +120,8 @@ export const fetchNovelDetails = async (
       });
     }
     return null;
+  } finally {
+    if (set) set({ detailsLoading: false });
   }
 };
 

@@ -66,7 +66,7 @@ export default function NovelDetailPage() {
           {/* 页面主标题和统计信息 */}
           <div>
               <h1 className="text-3xl font-bold mb-2">{currentNovel.name}</h1>
-              <p className="text-muted-foreground">最后更新于 {new Date(currentNovel.updatedAt).toLocaleString()}</p>
+              <p className="text-muted-foreground">最后更新于 {new Date(currentNovel.updated_at).toLocaleString()}</p>
           </div>
           
           <KeyStats />

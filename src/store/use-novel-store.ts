@@ -146,7 +146,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     return fetchNovelsData(set);
   },
   fetchNovelDetails: async (id) => {
-    return fetchNovelDetailsData(get, set, id);
+    return fetchNovelDetailsData(id, get, set);
   },
   buildNovelIndex: async (id, onSuccess) => {
     return buildIndex(get, set, id, onSuccess);
@@ -167,7 +167,12 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     userPrompt: string | undefined,
     chapterToGenerate: number,
   ) => {
-    return genNewChapter(get, set, novelId, context, userPrompt, chapterToGenerate);
+    const { currentNovel } = get();
+    if (!currentNovel) {
+      toast.error("没有选中任何小说，无法生成章节。");
+      return;
+    }
+    return genNewChapter(get, set, currentNovel, context, userPrompt, chapterToGenerate);
   },
   saveGeneratedChapter: async (novelId) => {
     return saveChapter(get, set, novelId);

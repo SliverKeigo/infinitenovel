@@ -28,8 +28,8 @@ export const CreationStatsCard = () => {
                 </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-4">
-                <StatItem icon={Scale} label="总字数" value={novel.word_count.toLocaleString()} unit="字" />
-                <StatItem icon={Clock} label="预计阅读" value={Math.ceil(novel.word_count / 500)} unit="分钟" />
+                <StatItem icon={Scale} label="总字数" value={(novel.word_count ?? 0).toLocaleString()} unit="字" />
+                <StatItem icon={Clock} label="预计阅读" value={Math.ceil((novel.word_count ?? 0) / 500)} unit="分钟" />
                 <StatItem icon={BookOpen} label="平均章节字数" value={averageWordsPerChapter.toLocaleString()} unit="字" />
                 <StatItem icon={PlusSquare} label="扩写次数" value={novel.expansion_count ?? 0} unit="次" />
             </CardContent>
