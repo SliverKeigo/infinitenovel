@@ -16,6 +16,7 @@ import type { Character, CharacterCreationData } from '@/types/character';
 import { INITIAL_CHAPTER_GENERATION_COUNT } from '../constants';
 import { getOrCreateCharacterRules } from './character-rules-generator';
 import { generateNewChapter } from './chapter-generator';
+import { toast } from 'sonner';
 
 /**
  * 生成整本小说的章节
@@ -514,37 +515,65 @@ export const generateNovelChapters = async (
     const chaptersToGenerateCount = Math.min(goal, initialChapterGoal);
     const chaptersToGenerate = Array.from({ length: chaptersToGenerateCount }, (_, i) => i);
 
+    // 获取当前最大章节号
+    const chaptersResponse = await fetch(`/api/chapters?novel_id=${novelId}`);
+    if (!chaptersResponse.ok) {
+      throw new Error("获取现有章节信息失败");
+    }
+    const existingChapters = await chaptersResponse.json();
+    const maxChapterNumber = Math.max(...existingChapters.map((c: { chapter_number: number }) => c.chapter_number), 0);
+
+    // 验证章节保存的辅助函数
+    const verifyChapterSaved = async (novelId: number, chapterNumber: number, retries = 3) => {
+      for (let i = 0; i < retries; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒
+        const response = await fetch(`/api/chapters?novel_id=${novelId}`);
+        if (!response.ok) continue;
+        const chapters = await response.json();
+        if (chapters.some((c: { chapter_number: number }) => c.chapter_number === chapterNumber)) {
+          return true;
+        }
+        console.log(`[章节验证] 第 ${i + 1} 次尝试未找到章节 ${chapterNumber}，将重试...`);
+      }
+      return false;
+    };
+
     for (const i of chaptersToGenerate) {
       // 在每次循环开始时获取最新的上下文
-      const allCharactersResponse = await fetch(`/api/characters?novelId=${novelId}`);
+      const allCharactersResponse = await fetch(`/api/characters?novel_id=${novelId}`);
       if (!allCharactersResponse.ok) {
         throw new Error("获取角色信息失败");
       }
       const allCharacters = await allCharactersResponse.json();
-      // 使用 extractDetailedAndMacro 分离出纯粹的详细大纲供章节生成器使用
-      const { detailed: detailedOutline } = extractDetailedAndMacro(processedOutline);
-      const generationContext = { plotOutline: detailedOutline, characters: allCharacters, settings };
+      
+      const generationContext = { plotOutline: processedOutline, characters: allCharacters, settings };
 
+      const nextChapterNumber = maxChapterNumber + i + 1;
       const chapterProgress = 0.8 + (i / chaptersToGenerateCount) * 0.2;
       set({
         generationTask: {
           ...get().generationTask,
           progress: Math.floor(chapterProgress * 100),
-          currentStep: `正在生成第 ${i + 1} / ${chaptersToGenerateCount} 章...`,
+          currentStep: `正在生成第 ${nextChapterNumber} 章...`,
         },
       });
 
-      // await get().buildNovelIndex(novelId); // Commented out as it's called prematurely
-      
       await generateNewChapter(
         get,
         set,
-        novel, // Pass the novel object directly
+        novel,
         generationContext,
         undefined,
-        i + 1
+        nextChapterNumber
       );
-      await get().saveGeneratedChapter(novelId);
+      await get().saveGeneratedChapter(novelId, nextChapterNumber);
+
+      // 使用新的验证函数
+      const saved = await verifyChapterSaved(novelId, nextChapterNumber);
+      if (!saved) {
+        throw new Error(`第 ${nextChapterNumber} 章保存失败：数据库中未找到该章节`);
+      }
+      console.log(`[章节生成] 第 ${nextChapterNumber} 章已成功保存并验证`);
     }
 
     set({

@@ -14,7 +14,7 @@ import { getOrCreateStyleGuide } from './style-guide-generator';
 import { getOrCreateCharacterRules } from './character-rules-generator';
 import { 
   parseJsonFromAiResponse, 
-  extractChapterDetailFromOutline, 
+  extractDetailedAndMacro,
   extractNarrativeStages, 
   getCurrentNarrativeStage,
   type NarrativeStage
@@ -154,12 +154,12 @@ export const generateNewChapter = async (
   // 从上下文中提取大纲，并只使用章节部分
   const { plotOutline: fullOutline, characters, settings } = context;
   
-  // 只保留大纲中的章节部分（不包含宏观叙事规划）
-  const chapterOnlyOutline = extractChapterDetailFromOutline(fullOutline);
-  console.log(`[诊断] 原始大纲长度: ${fullOutline.length}, 提取后章节部分长度: ${chapterOnlyOutline.length}`);
+  // 使用健壮的函数分离宏观规划和详细章节
+  const { detailed: chapterOnlyOutline, macro: macroOutline } = extractDetailedAndMacro(fullOutline);
+  console.log(`[诊断] 原始大纲长度: ${fullOutline.length}, 提取后章节部分长度: ${chapterOnlyOutline.length}, 宏观规划部分长度: ${macroOutline.length}`);
   
   // 生成宏观叙事规划指导
-  const narrativeStageGuidance = generateNarrativeStageGuidance(fullOutline, chapterToGenerate);
+  const narrativeStageGuidance = generateNarrativeStageGuidance(macroOutline, chapterToGenerate);
   
   const {
     max_tokens,
@@ -184,11 +184,9 @@ export const generateNewChapter = async (
   const characterBehaviorRules = await getOrCreateCharacterRules(novel.id);
 
   const stateFromGet = get();
-  console.log('[!!! 调试 !!!] get() 返回的完整状态:', stateFromGet);
   
   const { chapters = [], currentNovelIndex, currentNovelDocuments } = stateFromGet;
 
-  console.log(`[!!! 调试 !!!] 解构后的 'chapters' 变量类型: ${typeof chapters}, 是否是数组: ${Array.isArray(chapters)}`);
   if (chapters === undefined) {
     console.error("[!!! 调试 !!!] CRITICAL: chapters 变量在解构后仍然是 undefined！");
   }

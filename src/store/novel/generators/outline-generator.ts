@@ -8,9 +8,11 @@ import { toast } from "sonner";
 import { countDetailedChaptersInOutline, extractChapterNumbers } from '../outline-utils';
 import { getGenreStyleGuide } from '../style-guides';
 import { getOrCreateStyleGuide } from './style-guide-generator';
-import { processOutline, extractChapterDetailFromOutline } from '../parsers';
+import { processOutline, extractDetailedAndMacro } from '../parsers';
 import { OUTLINE_EXPAND_THRESHOLD, OUTLINE_EXPAND_CHUNK_SIZE } from '../constants';
 import { getOrCreateCharacterRules } from './character-rules-generator';
+import { useNovelStore } from '@/store/use-novel-store';
+import { Novel } from '@/types/novel';
 
 /**
  * 如果需要，扩展小说大纲
@@ -39,7 +41,7 @@ export const expandPlotOutlineIfNeeded = async (
   const currentChapterCount = novel.chapterCount;
   
   // 只计算章节部分的详细章节数量
-  const chapterOnlyOutline = extractChapterDetailFromOutline(novel.plotOutline);
+  const { detailed: chapterOnlyOutline } = extractDetailedAndMacro(novel.plotOutline);
   console.log(`[大纲扩展] 提取到的章节部分长度: ${chapterOnlyOutline.length} 字符`);
   
   // 输出章节部分的前200个字符，帮助诊断
@@ -85,8 +87,6 @@ export const expandPlotOutlineIfNeeded = async (
     const characterRules = await getOrCreateCharacterRules(novelId);
 
     // 仅使用章节部分进行扩展
-    const existingChapterOutline = extractChapterDetailFromOutline(novel.plotOutline);
-    
     const expansionPrompt = `
         【输出格式要求】
         请直接输出新增章节大纲内容，不要包含任何前缀说明或额外格式解释。
@@ -99,7 +99,7 @@ export const expandPlotOutlineIfNeeded = async (
         
         这是我们已有的详细章节大纲（前 ${detailedChaptersInOutline} 章）：
         ---
-        ${existingChapterOutline}
+        ${chapterOnlyOutline}
         ---
         
         任务: 
@@ -150,7 +150,7 @@ export const expandPlotOutlineIfNeeded = async (
       });
       
       // 验证扩展后的章节数量
-      const updatedChapterOnlyOutline = extractChapterDetailFromOutline(updatedOutline);
+      const { detailed: updatedChapterOnlyOutline } = extractDetailedAndMacro(updatedOutline);
       const updatedChapterCount = countDetailedChaptersInOutline(updatedChapterOnlyOutline);
       console.log(`[大纲扩展] 扩展后大纲包含 ${updatedChapterCount} 个章节，理论上应有 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 个章节`);
       
