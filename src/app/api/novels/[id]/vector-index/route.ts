@@ -34,15 +34,14 @@ export async function GET(
     );
 
     if (result.rows.length === 0) {
-      // 找不到索引是正常情况，返回204 No Content
       console.log(`[向量索引] 小说 ${id} 的向量索引不存在`);
       return new NextResponse(null, { status: 204 });
     }
 
-    // 返回二进制数据
+    // 返回序列化的数据
     return new NextResponse(result.rows[0].index_dump, {
       headers: {
-        'Content-Type': 'application/octet-stream'
+        'Content-Type': 'text/plain'
       }
     });
   } catch (error) {
@@ -83,31 +82,48 @@ export async function PUT(
       return NextResponse.json({ error: 'Novel not found' }, { status: 404 });
     }
 
-    // 获取请求体中的二进制数据
-    const indexDump = await request.arrayBuffer();
+    // 获取请求体中的数据
+    const indexData = await request.text();
     
-    // 使用 UPSERT 语法，如果记录存在则更新，不存在则插入
-    const query = `
-      INSERT INTO novel_vector_indices (novel_id, index_dump)
-      VALUES ($1, $2)
-      ON CONFLICT (novel_id) 
-      DO UPDATE SET 
-        index_dump = EXCLUDED.index_dump,
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING id;
-    `;
-
-    const result = await client.query(query, [id, Buffer.from(indexDump)]);
-
-    if (result.rows.length === 0) {
-      throw new Error('向量索引保存失败');
+    // 验证数据格式
+    if (!indexData) {
+      return NextResponse.json({ error: 'Invalid index data' }, { status: 400 });
     }
 
-    console.log(`[向量索引] 成功保存小说 ${id} 的向量索引`);
-    return NextResponse.json({ 
-      message: 'Vector index updated successfully',
-      id: result.rows[0].id
-    });
+    // 开始事务
+    await client.query('BEGIN');
+
+    try {
+      // 使用 UPSERT 语法，如果记录存在则更新，不存在则插入
+      const query = `
+        INSERT INTO novel_vector_indices (novel_id, index_dump)
+        VALUES ($1, $2)
+        ON CONFLICT (novel_id) 
+        DO UPDATE SET 
+          index_dump = EXCLUDED.index_dump,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING id;
+      `;
+
+      const result = await client.query(query, [id, indexData]);
+
+      if (result.rows.length === 0) {
+        throw new Error('向量索引保存失败');
+      }
+
+      // 提交事务
+      await client.query('COMMIT');
+
+      console.log(`[向量索引] 成功保存小说 ${id} 的向量索引`);
+      return NextResponse.json({ 
+        message: 'Vector index updated successfully',
+        id: result.rows[0].id
+      });
+    } catch (error) {
+      // 回滚事务
+      await client.query('ROLLBACK');
+      throw error;
+    }
   } catch (error) {
     console.error('[向量索引] 保存向量索引失败:', error);
     return NextResponse.json({ 

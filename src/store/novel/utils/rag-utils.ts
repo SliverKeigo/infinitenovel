@@ -49,7 +49,7 @@ export const saveVectorIndex = async (
         method: 'PUT',
         body: serializedIndex,
         headers: {
-          'Content-Type': 'application/octet-stream'
+          'Content-Type': 'text/plain'
         }
       });
 
@@ -92,26 +92,34 @@ export const loadVectorIndex = async (novelId: number): Promise<Voy | null> => {
     
     const response = await fetch(`/api/novels/${novelId}/vector-index`);
     
-    if (response.status === 404) {
+    if (response.status === 204) {
       console.log(`[RAG] 小说 ${novelId} 没有向量索引`);
       return null;
     }
     
     if (!response.ok) {
-      throw new Error(`Failed to load vector index: ${response.statusText}`);
+      throw new Error(`加载向量索引失败: ${response.statusText}`);
     }
 
-    // 获取序列化的数据
-    const serializedIndex = await response.text();
+    // 获取Base64编码的数据
+    const base64Data = await response.text();
     
-    // 反序列化数据到新的Voy实例
-    const index = Voy.deserialize(serializedIndex);
-    
-    console.log(`[RAG] 成功加载小说 ${novelId} 的向量索引`);
-    return index;
+    try {
+      // 将Base64转换回二进制数据
+      const binaryData = Buffer.from(base64Data, 'base64');
+      
+      // 反序列化数据到新的Voy实例
+      const index = Voy.deserialize(binaryData.toString());
+      
+      console.log(`[RAG] 成功加载小说 ${novelId} 的向量索引`);
+      return index;
+    } catch (error) {
+      console.error('[RAG] 向量索引反序列化失败:', error);
+      throw new Error(`向量索引反序列化失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
   } catch (error) {
     console.error('[RAG] 加载向量索引失败:', error);
-    return null;
+    throw error;
   }
 };
 
