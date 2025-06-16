@@ -80,7 +80,7 @@ interface NovelState {
   isPlanningAct: boolean; // 新增：用于追踪幕间规划状态
   generatedContent: string | null;
   generationTask: GenerationTask;
-  fetchNovels: () => Promise<void>;
+  fetchNovels: (page?: number, pageSize?: number) => Promise<void>;
   fetchNovelDetails: (id: number) => Promise<{ novel: Novel; chapters: Chapter[]; characters: Character[] } | null>;
   buildNovelIndex: (id: number, onSuccess?: () => void) => Promise<void>;
   generateChapters: (
@@ -116,47 +116,56 @@ interface NovelState {
   resetGenerationTask: () => void;
   checkForNextActPlanning: (novelId: number) => Promise<void>;
   publishChapter: (chapterId: number) => Promise<void>;
+  totalNovels: number;
+  currentPage: number;
+  pageSize: number;
 }
 
 export const useNovelStore = create<NovelState>((set, get) => ({
   novels: [],
-  loading: true,
   currentNovel: null,
-  currentNovelIndex: null,
-  currentNovelDocuments: [],
   chapters: [],
   characters: [],
   plotClues: [],
-  detailsLoading: true,
+  loading: false,
+  detailsLoading: false,
+  currentNovelIndex: null,
+  currentNovelDocuments: [],
   indexLoading: false,
+  totalNovels: 0,
+  currentPage: 1,
+  pageSize: 10,
   generationLoading: false,
-  isPlanningAct: false, // 新增：初始化状态
+  isPlanningAct: false,
   generatedContent: null,
   generationTask: {
-    isActive: false,
+    taskId: null,
+    status: 'idle',
     progress: 0,
-    currentStep: '空闲',
-    novelId: null,
-    mode: 'idle',
+    error: null
   },
-  resetGenerationTask: () => {
-    resetTask(get, set);
+
+  // 获取小说列表
+  fetchNovels: async (page?: number, pageSize?: number) => {
+    await fetchNovelsData(set, page, pageSize);
   },
-  fetchNovels: async () => {
-    return fetchNovelsData(set);
-  },
+
   fetchNovelDetails: async (id) => {
     return fetchNovelDetailsData(id, get, set);
   },
+
   buildNovelIndex: async (id, onSuccess) => {
     return buildIndex(get, set, id, onSuccess);
   },
+
   generateChapters: async (novelId, context, options) => {
     return genChapters(get, set, novelId, context, options);
   },
+
   generateNovelChapters: async (novelId, goal, initialChapterGoal = 5) => {
     return genNovelChapters(get, set, novelId, goal, initialChapterGoal);
   },
+
   generateNewChapter: async (
     novelId: number,
     context: {
@@ -174,27 +183,35 @@ export const useNovelStore = create<NovelState>((set, get) => ({
     }
     return genNewChapter(get, set, currentNovel, context, userPrompt, chapterToGenerate);
   },
+
   saveGeneratedChapter: async (novelId) => {
     return saveChapter(get, set, novelId);
   },
+
   addNovel: async (novelData) => {
     return addNovelData(get, novelData);
   },
+
   deleteNovel: async (id) => {
     return deleteNovelData(set, id);
   },
+
   updateNovelStats: async (novelId: number) => {
     return updateNovelStats(get, novelId);
   },
+
   recordExpansion: async (novelId: number) => {
     return recordExpansion(get, novelId);
   },
+
   expandPlotOutlineIfNeeded: async (novelId: number, force = false) => {
     return expandOutline(get, novelId, force);
   },
+
   forceExpandOutline: async (novelId: number) => {
     return forceExpand(get, set, novelId);
   },
+
   checkForNextActPlanning: async (novelId: number) => {
     const { isPlanningAct } = get();
     if (isPlanningAct) {
@@ -230,27 +247,44 @@ export const useNovelStore = create<NovelState>((set, get) => ({
       set({ isPlanningAct: false });
     }
   },
+
   publishChapter: async (chapterId: number) => {
     try {
+      // 先获取章节信息
+      const chapter = get().chapters.find((c) => c.id === chapterId);
+      if (!chapter) {
+        throw new Error('章节不存在');
+      }
+      
+      if (chapter.is_published) {
+        throw new Error('该章节已经发布');
+      }
+
       const response = await fetch(`/api/chapters/${chapterId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'published' }),
+        body: JSON.stringify({ is_published: true }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to publish chapter');
+        const error = await response.text();
+        throw new Error(`发布失败: ${error}`);
       }
+
+      const updatedChapter = await response.json();
 
       set((state) => ({
         chapters: state.chapters.map((chapter) =>
-          chapter.id === chapterId ? { ...chapter, status: 'published' } : chapter
+          chapter.id === chapterId ? { ...chapter, is_published: true } : chapter
         ),
       }));
-      toast.success("章节已成功发布！");
     } catch (error) {
       console.error("发布章节失败:", error);
-      toast.error("发布章节失败，请查看控制台获取更多信息。");
+      throw error; // 将错误抛出，让调用者处理
     }
+  },
+
+  resetGenerationTask: () => {
+    resetTask(get, set);
   },
 }));

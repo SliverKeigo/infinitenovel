@@ -8,24 +8,41 @@ import { loadVectorIndex } from './utils/rag-utils';
 import { toast } from 'sonner';
 
 /**
- * 获取所有小说列表
+ * 获取小说列表
  * @param set - Zustand的set函数
+ * @param page - 当前页码（从1开始）
+ * @param pageSize - 每页数量
  */
 export const fetchNovels = async (
-  set: (partial: any) => void
+  set: (partial: any) => void,
+  page: number = 1,
+  pageSize: number = 10
 ) => {
   set({ loading: true });
   try {
-    const response = await fetch('/api/novels');
+    const offset = (page - 1) * pageSize;
+    const response = await fetch(`/api/novels?limit=${pageSize}&offset=${offset}`);
     if (!response.ok) {
       throw new Error('获取小说列表失败');
     }
-    const novels = await response.json();
-    set({ novels, loading: false });
+    const data = await response.json();
+    set({ 
+      novels: data.novels, 
+      totalNovels: data.total,
+      currentPage: page,
+      pageSize,
+      loading: false 
+    });
   } catch (error) {
     console.error(error);
     toast.error('加载小说列表时出错。');
-    set({ loading: false, novels: [] });
+    set({ 
+      loading: false, 
+      novels: [],
+      totalNovels: 0,
+      currentPage: 1,
+      pageSize: 10
+    });
   }
 };
 

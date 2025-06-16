@@ -114,6 +114,7 @@ export const saveGeneratedChapter = async (
     content: content,
     summary: '', // Summary is generated on backend
     status: 'draft',
+    is_published: false,
     word_count: content.length,
     created_at: new Date(),
     updated_at: new Date(),

@@ -27,32 +27,58 @@ export interface RetrievedDocument {
  * 保存向量索引到数据库
  * @param novelId - 小说ID
  * @param index - Voy向量索引
+ * @param maxRetries - 最大重试次数
  */
-export const saveVectorIndex = async (novelId: number, index: Voy): Promise<void> => {
-  try {
-    console.log(`[RAG] 开始保存小说 ${novelId} 的向量索引`);
-    
-    // 序列化索引
-    const serializedIndex = index.serialize();
-    
-    // 发送到后端API
-    const response = await fetch(`/api/novels/${novelId}/vector-index`, {
-      method: 'PUT',
-      body: serializedIndex,
-      headers: {
-        'Content-Type': 'application/octet-stream'
+export const saveVectorIndex = async (
+  novelId: number, 
+  index: Voy,
+  maxRetries: number = 3
+): Promise<void> => {
+  let retryCount = 0;
+  let lastError: Error | null = null;
+
+  while (retryCount < maxRetries) {
+    try {
+      console.log(`[RAG] 开始保存小说 ${novelId} 的向量索引 (尝试 ${retryCount + 1}/${maxRetries})`);
+      
+      // 序列化索引
+      const serializedIndex = index.serialize();
+      
+      // 发送到后端API
+      const response = await fetch(`/api/novels/${novelId}/vector-index`, {
+        method: 'PUT',
+        body: serializedIndex,
+        headers: {
+          'Content-Type': 'application/octet-stream'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(`保存向量索引失败: ${errorData.error || response.statusText}`);
       }
-    });
 
-    if (!response.ok) {
-      throw new Error(`Failed to save vector index: ${response.statusText}`);
+      const result = await response.json();
+      console.log(`[RAG] 成功保存小说 ${novelId} 的向量索引 (ID: ${result.id})`);
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[RAG] 保存向量索引失败 (尝试 ${retryCount + 1}/${maxRetries}):`, error);
+      
+      if (retryCount < maxRetries - 1) {
+        // 使用指数退避策略
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        retryCount++;
+      } else {
+        break;
+      }
     }
-
-    console.log(`[RAG] 成功保存小说 ${novelId} 的向量索引`);
-  } catch (error) {
-    console.error('[RAG] 保存向量索引失败:', error);
-    throw error;
   }
+
+  // 所有重试都失败了
+  console.error(`[RAG] 保存向量索引失败，已达到最大重试次数 (${maxRetries})`);
+  throw lastError || new Error('保存向量索引失败，已达到最大重试次数');
 };
 
 /**
