@@ -34,28 +34,6 @@ comment on column novels.initial_chapter_goal is '初始章节目标';
 alter table novels
     owner to keigo;
 
-create table chapters
-(
-    id             serial
-        primary key,
-    novel_id       integer      not null
-        references novels
-            on delete cascade,
-    chapter_number integer      not null,
-    title          varchar(255) not null,
-    content        text,
-    summary        text,
-    is_published   boolean                  default false,
-    created_at     timestamp with time zone default CURRENT_TIMESTAMP,
-    constraint uq_novel_chapter
-        unique (novel_id, chapter_number)
-);
-
-comment on column chapters.created_at is '记录创建时间';
-
-alter table chapters
-    owner to keigo;
-
 create table characters
 (
     id                        serial
@@ -104,18 +82,6 @@ comment on column plot_clues.created_at is '记录创建时间';
 comment on column plot_clues.updated_at is '记录最后更新时间';
 
 alter table plot_clues
-    owner to keigo;
-
-create table novel_vector_indexes
-(
-    novel_id   integer not null
-        primary key
-        references novels
-            on delete cascade,
-    index_dump bytea   not null
-);
-
-alter table novel_vector_indexes
     owner to keigo;
 
 create table generation_settings
@@ -174,12 +140,49 @@ comment on column ai_configs.updated_at is '记录最后更新时间';
 alter table ai_configs
     owner to keigo;
 
+create table chapters
+(
+    id             serial
+        primary key,
+    novel_id       integer
+        references novels
+            on delete cascade,
+    chapter_number integer not null,
+    title          text    not null,
+    content        text,
+    summary        text,
+    is_published   boolean                  default false,
+    created_at     timestamp with time zone default CURRENT_TIMESTAMP,
+    updated_at     timestamp with time zone default CURRENT_TIMESTAMP,
+    word_count     integer                  default 0,
+    unique (novel_id, chapter_number)
+);
+
+alter table chapters
+    owner to keigo;
+
+create table novel_vector_indices
+(
+    id         serial
+        primary key,
+    novel_id   integer not null
+        unique
+        references novels
+            on delete cascade,
+    index_dump bytea   not null,
+    created_at timestamp with time zone default CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone default CURRENT_TIMESTAMP
+);
+
+alter table novel_vector_indices
+    owner to keigo;
+
 create function update_updated_at_column() returns trigger
     language plpgsql
 as
 $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
 $$;
@@ -189,6 +192,12 @@ alter function update_updated_at_column() owner to keigo;
 create trigger update_novels_updated_at
     before update
     on novels
+    for each row
+execute procedure update_updated_at_column();
+
+create trigger update_novel_vector_indices_updated_at
+    before update
+    on novel_vector_indices
     for each row
 execute procedure update_updated_at_column();
 
