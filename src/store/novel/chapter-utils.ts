@@ -21,7 +21,7 @@ export const saveGeneratedChapter = async (
   set: (partial: any) => void,
   novelId: number
 ) => {
-  const { generatedContent, chapters, currentNovel, characters } = get();
+  const { generatedContent, chapters = [], currentNovel, characters } = get();
   if (!generatedContent || !currentNovel) return;
 
   // --- Step 0: Parse Title and Content from separator ---
@@ -174,25 +174,35 @@ ${content}
     });
 
     if (!response.ok) {
-        throw new Error(`API Error: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`API Error: ${response.statusText} - ${errorText}`);
     }
 
-    const { savedChapter, savedCharacters, savedPlotClues } = await response.json();
+    const responseData = await response.json();
 
-  // --- Step 3: Optimistic state update ---
-  set((state: any) => ({
-    chapters: [...state.chapters, savedChapter],
-        characters: [...state.characters, ...savedCharacters],
-        plotClues: [...state.plotClues, ...savedPlotClues],
-        generatedContent: null, // Clear saved content
-  }));
+    // 安全地解构和设置默认值
+    const savedChapter = responseData.chapter;
+    const savedCharacters = Array.isArray(responseData.savedCharacters) ? responseData.savedCharacters : [];
+    const savedPlotClues = Array.isArray(responseData.savedPlotClues) ? responseData.savedPlotClues : [];
 
-  // --- Step 4: Final novel stats update in DB ---
-  await get().updateNovelStats(novelId);
+    if (!savedChapter) {
+        throw new Error("API did not return a saved chapter.");
+    }
+    
+    // --- Step 3: Optimistic state update ---
+    set((state: any) => ({
+      chapters: [...state.chapters, savedChapter],
+      characters: [...state.characters, ...savedCharacters],
+      plotClues: [...state.plotClues, ...savedPlotClues],
+      generatedContent: null, // Clear saved content
+    }));
+
+    // --- Step 4: Final novel stats update in DB ---
+    await get().updateNovelStats(novelId);
   
-  // --- Step 5: Update vector index to include the new chapter ---
-  console.log(`[向量索引] 正在为新增章节更新向量索引...`);
-  await get().buildNovelIndex(novelId);
+    // --- Step 5: Update vector index to include the new chapter ---
+    console.log(`[向量索引] 正在为新增章节更新向量索引...`);
+    await get().buildNovelIndex(novelId);
 
   } catch (error) {
       console.error("Failed to save chapter via API:", error);

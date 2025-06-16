@@ -24,6 +24,72 @@ export interface RetrievedDocument {
 }
 
 /**
+ * 保存向量索引到数据库
+ * @param novelId - 小说ID
+ * @param index - Voy向量索引
+ */
+export const saveVectorIndex = async (novelId: number, index: Voy): Promise<void> => {
+  try {
+    console.log(`[RAG] 开始保存小说 ${novelId} 的向量索引`);
+    
+    // 序列化索引
+    const serializedIndex = index.serialize();
+    
+    // 发送到后端API
+    const response = await fetch(`/api/novels/${novelId}/vector-index`, {
+      method: 'PUT',
+      body: serializedIndex,
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to save vector index: ${response.statusText}`);
+    }
+
+    console.log(`[RAG] 成功保存小说 ${novelId} 的向量索引`);
+  } catch (error) {
+    console.error('[RAG] 保存向量索引失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 从数据库加载向量索引
+ * @param novelId - 小说ID
+ * @returns Voy向量索引，如果不存在则返回null
+ */
+export const loadVectorIndex = async (novelId: number): Promise<Voy | null> => {
+  try {
+    console.log(`[RAG] 开始加载小说 ${novelId} 的向量索引`);
+    
+    const response = await fetch(`/api/novels/${novelId}/vector-index`);
+    
+    if (response.status === 404) {
+      console.log(`[RAG] 小说 ${novelId} 没有向量索引`);
+      return null;
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load vector index: ${response.statusText}`);
+    }
+
+    // 获取序列化的数据
+    const serializedIndex = await response.text();
+    
+    // 反序列化数据到新的Voy实例
+    const index = Voy.deserialize(serializedIndex);
+    
+    console.log(`[RAG] 成功加载小说 ${novelId} 的向量索引`);
+    return index;
+  } catch (error) {
+    console.error('[RAG] 加载向量索引失败:', error);
+    return null;
+  }
+};
+
+/**
  * 使用向量检索增强生成上下文
  * @param index - Voy向量索引
  * @param documents - 索引对应的文档列表

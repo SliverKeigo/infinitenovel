@@ -2,6 +2,9 @@
  * 小说数据管理工具 (API-based)
  */
 import type { Novel } from '@/types/novel';
+import type { Chapter } from '@/types/chapter';
+import type { Character } from '@/types/character';
+import { loadVectorIndex } from './utils/rag-utils';
 import { toast } from 'sonner';
 
 /**
@@ -27,38 +30,74 @@ export const fetchNovels = async (
 };
 
 /**
- * 获取特定小说的详细信息
+ * 获取小说详细信息
+ * @param id - 小说ID
  * @param get - Zustand的get函数
  * @param set - Zustand的set函数
- * @param id - 小说ID
- * @returns 小说详细信息，包括小说、章节和角色
  */
 export const fetchNovelDetails = async (
-  get: () => any,
-  set: (partial: any) => void,
-  id: number
+  id: number,
+  get?: () => any,
+  set?: (partial: any) => void
 ) => {
-  set({ detailsLoading: true });
   try {
+    // 获取小说基本信息
     const response = await fetch(`/api/novels/${id}`);
     if (!response.ok) {
-      throw new Error(`获取小说详情失败 (ID: ${id})`);
+      throw new Error('Failed to fetch novel details');
     }
-    const { novel, chapters, characters, plotClues } = await response.json();
+    const novel = await response.json();
 
-    set({
-      currentNovel: novel,
-      chapters,
-      characters,
-      plotClues,
-      detailsLoading: false,
-      currentNovelIndex: null, // 客户端向量索引已弃用
-    });
+    // 获取章节列表
+    const chaptersResponse = await fetch(`/api/chapters?novel_id=${id}`);
+    if (!chaptersResponse.ok) {
+      throw new Error('Failed to fetch chapters');
+    }
+    const chapters = await chaptersResponse.json();
+
+    // 获取角色列表
+    const charactersResponse = await fetch(`/api/characters?novel_id=${id}`);
+    if (!charactersResponse.ok) {
+      throw new Error('Failed to fetch characters');
+    }
+    const characters = await charactersResponse.json();
+
+    // 如果提供了 get 和 set 函数，更新 store 状态
+    if (get && set) {
+      set({
+        currentNovel: novel,
+        chapters,
+        characters,
+      });
+
+      // 尝试加载向量索引
+      try {
+        const vectorIndex = await loadVectorIndex(id);
+        if (vectorIndex) {
+          console.log(`[RAG] 成功加载小说 ${id} 的向量索引`);
+          set({ currentNovelIndex: vectorIndex });
+        } else {
+          console.log(`[RAG] 小说 ${id} 没有向量索引，将在需要时创建`);
+          set({ currentNovelIndex: null });
+        }
+      } catch (error) {
+        console.error(`[RAG] 加载向量索引失败:`, error);
+        toast.error("加载向量索引失败，将在需要时重新创建");
+        set({ currentNovelIndex: null });
+      }
+    }
+
     return { novel, chapters, characters };
   } catch (error) {
-    console.error("获取小说详情失败:", error);
-    toast.error("加载小说详情时出错。");
-    set({ detailsLoading: false });
+    console.error('Failed to fetch novel details:', error);
+    if (get && set) {
+      set({
+        currentNovel: null,
+        chapters: [],
+        characters: [],
+        currentNovelIndex: null
+      });
+    }
     return null;
   }
 };

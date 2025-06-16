@@ -343,32 +343,36 @@ export interface NarrativeStage {
  */
 export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   console.log("[宏观规划提取] 开始匹配宏观叙事阶段");
-
+  
   // 将内容按详细章节大纲的分隔符分割
   const parts = content.split(/---\s*\*\*逐章细纲\*\*\s*---/);
   const macroPlanningPart = parts[0].trim();
-
+  
+  console.log("[宏观规划提取] 宏观规划部分内容:", macroPlanningPart);
+  
   const stages: NarrativeStage[] = [];
-  const regex = /^\s*\*\*(.*?)\*\*\s*\(.*?(\d+)\s*-\s*(\d+).*?\)\s*$/gm;
+  // 修改正则表达式以更好地匹配大纲格式，支持全角和半角字符
+  const regex = /\*\*(第[一二三四五六七八九十]+幕)\s*[:：]\s*(.*?)\s*[（\(]大约章节范围\s*[:：]\s*(\d+)\s*-\s*(\d+)\s*[）\)]\*\*/gm;
   let match;
 
   while ((match = regex.exec(macroPlanningPart)) !== null) {
-    // 从第一个捕获组中分离出 stageName 和 stageTitle
-    const fullTitle = match[1].trim();
-    const titleParts = fullTitle.split(/:\s*/, 2);
-    const stageName = titleParts[0] || '';
-    const stageTitle = titleParts[1] || '';
-
-    const startChapter = parseInt(match[2], 10);
-    const endChapter = parseInt(match[3], 10);
+    console.log("[宏观规划提取] 匹配到标题:", match[0]);
+    
+    const stageName = match[1].trim();
+    const stageTitle = match[2].trim(); // 完整标题，包含破折号
+    const startChapter = parseInt(match[3], 10);
+    const endChapter = parseInt(match[4], 10);
+    
+    console.log(`[宏观规划提取] 解析结果 - 阶段: ${stageName}, 标题: ${stageTitle}, 章节范围: ${startChapter}-${endChapter}`);
     
     // 提取该阶段的核心概述
     const stageStart = match.index! + match[0].length;
     let stageEnd = macroPlanningPart.length;
     
     // 寻找下一个阶段的开始位置
-    if (match.index! + match[0].length < macroPlanningPart.length) {
-      stageEnd = match.index! + match[0].length;
+    const nextMatch = macroPlanningPart.slice(stageStart).match(/^\s*\*\*第[一二三四五六七八九十]+幕/m);
+    if (nextMatch) {
+      stageEnd = stageStart + nextMatch.index!;
     }
    
     // 提取阶段内容
@@ -377,6 +381,8 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
     // 整个阶段内容就是核心概述
     // 移除开头的-、*、空格等列表标记
     const coreSummary = stageContent.replace(/^[\s*\-•]+/, '').trim();
+    
+    console.log(`[宏观规划提取] 提取到核心概述:`, coreSummary.substring(0, 50) + "...");
     
     // 不再单独提取关键元素，因为它们已经包含在核心概述中
     const keyElements: string[] = [];
@@ -393,9 +399,16 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   }
   
   console.log(`[宏观规划提取] 成功提取 ${stages.length} 个叙事阶段`);
-  stages.forEach((stage, index) => {
-    console.log(`[宏观规划提取] 阶段 ${index + 1}: ${stage.stageName} (第${stage.chapterRange.start}-${stage.chapterRange.end}章)`);
-  });
+  if (stages.length > 0) {
+    stages.forEach((stage, index) => {
+      console.log(`[宏观规划提取] 阶段 ${index + 1}: ${stage.stageName} (第${stage.chapterRange.start}-${stage.chapterRange.end}章)`);
+    });
+  } else {
+    console.log("[宏观规划] 未找到宏观叙事规划，跳过阶段指导生成");
+    // 输出一些调试信息，帮助诊断为什么没有匹配到
+    console.log("[宏观规划提取] 调试信息 - 正则表达式:", regex.source);
+    console.log("[宏观规划提取] 调试信息 - 第一个标题行:", macroPlanningPart.split('\n')[0]);
+  }
   
   return stages;
 };

@@ -6,6 +6,7 @@ import { EmbeddingPipeline } from '@/lib/embeddings';
 import type { Chapter } from '@/types/chapter';
 import type { Character } from '@/types/character';
 import type { PlotClue } from '@/types/plot-clue';
+import { saveVectorIndex } from './utils/rag-utils';
 
 /**
  * 构建小说向量索引
@@ -84,22 +85,16 @@ export const buildNovelIndex = async (
 
     // 将新创建的索引持久化到数据库
     try {
-      const serializedIndex = newIndex.serialize();
-      // 使用 put 并指定 novelId 作为查找键，实现覆盖更新
-      await fetch(`/api/novels/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vector_index_dump: serializedIndex })
-      });
-      console.log(`成功为小说ID ${id} 保存了向量索引。`);
+      await saveVectorIndex(id, newIndex);
+      console.log(`[RAG] 成功为小说ID ${id} 保存了向量索引。`);
     } catch (e) {
-      console.error(`为小说ID ${id} 保存向量索引失败:`, e);
+      console.error(`[RAG] 为小说ID ${id} 保存向量索引失败:`, e);
     }
 
     onSuccess?.();
 
-  } catch (error: any) {
-    console.error("Failed to build novel index:", error);
+  } catch (error) {
+    console.error('Failed to build novel index:', error);
     set({ indexLoading: false });
   }
 }; 

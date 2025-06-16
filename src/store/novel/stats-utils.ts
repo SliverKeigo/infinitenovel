@@ -16,8 +16,8 @@ export const updateNovelStats = async (
     if (!response.ok) {
       console.error('Failed to trigger novel stats update on the server.');
     }
-    // After updating the source of truth, refresh the state
-    await get().fetchNovelDetails(novelId);
+  // After updating the source of truth, refresh the state
+  await get().fetchNovelDetails(novelId);
   } catch (error) {
     console.error('Error calling stats update API:', error);
   }
