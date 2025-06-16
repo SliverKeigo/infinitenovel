@@ -68,7 +68,7 @@ export const generateChapters = async (
       const batchStartChapterNumber = (get().chapters.length || 0) + 1;
 
       for (let j = 0; j < currentBatchSize; j++) {
-        const overallProgress = ((i + j) / chaptersToGenerate) * 100;
+        const overallProgress = Math.floor(((i + j) / chaptersToGenerate) * 100);
         
         // 获取下一个章节号
         const nextChapterNumber = await get().getMaxChapterNumber(novelId) + 1;
@@ -76,7 +76,7 @@ export const generateChapters = async (
         set((state: any) => ({
           generationTask: {
             ...state.generationTask,
-            progress: Math.floor(overallProgress),
+            progress: overallProgress,
             currentStep: `(第 ${i + j + 1}/${chaptersToGenerate} 章) 正在生成第 ${nextChapterNumber} 章...`
           }
         }));

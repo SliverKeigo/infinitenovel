@@ -254,10 +254,10 @@ export const generateNovelChapters = async (
 
     let plotOutline = plannerResponse.choices[0].message.content || "";
     plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
-    set({ generationTask: { ...get().generationTask, progress: 0.4, currentStep: `故事大纲已生成...` } });
+    set({ generationTask: { ...get().generationTask, progress: 40, currentStep: `故事大纲已生成...` } });
 
     // === STAGE 1C: COMBINE & FINALIZE ===
-    set({ generationTask: { ...get().generationTask, progress: 15, currentStep: '阶段3/3: 正在整合最终大纲...' } });
+    set({ generationTask: { ...get().generationTask, progress: 45, currentStep: '阶段3/3: 正在整合最终大纲...' } });
     
     // 调整顺序：宏观规划在前，逐章细纲在后，使用新的分隔符
     const finalOutline = `${worldSetting.trim()}\n\n---\n**逐章细纲**\n---\n\n${plotOutline.trim()}`;
@@ -270,10 +270,10 @@ export const generateNovelChapters = async (
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plot_outline: processedOutline })
     });
-    set({ generationTask: { ...get().generationTask, progress: 0.6, currentStep: '大纲创建完毕！' } });
+    set({ generationTask: { ...get().generationTask, progress: 50, currentStep: '大纲创建完毕！' } });
 
     // --- STAGE 1.5: CREATE NOVEL DESCRIPTION ---
-    set({ generationTask: { ...get().generationTask, progress: 22, currentStep: '正在生成小说简介...' } });
+    set({ generationTask: { ...get().generationTask, progress: 55, currentStep: '正在生成小说简介...' } });
 
     // 获取风格指导，优先使用已保存的定制风格指导
     let descriptionStyleGuide = "";
@@ -323,7 +323,7 @@ export const generateNovelChapters = async (
 
     let description = descriptionResponse.choices[0].message.content || "";
     description = description.trim();
-    set({ generationTask: { ...get().generationTask, progress: 0.8, currentStep: '小说简介已完成...' } });
+    set({ generationTask: { ...get().generationTask, progress: 60, currentStep: '小说简介已完成...' } });
 
     if (description) {
       await fetch(`/api/novels/${novelId}`, {
@@ -334,7 +334,7 @@ export const generateNovelChapters = async (
     }
 
     // --- STAGE 2: CREATE CHARACTERS ---
-    set({ generationTask: { ...get().generationTask, progress: 25, currentStep: '正在创建核心角色...' } });
+    set({ generationTask: { ...get().generationTask, progress: 65, currentStep: '正在创建核心角色...' } });
 
     // 获取风格指导，优先使用已保存的定制风格指导
     let characterStyleGuide = "";
@@ -505,10 +505,10 @@ export const generateNovelChapters = async (
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ character_count: newCharacters.length })
       });
-      set({ generationTask: { ...get().generationTask, progress: 0.8, currentStep: '核心人物创建完毕！' } });
+      set({ generationTask: { ...get().generationTask, progress: 70, currentStep: '核心人物创建完毕！' } });
     } else {
       console.warn("[角色生成] 未能创建任何角色");
-      set({ generationTask: { ...get().generationTask, progress: 0.8, currentStep: '未生成核心人物，继续...' } });
+      set({ generationTask: { ...get().generationTask, progress: 70, currentStep: '未生成核心人物，继续...' } });
     }
 
     // --- STAGE 3: GENERATE CHAPTERS ---
@@ -549,11 +549,11 @@ export const generateNovelChapters = async (
       const generationContext = { plotOutline: processedOutline, characters: allCharacters, settings };
 
       const nextChapterNumber = maxChapterNumber + i + 1;
-      const chapterProgress = 0.8 + (i / chaptersToGenerateCount) * 0.2;
+      const chapterProgress = 70 + Math.floor((i / chaptersToGenerateCount) * 30); // 从70%开始，最多到100%
       set({
         generationTask: {
           ...get().generationTask,
-          progress: Math.floor(chapterProgress * 100),
+          progress: chapterProgress,
           currentStep: `正在生成第 ${nextChapterNumber} 章...`,
         },
       });
