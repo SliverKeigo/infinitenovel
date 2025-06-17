@@ -138,57 +138,31 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   console.log("content",content);
   // 将内容按详细章节大纲的分隔符分割
   const parts = content.split(/---\s*\*\*逐章细纲\*\*\s*---/);
-  const macroPlanningPart = parts[0].trim();
+  // 如果没有分隔符，直接使用整个内容
+  const macroPlanningPart = parts.length > 1 ? parts[0].trim() : content.trim();
   
   const stages: NarrativeStage[] = [];
-  // 正则表达式解释:
-  // \*\*...\*\*            - 匹配粗体标记
-  // (第[...]+幕)         - 分组1: 捕获 "第X幕"
-  // \s*[:：]\s*           - 匹配全角或半角冒号
-  // ([^\(（\n]+?)        - 分组2: 非贪婪地捕获标题，直到遇到括号或换行符
-  // \s*                   - 匹配标题和括号间的空格
-  // (?: ... )?            - 整个章节范围部分是可选的
-  // \([（]               - 匹配全角或半角开括号
-  // (?:大约)?章节范围      - "大约"是可选的
-  // [:：]?\s*            - 冒号是可选的，允许任意空格
-  // (\d+)\s*-\s*(\d+)   - 分组3和4: 捕获起始和结束章节号
-  // [）\)]               - 匹配全角或半角闭括号
-  const regex = /\*\*(第[一二三四五六七八九十]+幕)\s*[:：]\s*([^\(（\n]+?)\s*(?:\([（](?:大约)?章节范围[:：]?\s*(\d+)\s*-\s*(\d+)\s*[）\)])?\s*\*\*/gm;
+  // 简单匹配所有的章节范围（数字-数字）
+  const regex = /(\d+)\s*-\s*(\d+)/g;
   let match;
+  let actNumber = 1;
 
   while ((match = regex.exec(macroPlanningPart)) !== null) {
-    const stageName = match[1]?.trim() || '';
-    const stageTitle = match[2]?.trim() || '';
-    const startChapter = parseInt(match[3], 10);
-    const endChapter = parseInt(match[4], 10);
-
-    // 提取该阶段的核心概述
-    const stageStart = match.index! + match[0].length;
-    let stageEnd = macroPlanningPart.length;
-
-    // 寻找下一个阶段的开始位置
-    const nextMatch = macroPlanningPart.slice(stageStart).match(/^\s*\*\*第[一二三四五六七八九十]+幕/m);
-    if (nextMatch) {
-      stageEnd = stageStart + nextMatch.index!;
-    }
-   
-    // 提取阶段内容
-    let stageContent = macroPlanningPart.substring(stageStart, stageEnd).trim();
+    const startChapter = parseInt(match[1], 10);
+    const endChapter = parseInt(match[2], 10);
     
-    // 整个阶段内容就是核心概述, 移除开头的-、*、空格等列表标记
-    const coreSummary = stageContent.replace(/^[\s*\-•]+核心剧情概述\s*[:：]?\s*/, '').trim();
-
     stages.push({
-      stageName: `${stageName}: ${stageTitle}`,
+      stageName: `第${actNumber}幕`,
       chapterRange: {
         start: startChapter,
         end: endChapter
       },
-      coreSummary,
+      coreSummary: '',
       keyElements: []
     });
+    
+    actNumber++;
   }
-  
   
   return stages;
 };
