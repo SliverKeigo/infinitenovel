@@ -135,7 +135,7 @@ export interface NarrativeStage {
  * @returns 宏观叙事规划的各个阶段
  */
 export const extractNarrativeStages = (content: string): NarrativeStage[] => {
-  
+  console.log("content",content);
   // 将内容按详细章节大纲的分隔符分割
   const parts = content.split(/---\s*\*\*逐章细纲\*\*\s*---/);
   const macroPlanningPart = parts[0].trim();
@@ -150,9 +150,10 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   // (?: ... )?            - 整个章节范围部分是可选的
   // \([（]               - 匹配全角或半角开括号
   // (?:大约)?章节范围      - "大约"是可选的
+  // [:：]?\s*            - 冒号是可选的，允许任意空格
   // (\d+)\s*-\s*(\d+)   - 分组3和4: 捕获起始和结束章节号
   // [）\)]               - 匹配全角或半角闭括号
-  const regex = /\*\*(第[一二三四五六七八九十]+幕)\s*[:：]\s*([^\(（\n]+?)\s*(?:\([（](?:大约)?章节范围\s*[:：]\s*(\d+)\s*-\s*(\d+)\s*[）\)])?\s*\*\*/gm;
+  const regex = /\*\*(第[一二三四五六七八九十]+幕)\s*[:：]\s*([^\(（\n]+?)\s*(?:\([（](?:大约)?章节范围[:：]?\s*(\d+)\s*-\s*(\d+)\s*[）\)])?\s*\*\*/gm;
   let match;
 
   while ((match = regex.exec(macroPlanningPart)) !== null) {

@@ -216,7 +216,9 @@ export const generateNovelChapters = async (
 
     // 使用 extractNarrativeStages 函数来解析章节范围，代替手动正则
     const stages = extractNarrativeStages(worldSetting);
-
+    
+    console.log("解析到的大纲内容:", JSON.stringify(stages, null, 2));
+    
     let actOneStart = 1;
     let actOneEnd = 100; // 默认值
 
@@ -229,49 +231,95 @@ export const generateNovelChapters = async (
     }
 
     // 生成逐章节大纲
-    const plannerPrompt = `
-    你是一位才华横溢、深谙故事节奏的总编剧。你的任务是为一部名为《${novel.name}》的小说的**第一幕**撰写详细的、逐章的剧情大纲。
+    const BATCH_SIZE = 20; // 每批次生成20章
+    const BATCH_DELAY = 1000; // 批次间延迟1秒
+    let plotOutline = '';
 
-    **第一幕的宏观规划:**
-    ${firstActInfo}
+    // 计算需要生成的总批次数
+    const totalChapters = actOneEnd - actOneStart + 1;
+    const totalBatches = Math.ceil(totalChapters / BATCH_SIZE);
 
-    **你的核心原则:**
-    - **放慢节奏**: 这是最高指令！你必须将上述的"核心剧情概述"分解成无数个微小的步骤、挑战、人物互动和支线任务。
-    - **填充细节**: 不要让主角轻易达成目标。为他设置障碍，让他与各种人相遇，让他探索世界，让他用不止一个章节去解决一个看似简单的问题。
-    - **禁止剧情飞跃**: 严禁在短短几章内完成一个重大的里程碑。例如，"赢得皇帝的信任"这个目标，应该通过数十个章节的事件和任务逐步累积来实现。
-    - **遵守初始设定**: 如果小说的 "核心设定与特殊要求" (${novel.special_requirements || '无'}) 中包含了开篇情节，第一章必须严格遵循该设定。
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const batchStart = actOneStart + (batchIndex * BATCH_SIZE);
+      const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, actOneEnd);
 
-    **你的任务:**
-    - 根据上述宏观规划，为第一幕（从第 ${actOneStart} 章到第 ${actOneEnd} 章）生成**逐章节**剧情大纲。
-    - 每章大纲应为50-100字的具体事件描述。
+      // 更新进度
+      const batchProgress = Math.floor((batchIndex / totalBatches) * 35) + 5;
+      set({ generationTask: { ...get().generationTask, progress: batchProgress, currentStep: `正在生成第${batchStart}-${batchEnd}章大纲 (${batchIndex + 1}/${totalBatches}批次)...` } });
 
-    **输出格式:**
-    - 请严格使用"第X章: [剧情摘要]"的格式。
-    - **只输出逐章节大纲**，不要重复宏观规划或添加任何解释性文字。
-  `;
-    const plannerApiResponse = await fetch('/api/ai/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        activeConfigId: activeConfig.id,
-        model: activeConfig.model,
-        messages: [{ role: 'user', content: plannerPrompt }],
-        temperature: settings.temperature,
-        stream: false
-      })
-    });
-    if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
+      const batchPlannerPrompt = `
+你是一位才华横溢、深谙故事节奏的总编剧。你的任务是为一部名为《${novel.name}》的小说的第一幕继续撰写详细的剧情大纲。
 
-    const plannerResponse = await plannerApiResponse.json();
-    let plotOutline = extractTextFromAIResponse(plannerResponse);
-    
-    // 标准化AI响应中的标点符号
-    plotOutline = plotOutline.replace(/：/g, ':');
-    
-    // 实时更新 UI
-    store.setGeneratedContent(plotOutline);
+**第一幕的宏观规划:**
+${firstActInfo}
 
-    plotOutline = plotOutline.replace(/```markdown/g, '').replace(/```/g, '').trim();
+${plotOutline ? `**已生成的大纲内容（请仔细阅读以确保连贯性）:**
+${plotOutline}
+
+**请在上述大纲的基础上，继续编写第${batchStart}章到第${batchEnd}章的内容。新增内容必须与已有内容自然衔接。**` : '**请从第一章开始编写大纲:**'}
+
+**你的核心原则:**
+- **放慢节奏**: 这是最高指令！你必须将宏观规划中的剧情分解成无数个微小的步骤、挑战、人物互动和支线任务。
+- **填充细节**: 不要让主角轻易达成目标。为他设置障碍，让他与各种人相遇，让他探索世界。
+- **禁止剧情飞跃**: 严禁在短短几章内完成一个重大的里程碑。
+- **遵守初始设定**: 如果小说的"核心设定与特殊要求"(${novel.special_requirements || '无'})中包含了开篇情节，必须严格遵循。
+${plotOutline ? '- **保持连贯性**: 新生成的内容必须与已有大纲自然衔接，人物行为和剧情发展必须合理。' : ''}
+
+**当前任务:**
+1. 仔细阅读已生成的大纲内容（如果有）
+2. 为第${batchStart}章到第${batchEnd}章生成逐章节大纲
+3. 每章大纲控制在50-100字
+4. 确保新内容与已有大纲的情节发展完全连贯
+
+**输出格式要求:**
+- 只输出新增章节的大纲
+- 严格使用"第X章: [剧情摘要]"的格式
+- 不要重复已有内容
+- 不要添加任何解释性文字
+`;
+
+      try {
+        const plannerApiResponse = await fetch('/api/ai/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activeConfigId: activeConfig.id,
+            model: activeConfig.model,
+            messages: [{ role: 'user', content: batchPlannerPrompt }],
+            temperature: settings.temperature,
+            stream: false
+          })
+        });
+
+        if (!plannerApiResponse.ok) {
+          throw new Error(`批次${batchIndex + 1}生成失败: ${await plannerApiResponse.text()}`);
+        }
+
+        const plannerResponse = await plannerApiResponse.json();
+        const batchOutline = extractTextFromAIResponse(plannerResponse);
+
+        // 标准化AI响应中的标点符号
+        const processedBatchOutline = batchOutline.replace(/：/g, ':').trim();
+        
+        // 添加到总大纲中
+        plotOutline += (plotOutline ? '\n\n' : '') + processedBatchOutline;
+
+        // 实时更新 UI
+        store.setGeneratedContent(plotOutline);
+
+        // 批次间添加延迟
+        if (batchIndex < totalBatches - 1) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        }
+      } catch (error) {
+        console.error(`批次${batchIndex + 1}生成失败:`, error);
+        // 重试逻辑
+        batchIndex--; // 重试当前批次
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY * 2)); // 失败后等待更长时间
+        continue;
+      }
+    }
+
     if (!plotOutline) throw new Error('未能生成任何章节大纲');
 
     set({ generationTask: { ...get().generationTask, progress: 40, currentStep: `故事大纲已生成...` } });
