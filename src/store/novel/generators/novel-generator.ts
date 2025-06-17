@@ -274,6 +274,9 @@ export const generateNovelChapters = async (
         model: activeConfig.model,
         messages: [{ role: 'user', content: plannerPrompt }],
         temperature: settings.temperature,
+        max_tokens: 4000,
+        timeout: 300000,
+        max_retries: 2,
       })
     });
     if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
