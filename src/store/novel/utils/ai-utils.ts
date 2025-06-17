@@ -40,4 +40,31 @@ export const callOpenAIWithRetry = async <T>(
       }
     }
   }
+};
+
+/**
+ * 从API响应中安全地提取文本内容
+ * @param response - API响应对象
+ * @returns 提取的文本内容
+ */
+export const extractTextFromAIResponse = (response: any): string => {
+  try {
+    if (!response?.choices?.[0]?.message?.content) {
+      return "";
+    }
+
+    const content = response.choices[0].message.content;
+
+    // 处理数组格式的响应
+    if (Array.isArray(content)) {
+      const textContent = content.find((item: { type: string; text: string }) => item.type === 'text');
+      return textContent?.text || "";
+    }
+
+    // 处理字符串格式的响应
+    return typeof content === 'string' ? content : "";
+  } catch (error) {
+    console.error('[AI响应处理] 提取文本内容时出错:', error);
+    return "";
+  }
 }; 
