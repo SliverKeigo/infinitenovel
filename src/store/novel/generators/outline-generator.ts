@@ -5,7 +5,7 @@
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
 import { toast } from "sonner";
-import { countDetailedChaptersInOutline, extractChapterNumbers } from '../outline-utils';
+import { countDetailedChaptersInOutline, extractChapterNumbers } from '../utils/outline-utils';
 import { getGenreStyleGuide } from '../style-guides';
 import { getOrCreateStyleGuide } from './style-guide-generator';
 import { processOutline, extractDetailedAndMacro } from '../parsers';
@@ -13,6 +13,7 @@ import { OUTLINE_EXPAND_THRESHOLD, OUTLINE_EXPAND_CHUNK_SIZE } from '../constant
 import { getOrCreateCharacterRules } from './character-rules-generator';
 import { useNovelStore } from '@/store/use-novel-store';
 import { Novel } from '@/types/novel';
+import { extractTextFromAIResponse } from '../utils/ai-utils';
 
 /**
  * 如果需要，扩展小说大纲
@@ -131,8 +132,7 @@ export const expandPlotOutlineIfNeeded = async (
         throw new Error(`API request failed: ${await apiResponse.text()}`);
       }
       const response = await apiResponse.json();
-
-      let expandedContent = response.choices[0].message.content || "";
+      let expandedContent = extractTextFromAIResponse(response);
       
       // 清理AI返回的markdown
       expandedContent = expandedContent.replace(/^#+\s+/, '').replace(/\n\n+/, '\n\n');

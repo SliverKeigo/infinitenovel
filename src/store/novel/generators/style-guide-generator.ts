@@ -4,7 +4,7 @@
  */
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
-import { callOpenAIWithRetry } from '../utils/ai-utils';
+import { callOpenAIWithRetry, extractTextFromAIResponse } from '../utils/ai-utils';
 import { Novel } from '@/types/novel';
 
 /**
@@ -90,7 +90,7 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
     }
     const response = await apiResponse.json();
 
-    const styleGuideText = response.choices[0].message.content || "";
+    const styleGuideText = extractTextFromAIResponse(response);
 
     // 保存生成的风格指导到小说数据中
     await fetch(`/api/novels/${novelId}`, {

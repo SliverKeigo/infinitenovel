@@ -8,7 +8,7 @@ import type { GenerationSettings } from '@/types/generation-settings';
 import OpenAI from "openai";
 import { useAIConfigStore } from "@/store/ai-config";
 import { runOutlineUpdateCycle } from "./outline-updater";
-import { extractFutureOutline, combineWithRevisedOutline } from "../outline-utils";
+import { extractFutureOutline, combineWithRevisedOutline } from "../utils/outline-utils";
 import { Novel } from "@/types/novel";
 
 const BATCH_SIZE = 5; // 每5章执行一次大纲修正

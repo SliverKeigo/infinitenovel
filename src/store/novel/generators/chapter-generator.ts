@@ -7,7 +7,7 @@ import OpenAI from 'openai';
 import { toast } from "sonner";
 import { Character } from '@/types/character';
 import { GenerationSettings } from '@/types/generation-settings';
-import { getChapterOutline, countDetailedChaptersInOutline } from '../outline-utils';
+import { getChapterOutline, countDetailedChaptersInOutline } from '../utils/outline-utils';
 import { handleOpenAIError } from '../error-handlers';
 import { getGenreStyleGuide } from '../style-guides';
 import { getOrCreateStyleGuide } from './style-guide-generator';
@@ -23,6 +23,7 @@ import { CHAPTER_WORD_TARGET, CHAPTER_WORD_TOLERANCE } from '../constants';
 import { retrieveRelevantContext, formatRetrievedContextForPrompt } from '../utils/rag-utils';
 import { callOpenAIWithRetry } from '../utils/ai-utils';
 import { Novel } from '@/types/novel';
+import { extractTextFromAIResponse } from '../utils/ai-utils';
 
 /**
  * 生成单个新章节的上下文接口
@@ -253,7 +254,7 @@ ${start}...
 `;
     }
   } else {
-    console.log("[诊断] 未在状态中找到章节列表或列表为空，跳过“上下文三明治”策略。");
+    console.log('[诊断] 未在状态中找到章节列表或列表为空，跳过"上下文三明治"策略。');
   }
 
   // [新增] 最高优先级上下文（仅在第一章时注入）
@@ -370,21 +371,6 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 }
       `;
 
-    // const decompResponse = await callOpenAIWithRetry(() => 
-    //   openai.chat.completions.create({
-    //     model: activeConfig.model,
-    //     messages: [
-    //       {
-    //         role: 'system',
-    //         content: '你是一个只输出JSON的助手。不要包含任何解释、前缀或后缀。不要使用Markdown代码块。直接以花括号{开始你的响应，以花括号}结束。不要添加任何额外的文本。'
-    //       },
-    //       { role: 'user', content: decompositionPrompt }
-    //     ],
-    //     response_format: { type: "json_object" },
-    //     temperature: 0.5,
-    //   })
-    // );
-    
     const apiResponse = await fetch('/api/ai/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -398,7 +384,6 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
           },
           { role: 'user', content: decompositionPrompt }
         ],
-        response_format: { type: "json_object" },
         temperature: 0.5,
       })
     });
@@ -410,7 +395,7 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 
     const decompResponse = await apiResponse.json() as { choices: { message: { content: string } }[] };
 
-    const decompResult = parseJsonFromAiResponse(decompResponse.choices[0].message.content || "");
+    const decompResult = parseJsonFromAiResponse(extractTextFromAIResponse(decompResponse));
     chapterTitle = decompResult.title;
     progressStatus = decompResult.progressStatus || "未知";
     bigOutlineEvents = decompResult.bigOutlineEvents || [];
@@ -537,19 +522,6 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
       }
 
-      // const stream = await callOpenAIWithRetry(() => 
-      //   openai.chat.completions.create({
-      //     model: activeConfig.model,
-      //     messages: [{ role: 'user', content: scenePrompt }],
-      //     stream: true, // 开启流式传输
-      //     max_tokens: max_tokens,
-      //     temperature,
-      //     top_p: top_p,
-      //     frequency_penalty: frequency_penalty,
-      //     presence_penalty: presence_penalty,
-      //   })
-      // );
-      
       const response = await fetch('/api/ai/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -605,14 +577,6 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         }
       }
 
-      // let currentSceneContent = "";
-      // for await (const chunk of stream) {
-      //   const token = chunk.choices[0]?.delta?.content || "";
-      //   if (token) {
-      //     set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + token }));
-      //     currentSceneContent += token;
-      //   }
-      // }
       // 当前场景流式结束后，将其完整内容更新到内部累积器中
       completedScenesContent += (i > 0 ? "\n\n" : "") + currentSceneContent;
 

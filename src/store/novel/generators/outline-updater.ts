@@ -2,6 +2,7 @@ import type { Novel } from "@/types/novel";
 import OpenAI from "openai";
 import { parseJsonFromAiResponse } from "../parsers";
 import { useAIConfigStore } from "@/store/ai-config";
+import { extractTextFromAIResponse } from '../utils/ai-utils';
 
 /**
  * 分析师-编辑双AI协作模型的核心实现。
@@ -113,7 +114,6 @@ ${generatedChaptersContent}
         activeConfigId: activeConfig.id,
         model: activeConfig.model,
       messages: [{ role: 'user', content: driftReportPrompt }],
-      response_format: { type: "json_object" },
       })
     });
     if (!apiResponse.ok) throw new Error(`API request failed: ${await apiResponse.text()}`);
@@ -274,7 +274,7 @@ ${futureOutline}
     if (!editorApiResponse.ok) throw new Error(`Editor API request failed: ${await editorApiResponse.text()}`);
     const response = await editorApiResponse.json();
 
-    let newContent = response.choices[0].message.content || "";
+    let newContent = extractTextFromAIResponse(response);
 
     // 清理AI可能返回的markdown代码块标记
     newContent = newContent.replace(/```[\s\S]*?```/g, '').trim();

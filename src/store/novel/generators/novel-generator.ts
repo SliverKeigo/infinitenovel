@@ -19,6 +19,7 @@ import { generateNewChapter } from './chapter-generator';
 import { toast } from 'sonner';
 import { Novel } from '@/types/novel';
 import type { Chapter } from '@/types/chapter';
+import { extractTextFromAIResponse } from '../utils/ai-utils';
 
 /**
  * 生成整本小说的章节
@@ -183,7 +184,7 @@ export const generateNovelChapters = async (
     const architectResponse = await architectApiResponse.json() as { choices: { message: { content: string } }[] };
     console.log("[大纲生成] AI响应成功，开始处理响应");
 
-    let worldSetting = architectResponse.choices[0].message.content || "";
+    let worldSetting = extractTextFromAIResponse(architectResponse);
     worldSetting = worldSetting.replace(/```markdown/g, "").replace(/```/g, "").trim();
     console.log("[大纲生成] 宏观叙事蓝图生成完成:", worldSetting.substring(0, 100) + "...");
 
@@ -257,7 +258,7 @@ export const generateNovelChapters = async (
     if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
     const plannerResponse = await plannerApiResponse.json() as { choices: { message: { content: string } }[] };
 
-    let plotOutline = plannerResponse.choices[0].message.content || "";
+    let plotOutline = extractTextFromAIResponse(plannerResponse);
     plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
 
     if (!plotOutline) throw new Error("未能生成任何章节大纲");
@@ -331,7 +332,7 @@ export const generateNovelChapters = async (
     if (!descriptionApiResponse.ok) throw new Error(`Description AI failed: ${await descriptionApiResponse.text()}`);
     const descriptionResponse = await descriptionApiResponse.json();
 
-    let description = descriptionResponse.choices[0].message.content || "";
+    let description = extractTextFromAIResponse(descriptionResponse);
     description = description.trim();
     set({ generationTask: { ...get().generationTask, progress: 60, currentStep: '小说简介已完成...' } });
 
@@ -418,20 +419,19 @@ export const generateNovelChapters = async (
           },
           { role: 'user', content: characterPrompt }
         ],
-        response_format: { type: "json_object" },
         temperature: settings.character_creativity,
       })
     });
     if (!charactersApiResponse.ok) throw new Error(`Character AI failed: ${await charactersApiResponse.text()}`);
     const charactersResponse = await charactersApiResponse.json() as { choices: { message: { content: string } }[] };
 
-    const characterData = parseJsonFromAiResponse(charactersResponse.choices[0].message.content || "");
+    const characterData = parseJsonFromAiResponse(extractTextFromAIResponse(charactersResponse));
     const initialCharacters = characterData.characters || [];
     set({ generationTask: { ...get().generationTask, progress: 0.8, currentStep: '主角团已创建...' } });
 
     let newCharacters: CharacterCreationData[] = [];
     try {
-      const parsedCharacters = parseJsonFromAiResponse(charactersResponse.choices[0].message.content || "");
+      const parsedCharacters = parseJsonFromAiResponse(extractTextFromAIResponse(charactersResponse));
 
       const charactersData = parsedCharacters.characters || [];
 

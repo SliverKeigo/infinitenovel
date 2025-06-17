@@ -4,7 +4,7 @@
  */
 import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
-import { callOpenAIWithRetry } from '../utils/ai-utils';
+import { callOpenAIWithRetry, extractTextFromAIResponse } from '../utils/ai-utils';
 import type { Novel } from '@/types/novel';
 import type { AIConfig } from '@/types/ai-config';
 
@@ -83,7 +83,7 @@ export const generateCharacterRules = async (novel: Novel, activeConfig: AIConfi
 
     const response = await apiResponse.json();
 
-    let rulesText = response.choices[0].message.content || "";
+    let rulesText = extractTextFromAIResponse(response);
     
     // 清理AI可能返回的额外文本
     rulesText = rulesText.replace(/【角色行为准则】/g, '').trim();
