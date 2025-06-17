@@ -20,6 +20,16 @@ import { toast } from 'sonner';
 import { Novel } from '@/types/novel';
 import type { Chapter } from '@/types/chapter';
 import { extractTextFromAIResponse } from '../utils/ai-utils';
+import { useNovelStore } from '../../use-novel-store';
+
+/**
+ * 更新生成内容的状态
+ * @param content 当前的生成内容
+ */
+const updateGenerationContent = (content: string) => {
+  const store = useNovelStore.getState();
+  store.setGeneratedContent(content);
+};
 
 /**
  * 生成整本小说的章节
@@ -171,21 +181,70 @@ export const generateNovelChapters = async (
         model: activeConfig.model,
         messages: [{ role: 'user', content: architectPrompt }],
         temperature: settings.temperature,
+        stream: true
       })
     });
 
-    console.log("[大纲生成] AI响应状态:", architectApiResponse.status);
     if (!architectApiResponse.ok) {
-      const errorText = await architectApiResponse.text();
-      console.error("[大纲生成] AI调用失败:", errorText);
-      throw new Error(`Architect AI failed: ${errorText}`);
+      throw new Error('世界观构建请求失败');
     }
 
-    const architectResponse = await architectApiResponse.json() as { choices: { message: { content: string } }[] };
-    console.log("[大纲生成] AI响应成功，开始处理响应");
+    if (!architectApiResponse.body) {
+      throw new Error('响应体为空');
+    }
 
-    let worldSetting = extractTextFromAIResponse(architectResponse);
-    worldSetting = worldSetting.replace(/```markdown/g, "").replace(/```/g, "").trim();
+    const reader = architectApiResponse.body.getReader();
+    const decoder = new TextDecoder();
+    let worldSetting = '';
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          break;
+        }
+
+        // 解码本次接收的数据
+        const chunk = decoder.decode(value);
+        buffer += chunk;
+
+        // 处理SSE格式的数据
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 保留最后一个不完整的行
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.choices?.[0]?.delta?.content) {
+                const content = data.choices[0].delta.content;
+                worldSetting += content;
+                // 更新生成状态
+                const store = useNovelStore.getState();
+                store.setGeneratedContent(worldSetting);
+              }
+            } catch (e) {
+              console.error('解析流数据时出错:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('读取流数据时出错:', error);
+      throw new Error('读取世界观数据流失败');
+    } finally {
+      reader.releaseLock();
+    }
+
+    if (!worldSetting) {
+      throw new Error('未能成功获取世界观设定');
+    }
+
+    // 清理和处理最终的世界观设定
+    worldSetting = worldSetting.trim();
+
     console.log("[大纲生成] 宏观叙事蓝图生成完成:", worldSetting.substring(0, 100) + "...");
 
     if (!worldSetting) {
@@ -253,15 +312,55 @@ export const generateNovelChapters = async (
         model: activeConfig.model,
         messages: [{ role: 'user', content: plannerPrompt }],
         temperature: settings.temperature,
+        stream: true
       })
     });
     if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
-    const plannerResponse = await plannerApiResponse.json() as { choices: { message: { content: string } }[] };
+    if (!plannerApiResponse.body) throw new Error('Planner API returned empty body');
 
-    let plotOutline = extractTextFromAIResponse(plannerResponse);
-    plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
+    const plannerReader = plannerApiResponse.body.getReader();
+    const plannerDecoder = new TextDecoder();
+    let plotOutline = '';
+    let plannerBuffer = '';
 
-    if (!plotOutline) throw new Error("未能生成任何章节大纲");
+    try {
+      while (true) {
+        const { done, value } = await plannerReader.read();
+        if (done) break;
+
+        // 解码本次接收的数据
+        const chunk = plannerDecoder.decode(value);
+        plannerBuffer += chunk;
+
+        // 处理SSE格式的数据 (以"data: "开头, 每行一个JSON)
+        const lines = plannerBuffer.split('\n');
+        plannerBuffer = lines.pop() || '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const deltaContent = data?.choices?.[0]?.delta?.content;
+              if (deltaContent) {
+                plotOutline += deltaContent;
+                // 实时更新 UI
+                const store = useNovelStore.getState();
+                store.setGeneratedContent(plotOutline);
+              }
+            } catch (e) {
+              console.error('[Act Planner] SSE 行解析失败:', e);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Act Planner] 读取流数据时出错:', err);
+      throw new Error('读取逐章大纲数据流失败');
+    } finally {
+      plannerReader.releaseLock();
+    }
+
+    plotOutline = plotOutline.replace(/```markdown/g, '').replace(/```/g, '').trim();
+    if (!plotOutline) throw new Error('未能生成任何章节大纲');
 
     console.log(`[Act Planner] 分块生成完成，总章节 ${actOneEnd - actOneStart + 1}`);
 
@@ -423,7 +522,7 @@ export const generateNovelChapters = async (
       })
     });
     if (!charactersApiResponse.ok) throw new Error(`Character AI failed: ${await charactersApiResponse.text()}`);
-    const charactersResponse = await charactersApiResponse.json() as { choices: { message: { content: string } }[] };
+    const charactersResponse = await charactersApiResponse.json() as { choices: { message: { content: any } }[] };
 
     const characterData = parseJsonFromAiResponse(extractTextFromAIResponse(charactersResponse));
     const initialCharacters = characterData.characters || [];
