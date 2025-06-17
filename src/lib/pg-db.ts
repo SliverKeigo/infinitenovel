@@ -14,13 +14,11 @@ function createPool() {
 
     // 调试：打印环境变量
 
-  console.log("[DEBUG] Reading POSTGRES_URL:", connectionString);
 
   if (!connectionString) {
     throw new Error("POSTGRES_URL environment variable is not set. Please check your .env.local file.");
   }
 
-  console.log(`Creating new PostgreSQL connection pool for ${process.env.NODE_ENV} environment...`);
   return new Pool({
     connectionString,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,

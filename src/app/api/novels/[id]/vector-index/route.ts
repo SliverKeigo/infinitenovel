@@ -34,7 +34,6 @@ export async function GET(
     );
 
     if (result.rows.length === 0) {
-      console.log(`[向量索引] 小说 ${id} 的向量索引不存在`);
       return new NextResponse(null, { status: 204 });
     }
 
@@ -115,7 +114,6 @@ export async function PUT(
       // 提交事务
       await client.query('COMMIT');
 
-      console.log(`[向量索引] 成功保存小说 ${id} 的向量索引`);
       return NextResponse.json({ 
         message: 'Vector index updated successfully',
         id: result.rows[0].id

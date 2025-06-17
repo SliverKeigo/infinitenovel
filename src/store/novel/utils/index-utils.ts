@@ -87,7 +87,6 @@ const createVoyIndex = async (
     // 增加一个短暂的延迟，以确保Wasm模块已准备好
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    console.log('[RAG] 开始创建 Voy 实例...');
 
     if (!validateEmbeddings(embeddings)) {
       throw new Error('向量数据验证失败');
@@ -96,7 +95,6 @@ const createVoyIndex = async (
     const resource = formatVoyResource(documents, embeddings);
 
     const voyIndex = new Voy(resource);
-    console.log('[RAG] Voy 实例创建成功');
 
     const testQuery = new Float32Array(embeddings[0].length).fill(0);
     const testResult = voyIndex.search(testQuery, 1) as SearchResult;
@@ -126,7 +124,6 @@ export async function buildNovelIndex(
 
   try {
     // 1. 获取所有需要被索引的内容
-    console.log(`[RAG] 正在获取小说 ${novelId} 的内容...`);
     const response = await fetch(`/api/novels/${novelId}/content-for-rag`);
     if (!response.ok) {
       throw new Error(`获取小说内容失败: ${response.statusText}`);
@@ -143,19 +140,14 @@ export async function buildNovelIndex(
 
     if (documents.length === 0) {
       toast.warning('没有可供索引的内容，已跳过知识库构建。', { id: toastId });
-      console.log('[RAG] 没有文档需要索引，流程结束。');
       return;
     }
-    console.log(`[RAG] 成功获取 ${documents.length} 篇文档用于索引`);
 
     // 2. 生成向量
-    console.log('[RAG] 正在生成文档向量...');
     const textsToEmbed = documents.map(d => `${d.title}\n${d.text}`);
 
     // 使用 EmbeddingPipeline 统一处理
     const embeddings = await EmbeddingPipeline.embed(textsToEmbed);
-
-    console.log(`[RAG] 成功生成 ${embeddings.length} 个向量`);
 
     // 3. 创建索引
     const voyIndex = await createVoyIndex(documents, embeddings);

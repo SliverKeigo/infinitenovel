@@ -21,7 +21,6 @@ export const planNextAct = async (
   actToPlan: NarrativeStage,
   currentPlotOutline: string
 ): Promise<string> => {
-  console.log(`[Act Planner] 开始为幕布 "${actToPlan.stageName}" (章节 ${actToPlan.chapterRange.start}-${actToPlan.chapterRange.end}) 进行规划...`);
 
   // --- 步骤 1: 获取配置和设置 ---
   const settings = await useGenerationSettingsStore.getState().getSettings();
@@ -86,8 +85,6 @@ export const planNextAct = async (
     throw new Error('AI未能生成新的幕后大纲。');
   }
   
-  console.log(`[Act Planner] 已为幕布 "${actToPlan.stageName}" 生成 ${newPlan.length} 字节的细纲。`);
-
   // --- 步骤 4: 融合大纲 ---
   const { macro, detailed: existingDetailed } = extractDetailedAndMacro(currentPlotOutline);
   

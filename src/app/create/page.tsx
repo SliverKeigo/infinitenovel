@@ -220,7 +220,6 @@ export default function CreateNovelPage() {
               }
             }
 
-            console.log('处理后的JSON字符串:', processedJson);
             return JSON.parse(processedJson);
           } catch (e: unknown) {
             console.error('JSON处理失败:', e);
@@ -230,7 +229,6 @@ export default function CreateNovelPage() {
       };
 
       const jsonData = formatJsonString(importText);
-      console.log('解析后的数据:', jsonData);
       
       // 使用schema验证导入的数据
       const result = formSchema.safeParse({

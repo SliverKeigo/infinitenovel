@@ -218,7 +218,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   checkForNextActPlanning: async (novelId: number) => {
     const { isPlanningAct } = get();
     if (isPlanningAct) {
-      console.log("[Watcher] 幕间规划已在进行中，跳过本次检查。");
       return;
     }
 
@@ -241,7 +240,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         await get().fetchNovelDetails(novelId);
       } else {
         // 后端跳过了规划，打印消息但不是错误
-        console.log(`[Watcher] ${result.message}`);
       }
     } catch (error) {
       console.error("[Watcher] 规划下一幕时发生错误:", error);

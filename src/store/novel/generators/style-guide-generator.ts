@@ -34,7 +34,6 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
       throw new Error("有效的AI配置未找到或API密钥缺失");
     }
 
-    console.log(`[风格指导] 正在为小说《${novel.name}》生成定制风格指导`);
 
     // 创建OpenAI客户端实例
     const openai = new OpenAI({
@@ -99,7 +98,6 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
       body: JSON.stringify({ style_guide: styleGuideText })
     });
 
-    console.log(`[风格指导] 风格指导生成成功，长度: ${styleGuideText.length}`);
     return styleGuideText;
   } catch (error) {
     console.error("[风格指导] 生成风格指导失败:", error);

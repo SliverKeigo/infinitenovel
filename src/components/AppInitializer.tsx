@@ -15,11 +15,9 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const initialize = async () => {
-      console.log("App Initializer: Fetching initial data...");
       await fetchAIConfigs();
       await fetchGenerationSettings();
       setIsInitialized(true);
-      console.log("App Initializer: Initialization complete.");
     };
 
     initialize();

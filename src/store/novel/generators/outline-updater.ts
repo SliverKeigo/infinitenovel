@@ -4,6 +4,7 @@ import { parseJsonFromAiResponse } from "../parsers";
 import { useAIConfigStore } from "@/store/ai-config";
 import { extractTextFromAIResponse } from '../utils/ai-utils';
 import { useNovelStore } from '../../use-novel-store';
+import { log } from "console";
 
 /**
  * 分析师-编辑双AI协作模型的核心实现。
@@ -48,8 +49,7 @@ const analyzeGeneratedContent = async (
   generatedChaptersContent: string,
   openai: OpenAI
 ): Promise<DriftReport> => {
-  console.log("分析师AI开始工作...");
-
+  
   const driftReportPrompt = `
 你是一位专业的剧情分析师。请仔细阅读以下几个章节的小说内容。你的任务是识别并以严格的JSON格式，报告在此期间发生的、可能对未来故事走向产生重大影响的**新信息**和**关键变化**。
 
@@ -127,7 +127,7 @@ ${generatedChaptersContent}
     }
 
     const parsedReport = parseJsonFromAiResponse(reportContent) as DriftReport;
-    console.log("分析师AI完成工作，漂移报告已生成:", parsedReport);
+    
     return parsedReport;
 
   } catch (error) {
@@ -147,8 +147,7 @@ const updateDatabaseWithDriftReport = async (
   novelId: number,
   currentChapter: number
 ): Promise<void> => {
-  console.log("开始将漂移报告更新至数据库...");
-
+  
   try {
     // 1. 更新新角色
     if (driftReport.newCharacters && driftReport.newCharacters.length > 0) {
@@ -171,7 +170,7 @@ const updateDatabaseWithDriftReport = async (
             is_protagonist: false,
           })
         });
-        console.log(`新角色 "${char.name}" 已添加至数据库。`);
+        
       }
     }
 
@@ -191,7 +190,7 @@ const updateDatabaseWithDriftReport = async (
             status: '未解决',
           })
         });
-        console.log(`新线索 "${clue.content}" 已添加至数据库。`);
+        
       }
     }
   } catch (error) {
@@ -211,8 +210,7 @@ const reviseFutureOutline = async (
   futureOutline: string,
   openai: OpenAI
 ): Promise<string> => {
-  console.log("编辑AI开始工作...");
-
+  
   // 优化：如果漂移报告为空，则无需修正，直接返回原大纲，节省AI调用成本。
   const isReportEmpty =
     (!driftReport.newCharacters || driftReport.newCharacters.length === 0) &&
@@ -221,7 +219,6 @@ const reviseFutureOutline = async (
     (!driftReport.relationshipChanges || driftReport.relationshipChanges.length === 0);
 
   if (isReportEmpty) {
-    console.log("漂移报告为空，无需修正大纲。");
     return futureOutline;
   }
 
@@ -231,6 +228,7 @@ const reviseFutureOutline = async (
   // --- 对未来大纲进行截断处理 ---
   let tail = '';
   let truncatedOutline = futureOutline;
+  
   if (futureOutline.length > MAX_OUTLINE_CHARS) {
     tail = futureOutline.slice(MAX_OUTLINE_CHARS);
     truncatedOutline = futureOutline.slice(0, MAX_OUTLINE_CHARS) + '\n...(后续章节已省略)...';
@@ -337,7 +335,7 @@ ${truncatedOutline}
       return futureOutline;
     }
 
-    console.log('编辑AI完成工作，未来大纲已修正。');
+
     return newContent;
 
   } catch (error) {

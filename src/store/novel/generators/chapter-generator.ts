@@ -56,18 +56,14 @@ const generateNarrativeStageGuidance = (fullOutline: string, chapterNumber: numb
   // 提取宏观叙事规划
   const narrativeStages = extractNarrativeStages(fullOutline);
   if (narrativeStages.length === 0) {
-    console.log("[宏观规划] 未找到宏观叙事规划，跳过阶段指导生成");
     return "";
   }
 
   // 确定当前章节所处的叙事阶段
   const currentStage = getCurrentNarrativeStage(narrativeStages, chapterNumber);
   if (!currentStage) {
-    console.log(`[宏观规划] 无法确定第 ${chapterNumber} 章所处的叙事阶段`);
     return "";
   }
-
-  console.log(`[宏观规划] 第 ${chapterNumber} 章处于"${currentStage.stageName}"阶段 (第${currentStage.chapterRange.start}-${currentStage.chapterRange.end}章)`);
 
   // 获取下一个阶段（如果有）
   const currentStageIndex = narrativeStages.findIndex(stage => 
@@ -139,7 +135,6 @@ export const generateNewChapter = async (
 ) => {
   set({ generationLoading: true, generatedContent: "" });
 
-  console.log("[诊断] 进入 generateNewChapter (单次完整生成模式)。");
 
   const { configs, activeConfigId } = useAIConfigStore.getState();
   if (!activeConfigId) throw new Error("没有激活的AI配置。");
@@ -157,7 +152,6 @@ export const generateNewChapter = async (
   
   // 使用健壮的函数分离宏观规划和详细章节
   const { detailed: chapterOnlyOutline, macro: macroOutline } = extractDetailedAndMacro(fullOutline);
-  console.log(`[诊断] 原始大纲长度: ${fullOutline.length}, 提取后章节部分长度: ${chapterOnlyOutline.length}, 宏观规划部分长度: ${macroOutline.length}`);
   
   // 生成宏观叙事规划指导
   const narrativeStageGuidance = generateNarrativeStageGuidance(macroOutline, chapterToGenerate);
@@ -171,12 +165,9 @@ export const generateNewChapter = async (
     segments_per_chapter,
   } = settings;
 
-  // 添加诊断日志，输出实际使用的场景数量设置
-  console.log(`[诊断] 用户设置的每章场景数量: ${segments_per_chapter}`);
   
   // 确保场景数量至少为1
   const actualSegmentsPerChapter = segments_per_chapter && segments_per_chapter > 0 ? segments_per_chapter : 1;
-  console.log(`[诊断] 实际使用的每章场景数量: ${actualSegmentsPerChapter}`);
 
   if (!novel) throw new Error("未找到当前小说，无法生成章节。");
   if (!novel.id) throw new Error("小说ID无效，无法生成章节。");
@@ -219,10 +210,7 @@ export const generateNewChapter = async (
     contextAwareOutline += `**下一章大纲:**\n第${nextChapterNumber+1}章: ${nextChapterOutline}`;
   }
    
-  console.log(`[诊断] 上下文感知大纲长度: ${contextAwareOutline.length}`);
-
   // 使用RAG检索相关上下文
-  console.log("[RAG] 开始检索相关上下文...");
   const ragQuery = `${novel.name} ${chapterOutline} ${userPrompt || ""}`;
   const relevantContext = await retrieveRelevantContext(
     currentNovelIndex,
@@ -231,7 +219,6 @@ export const generateNewChapter = async (
     5 // 检索5条最相关的内容
   );
   const ragPrompt = formatRetrievedContextForPrompt(relevantContext);
-  console.log("[RAG] 检索完成，获取到相关上下文");
 
   // --- 上下文三明治策略 (重新引入) ---
   let previousChapterContext = "";
@@ -253,8 +240,6 @@ ${start}...
 \`\`\`
 `;
     }
-  } else {
-    console.log('[诊断] 未在状态中找到章节列表或列表为空，跳过"上下文三明治"策略。');
   }
 
   // [新增] 最高优先级上下文（仅在第一章时注入）
@@ -271,16 +256,13 @@ ${start}...
   try {
     // 如果小说已有保存的风格指导，则直接使用
     if (novel.style_guide && novel.style_guide.trim().length > 0) {
-      console.log("[风格指导] 使用已保存的定制风格指导");
       styleGuide = novel.style_guide;
     } else {
       // 如果是第一章，尝试生成并保存定制风格指导
       if (chapterToGenerate === 1) {
-        console.log("[风格指导] 正在生成定制风格指导");
         styleGuide = await getOrCreateStyleGuide(novel.id);
       } else {
-        // 如果不是第一章且没有保存的风格指导，使用默认生成方式
-        console.log("[风格指导] 使用默认风格指导生成方式");
+        // 如果不是第一章且没有保存的风格指导，使用默认生成方式 
         styleGuide = getGenreStyleGuide(novel.genre, novel.style);
       }
     }
@@ -289,8 +271,6 @@ ${start}...
     console.error("[风格指导] 获取定制风格指导失败，使用默认风格指导:", error);
     styleGuide = getGenreStyleGuide(novel.genre, novel.style);
   }
-
-  console.log(`[章节解构] 正在为第 ${nextChapterNumber} 章生成场景规划。`);
 
   // 步骤 1: 章节解构，获取标题和场景列表
   let chapterTitle = "";
@@ -401,10 +381,6 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
     bigOutlineEvents = decompResult.bigOutlineEvents || [];
     const rawScenes = decompResult.scenes || [];
 
-    // 记录进度状态
-    console.log(`[章节解构] 进度状态: ${progressStatus}`);
-    console.log(`[章节解构] 本章大纲关键事件: ${JSON.stringify(bigOutlineEvents)}`);
-
     // 如果进度严重偏离，提示用户
     if (progressStatus === "严重偏离") {
       toast.warning("AI检测到小说进度与大纲严重偏离，正在尝试调整情节以回归大纲轨道。");
@@ -426,17 +402,11 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
       throw new Error("AI未能返回有效的章节标题或场景列表。");
     }
     
-    // 记录AI返回的原始场景数量
-    console.log(`[诊断] AI返回的原始场景数量: ${chapterScenes.length}`);
-    
     // 如果AI返回的场景数量超过了设置值，只保留前N个场景
     if (chapterScenes.length > actualSegmentsPerChapter) {
-      console.log(`[警告] AI返回的场景数量(${chapterScenes.length})超过了设置值(${actualSegmentsPerChapter})，将只使用前${actualSegmentsPerChapter}个场景`);
       chapterScenes = chapterScenes.slice(0, actualSegmentsPerChapter);
     }
     
-    console.log(`[章节解构] 成功规划出 ${chapterScenes.length} 个场景。`);
-
   } catch (e) {
     console.error("[章节解构] 失败:", e);
     handleOpenAIError(e);
@@ -452,8 +422,6 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
   set({ generatedContent: "" }); // 清空预览
 
   // 确保场景数量与设置一致
-  console.log(`[诊断] 实际规划的场景数量: ${chapterScenes.length}`);
-  console.log(`[诊断] 将要生成的场景: ${JSON.stringify(chapterScenes)}`);
 
   for (let i = 0; i < chapterScenes.length; i++) {
     const sceneDescription = chapterScenes[i];

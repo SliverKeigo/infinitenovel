@@ -57,12 +57,10 @@ export async function POST(
         return NextResponse.json({ message: `Next act "${nextStageToPlan.stageName}" is already planned, skipping.` }, { status: 200 });
     }
 
-    console.log(`[API] Planning next act for novel ${novelId}: "${nextStageToPlan.stageName}"`);
     const newPlotOutline = await planNextAct(novelId, nextStageToPlan, novel.plot_outline);
 
     await query('UPDATE novels SET plot_outline = $1, updated_at = NOW() WHERE id = $2', [newPlotOutline, novelId]);
     
-    console.log(`[API] Successfully planned and updated outline for novel ${novelId}.`);
     return NextResponse.json({ success: true, message: `Successfully planned act: ${nextStageToPlan.stageName}` });
 
   } catch (error) {

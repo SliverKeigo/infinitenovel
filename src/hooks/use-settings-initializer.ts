@@ -13,12 +13,8 @@ export const useSettingsInitializer = () => {
 
     useEffect(() => {
         if (isInitiated) return;
-        
-        console.log('[设置初始化] 开始检查并初始化生成设置...');
         initializeSettings().then(() => {
-            console.log('[设置初始化] 生成设置检查和初始化完成。');
+            setIsInitiated(true);
         });
-        setIsInitiated(true);
-
     }, [isInitiated, initializeSettings]);
 }; 

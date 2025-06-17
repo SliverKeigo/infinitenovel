@@ -127,10 +127,8 @@ export const fetchNovelDetails = async (
       try {
         const vectorIndex = await loadVectorIndex(id);
         if (vectorIndex) {
-          console.log(`[RAG] 成功加载小说 ${id} 的向量索引`);
           set({ currentNovelIndex: vectorIndex });
-        } else {
-          console.log(`[RAG] 小说 ${id} 没有向量索引，将在需要时创建`);
+        } else { 
           set({ currentNovelIndex: null });
         }
       } catch (error) {

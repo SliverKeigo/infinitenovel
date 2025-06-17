@@ -43,28 +43,16 @@ export const expandPlotOutlineIfNeeded = async (
   
   // 只计算章节部分的详细章节数量
   const { detailed: chapterOnlyOutline } = extractDetailedAndMacro(novel.plot_outline);
-  console.log(`[大纲扩展] 提取到的章节部分长度: ${chapterOnlyOutline.length} 字符`);
-  
-  // 输出章节部分的前200个字符，帮助诊断
-  console.log(`[大纲扩展] 章节部分前200字符: ${chapterOnlyOutline.substring(0, 200)}...`);
-  
+    
   const detailedChaptersInOutline = countDetailedChaptersInOutline(chapterOnlyOutline);
 
-  console.log(`扩展检查：当前章节 ${currentChapterCount}, 大纲中章节 ${detailedChaptersInOutline}`);
-
   if (detailedChaptersInOutline >= novel.total_chapter_goal) {
-    console.log("大纲已完成，无需扩展。");
     return;
   }
 
   if (force || detailedChaptersInOutline - currentChapterCount < OUTLINE_EXPAND_THRESHOLD) {
     toast.info("AI正在思考后续情节，请稍候...");
-    console.log("触发大纲扩展...");
     
-    // 记录扩展前的章节数量，用于后续比较
-    console.log(`[大纲扩展] 扩展前大纲包含 ${detailedChaptersInOutline} 个章节`);
-    console.log(`[大纲扩展] 计划新增 ${OUTLINE_EXPAND_CHUNK_SIZE} 个章节，从第 ${detailedChaptersInOutline + 1} 章开始`);
-
     const openai = new OpenAI({
       apiKey: activeConfig.api_key,
       baseURL: activeConfig.api_base_url || undefined,
@@ -75,9 +63,7 @@ export const expandPlotOutlineIfNeeded = async (
     let styleGuide = "";
     try {
       // 尝试获取或创建定制风格指导
-      console.log("[大纲扩展] 正在获取风格指导");
       styleGuide = await getOrCreateStyleGuide(novelId);
-      console.log("[大纲扩展] 成功获取风格指导");
     } catch (error) {
       // 如果获取失败，回退到默认风格指导
       console.error("[大纲扩展] 获取定制风格指导失败，使用默认风格指导:", error);
@@ -139,7 +125,6 @@ export const expandPlotOutlineIfNeeded = async (
       
       // 处理新增大纲，确保格式正确
       const processedNewPart = processOutline(expandedContent);
-      console.log(`[大纲扩展] 新增大纲部分 (处理前 ${expandedContent.length} 字符, 处理后 ${processedNewPart.length} 字符)`);
       
       // 将新增内容与原大纲结合
       const updatedOutline = `${novel.plot_outline}\n\n${processedNewPart.trim()}`;
@@ -152,11 +137,9 @@ export const expandPlotOutlineIfNeeded = async (
       // 验证扩展后的章节数量
       const { detailed: updatedChapterOnlyOutline } = extractDetailedAndMacro(updatedOutline);
       const updatedChapterCount = countDetailedChaptersInOutline(updatedChapterOnlyOutline);
-      console.log(`[大纲扩展] 扩展后大纲包含 ${updatedChapterCount} 个章节，理论上应有 ${detailedChaptersInOutline + OUTLINE_EXPAND_CHUNK_SIZE} 个章节`);
       
       // 提取扩展后的章节编号，确认新章节已添加
       const chapterNumbers = extractChapterNumbers(updatedChapterOnlyOutline);
-      console.log(`[大纲扩展] 扩展后的章节编号: ${JSON.stringify(chapterNumbers.slice(-OUTLINE_EXPAND_CHUNK_SIZE))}`);
       
       // 更新 Zustand store 中的 currentNovel
       const currentNovel = get().currentNovel;
@@ -164,7 +147,6 @@ export const expandPlotOutlineIfNeeded = async (
         await get().fetchNovelDetails(novel.id!);
       }
       toast.success("AI已构思好新的情节！");
-      console.log("大纲扩展成功！");
     } catch (error) {
       console.error("扩展大纲失败:", error);
       toast.error("AI构思后续情节时遇到了点麻烦...");

@@ -20,7 +20,6 @@ export const generateCharacterRules = async (novel: Novel, activeConfig: AIConfi
       throw new Error("有效的AI配置未找到或API密钥缺失");
     }
 
-    console.log(`[角色准则] 正在为小说《${novel.name}》生成定制角色行为准则`);
 
     // 创建OpenAI客户端实例
     const openai = new OpenAI({
@@ -95,7 +94,6 @@ export const generateCharacterRules = async (novel: Novel, activeConfig: AIConfi
       body: JSON.stringify({ character_behavior_rules: rulesText })
     });
 
-    console.log(`[角色准则] 角色行为准则生成成功，长度: ${rulesText.length}`);
     return rulesText;
   } catch (error) {
     console.error("[角色准则] 生成角色行为准则失败:", error);
@@ -118,7 +116,6 @@ export const getOrCreateCharacterRules = async (novelId: number): Promise<string
 
   // 2. 如果已有保存的准则且不为空，则直接返回
   if (novel.character_behavior_rules && novel.character_behavior_rules.trim().length > 0) {
-    console.log("[角色准则] 使用已保存的定制角色行为准则");
     return novel.character_behavior_rules;
   }
 

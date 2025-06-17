@@ -137,12 +137,6 @@ export const generateNovelChapters = async (
     // === STAGE 1A: THE GRAND ARCHITECT ===
     set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '阶段1/3: 正在构建宏观叙事蓝图...' } });
 
-    console.log("[大纲生成] 开始生成宏观叙事蓝图");
-    console.log("[大纲生成] AI配置:", {
-      modelName: activeConfig.model,
-      baseUrl: activeConfig.api_base_url
-    });
-
     const architectPrompt = `
       你是一位顶级的世界构建师和叙事战略家。请为一部名为《${novel.name}》的小说设计一个符合章节上限的分幕宏观叙事蓝图。
 
@@ -245,8 +239,6 @@ export const generateNovelChapters = async (
     // 清理和处理最终的世界观设定
     worldSetting = worldSetting.trim();
 
-    console.log("[大纲生成] 宏观叙事蓝图生成完成:", worldSetting.substring(0, 100) + "...");
-
     if (!worldSetting) {
       console.error("[大纲生成] 宏观叙事蓝图生成失败：响应为空");
       throw new Error("宏观叙事蓝图生成失败：AI响应为空");
@@ -255,7 +247,6 @@ export const generateNovelChapters = async (
     // 验证大纲格式
     if (!worldSetting.includes("**第一幕:")) {
       console.error("[大纲生成] 宏观叙事蓝图格式错误，缺少第一幕标记");
-      console.log("[大纲生成] 实际内容:", worldSetting);
       throw new Error("宏观叙事蓝图格式错误：未找到第一幕标记");
     }
 
@@ -361,8 +352,6 @@ export const generateNovelChapters = async (
 
     plotOutline = plotOutline.replace(/```markdown/g, '').replace(/```/g, '').trim();
     if (!plotOutline) throw new Error('未能生成任何章节大纲');
-
-    console.log(`[Act Planner] 分块生成完成，总章节 ${actOneEnd - actOneStart + 1}`);
 
     set({ generationTask: { ...get().generationTask, progress: 40, currentStep: `故事大纲已生成...` } });
 
@@ -561,7 +550,6 @@ export const generateNovelChapters = async (
 
       // 尝试手动解析作为最后的补救措施
       try {
-        console.log("[角色生成] 尝试手动解析角色数据");
 
         // 简单的正则表达式提取角色信息
         const nameMatches = charactersResponse.choices[0].message.content?.match(/"name"\s*:\s*"([^"]+)"/g);
@@ -570,7 +558,6 @@ export const generateNovelChapters = async (
         const backgroundStoryMatches = charactersResponse.choices[0].message.content?.match(/"backgroundStory"\s*:\s*"([^"]+)"/g);
 
         if (nameMatches && nameMatches.length > 0) {
-          console.log("[角色生成] 手动提取到角色名称:", nameMatches.length, "个");
 
           // 创建简单的角色对象
           newCharacters = nameMatches.map((_: string, index: number) => {
@@ -592,7 +579,6 @@ export const generateNovelChapters = async (
             };
           });
 
-          console.log("[角色生成] 手动创建了", newCharacters.length, "个角色");
         } else {
           throw new Error("无法手动提取角色数据");
         }
@@ -603,7 +589,6 @@ export const generateNovelChapters = async (
     }
 
     if (newCharacters.length > 0) {
-      console.log("[角色生成] 成功创建", newCharacters.length, "个角色，准备保存到数据库");
       await fetch('/api/characters/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -616,7 +601,6 @@ export const generateNovelChapters = async (
       });
       set({ generationTask: { ...get().generationTask, progress: 70, currentStep: '核心人物创建完毕！' } });
     } else {
-      console.warn("[角色生成] 未能创建任何角色");
       set({ generationTask: { ...get().generationTask, progress: 70, currentStep: '未生成核心人物，继续...' } });
     }
 
@@ -642,7 +626,6 @@ export const generateNovelChapters = async (
         if (chapters.some((c: { chapter_number: number }) => c.chapter_number === chapterNumber)) {
           return true;
         }
-        console.log(`[章节验证] 第 ${i + 1} 次尝试未找到章节 ${chapterNumber}，将重试...`);
       }
       return false;
     };
@@ -681,8 +664,7 @@ export const generateNovelChapters = async (
       const saved = await verifyChapterSaved(novelId, nextChapterNumber);
       if (!saved) {
         throw new Error(`第 ${nextChapterNumber} 章保存失败：数据库中未找到该章节`);
-      }
-      console.log(`[章节生成] 第 ${nextChapterNumber} 章已成功保存并验证`);
+      } 
     }
 
     set({

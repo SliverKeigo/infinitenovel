@@ -32,7 +32,6 @@ export class ModelLoader {
       
       while (retryCount < this.maxRetries) {
         try {
-          console.log(`[模型加载器] 尝试加载模型 (尝试 ${retryCount + 1}/${this.maxRetries})`);
           
           const pipe = await pipeline(this.task, this.model, {
             progress_callback: (progress: any) => {
@@ -44,7 +43,6 @@ export class ModelLoader {
           onStatusChange(ModelLoadStatus.LOADED);
           onProgress(100);
           this.loadingPromise = null;
-          console.log('[模型加载器] 模型加载成功');
           resolve(this.instance);
           return;
         } catch (error) {
@@ -52,7 +50,6 @@ export class ModelLoader {
           
           if (retryCount < this.maxRetries - 1) {
             retryCount++;
-            console.log(`[模型加载器] 等待 ${this.retryDelay}ms 后重试...`);
             await new Promise(r => setTimeout(r, this.retryDelay));
             this.retryDelay *= 2; // 指数退避
           } else {

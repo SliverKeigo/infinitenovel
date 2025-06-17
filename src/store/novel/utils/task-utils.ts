@@ -22,5 +22,4 @@ export const resetGenerationTask = (
     generationLoading: false,
     generatedContent: null, // 同时清空生成的内容
   });
-  console.log("[状态重置] 已重置生成任务状态");
 }; 
