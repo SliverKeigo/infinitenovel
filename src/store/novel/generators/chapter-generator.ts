@@ -479,208 +479,80 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
       `;
 
     try {
-      if (i > 0) {
-        // 在每个新场景开始前，为UI内容和内部累积内容都加上换行符
-        set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
+      // 更新当前场景生成状态
+      set({
+        generationStatus: `正在生成第 ${i + 1}/${chapterScenes.length} 个场景...`,
+        generationLoading: true
+      });
+
+      toast.loading(`正在创作第 ${i + 1} 个场景，请耐心等待...`, {
+        id: `scene-${i}`,
+        duration: 8000
+      });
+
+      const response = await fetch('/api/ai/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          activeConfigId: activeConfig.id,
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: scenePrompt }],
+          stream: false,
+          max_tokens,
+          temperature,
+          top_p,
+          frequency_penalty,
+          presence_penalty,
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API request failed with status ${response.status}: ${errorText}`);
       }
 
-      const MAX_RETRIES = 3;
-      const decoder = new TextDecoder();
-      
-      // 场景记忆缓存
-      const sceneMemory = new Set<string>();
-      
-      // 检查句子是否完整
-      const isCompleteSentence = (text: string) => {
-        // 检查是否以标点符号结尾
-        const endWithPunctuation = /[。！？"」』\.\!\?\"\'\)\]\}]$/.test(text.trim());
-        // 检查最后一句是否看起来像是中断的
-        const seemsIncomplete = /[，,、；;：:]$/.test(text.trim()) || 
-                              /[的地得了着过看往向在和与及]$/.test(text.trim()) ||
-                              /[\u4e00-\u9fa5]$/.test(text.trim()); // 检查是否以单个汉字结尾
-        
-        // 检查是否存在明显的语法不完整（如单字词）
-        const lastSentence = text.split(/[。！？"」』]/).pop() || '';
-        const hasIncompleteWord = /^[\u4e00-\u9fa5]{1,2}$/.test(lastSentence.trim());
-        
-        return endWithPunctuation && !seemsIncomplete && !hasIncompleteWord;
-      };
+      const result = await response.json();
+      const sceneContent = result.choices[0]?.message?.content || '';
 
-      // 检查场景连续性
-      const checkSceneContinuity = (text: string): { continuous: boolean; reason?: string } => {
-        // 分析当前文本的最后一个段落
-        const paragraphs = text.split('\n\n');
-        const lastParagraph = paragraphs[paragraphs.length - 1] || '';
-        
-        // 检测场景突变标志词
-        const sceneBreakPatterns = [
-          /突然.*?出现/,
-          /突然.*?传来/,
-          /忽然.*?映入/,
-          /陡然.*?变化/,
-          /蓦地.*?出现/
-        ];
-        
-        // 如果是段落开头就出现这些标志词，可能是场景突变
-        if (sceneBreakPatterns.some(pattern => pattern.test(lastParagraph.slice(0, 20)))) {
-          // 将场景描述提取并检查是否出现过
-          const sceneDescription = lastParagraph.slice(0, 50);
-          if (sceneMemory.has(sceneDescription)) {
-            return { 
-              continuous: false, 
-              reason: 'scene_repeat' 
-            };
-          }
-          sceneMemory.add(sceneDescription);
-        }
-        
-        return { continuous: true };
-      };
+      // 更新生成内容
+      set((state: NovelStateSlice) => ({
+        generatedContent: (state.generatedContent || "") + (i > 0 ? "\n\n" : "") + sceneContent
+      }));
 
-      // 获取最后一个完整句子的位置
-      const getLastCompleteSentenceIndex = (text: string) => {
-        const sentences = text.split(/(?<=[。！？"」』])/);
-        if (sentences.length <= 1) return 0;
-        
-        // 找到最后一个完整的句子
-        for (let i = sentences.length - 1; i >= 0; i--) {
-          const sentence = sentences[i].trim();
-          if (sentence && isCompleteSentence(sentence)) {
-            return text.lastIndexOf(sentences[i]) + sentences[i].length;
-          }
-        }
-        return 0;
-      };
+      // 更新累积内容
+      completedScenesContent += (i > 0 ? "\n\n" : "") + sceneContent;
 
-      const generateContent = async (startFromIncomplete = '', retryReason?: string): Promise<string> => {
-        try {
-          // 构建重试提示词
-          let retryPrompt = scenePrompt;
-          if (startFromIncomplete) {
-            if (retryReason === 'scene_repeat') {
-              retryPrompt = `${scenePrompt}\n\n【严格要求】\n- 继续发展当前场景，不要突然切换到新场景\n- 保持人物动作和对话的连贯性\n- 不要重复之前的场景描述\n\n当前场景（请继续发展）：\n${startFromIncomplete}`;
-            } else {
-              retryPrompt = `${scenePrompt}\n\n【严格要求】\n- 继续完成未完成的句子和场景\n- 保持文字的连贯性\n- 确保每个句子都语法完整\n\n已生成的内容（请从最后一个完整句子继续）：\n${startFromIncomplete}`;
-            }
-          }
+      // 场景生成完成提示
+      toast.success(`第 ${i + 1} 个场景创作完成！`, {
+        id: `scene-${i}`,
+        duration: 2000
+      });
 
-          // 发起请求
-          const response = await fetch('/api/ai/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              activeConfigId: activeConfig.id,
-              model: activeConfig.model,
-              messages: [{ role: 'user', content: retryPrompt }],
-              stream: true,
-              max_tokens,
-              temperature: temperature * 0.8, // 降低温度以增加连贯性
-              top_p,
-              frequency_penalty: frequency_penalty * 1.2, // 增加频率惩罚以减少重复
-              presence_penalty: presence_penalty * 1.2,
-            })
-          });
-
-          if (!response.ok || !response.body) {
-            throw new Error(`API request failed with status ${response.status}`);
-          }
-
-          const reader = response.body.getReader();
-          let buffer = '';
-          let content = startFromIncomplete;
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.substring(6);
-                if (data.trim() === '[DONE]') break;
-                try {
-                  const chunk = JSON.parse(data);
-                  const token = chunk.choices[0]?.delta?.content || "";
-                  if (token) {
-                    content += token;
-                    set((state: NovelStateSlice) => {
-                      const currentContent = state.generatedContent || "";
-                      const lastPartIndex = startFromIncomplete ? currentContent.lastIndexOf(startFromIncomplete) : currentContent.length;
-                      return { 
-                        generatedContent: lastPartIndex >= 0 
-                          ? currentContent.slice(0, lastPartIndex) + content 
-                          : content 
-                      };
-                    });
-                  }
-                } catch (e) {
-                  console.error("Failed to parse chunk", e);
-                }
-              }
-            }
-          }
-
-          return content;
-        } catch (error) {
-          console.error("Generation error:", error);
-          throw error;
-        }
-      };
-
-      try {
-        let finalContent = await generateContent();
-        let retryCount = 0;
-        
-        // 检查内容完整性和连续性，如果有问题则重试
-        while (retryCount < MAX_RETRIES) {
-          const contentComplete = isCompleteSentence(finalContent);
-          const sceneContinuity = checkSceneContinuity(finalContent);
-          
-          if (!contentComplete || !sceneContinuity.continuous) {
-            retryCount++;
-            console.log(`Content needs retry (attempt ${retryCount}): ${!contentComplete ? 'incomplete sentence' : 'scene discontinuity'}`);
-            
-            // 获取最后一个完整句子
-            const lastCompleteIndex = getLastCompleteSentenceIndex(finalContent);
-            const lastCompletePart = finalContent.slice(0, lastCompleteIndex);
-            
-            // 重新生成
-            finalContent = await generateContent(
-              lastCompletePart, 
-              !contentComplete ? 'incomplete' : sceneContinuity.reason
-            );
-          } else {
-            break;
-          }
-        }
-
-        // 更新累积内容
-        completedScenesContent += (i > 0 ? "\n\n" : "") + finalContent;
-        const cleanContent = completedScenesContent.replace(/<think>[\s\S]*?<\/think>/, '').trim();
-        set({ generatedContent: cleanContent });
-      } catch (error) {
-        console.error("Failed to generate chapter", error);
-        handleOpenAIError(error);
-        toast.error(`生成章节 ${nextChapterNumber} 时出错，章节生成中止。`);
-        set({ generationLoading: false });
-        return;
-      }
     } catch (error) {
-      console.error("Failed to generate chapter", error);
+      console.error(`[场景生成] 场景 ${i + 1} 失败:`, error);
       handleOpenAIError(error);
-      toast.error(`生成章节 ${nextChapterNumber} 时出错，章节生成中止。`);
-      set({ generationLoading: false });
+      toast.error(`生成场景 ${i + 1} 时出错，章节生成中止。`, {
+        id: `scene-${i}`,
+        duration: 3000
+      });
+      set({
+        generationLoading: false,
+        generationStatus: `场景 ${i + 1} 生成失败`
+      });
       return;
     }
-
-    // 步骤 3: 整合最终结果
-    const finalBody = get().generatedContent || "";
-    const separator = '\n|||CHAPTER_SEPARATOR|||\n';
-    const finalContent = `${chapterTitle}${separator}${finalBody}`;
-    set({ generatedContent: finalContent });
-    toast.success(`第 ${nextChapterNumber} 章已生成完毕，准备保存...`);
   }
-}
+
+  // 步骤 3: 整合最终结果
+  const finalBody = get().generatedContent || "";
+  const separator = '\n|||CHAPTER_SEPARATOR|||\n';
+  const finalContent = `${chapterTitle}${separator}${finalBody}`;
+  set({
+    generatedContent: finalContent,
+    generationLoading: false,
+    generationStatus: '章节生成完成'
+  });
+  toast.success(`第 ${nextChapterNumber} 章已生成完毕，准备保存...`);
+};  
