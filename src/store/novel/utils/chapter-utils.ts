@@ -240,12 +240,19 @@ ${content}
     }
     
     // --- Step 3: Optimistic state update ---
-    set((state: any) => ({
-      chapters: [...state.chapters, savedChapter],
-      characters: [...state.characters, ...savedCharacters],
-      plotClues: [...state.plotClues, ...savedPlotClues],
-      generatedContent: null, // Clear saved content
-    }));
+    set((state: any) => {
+      // 章节和角色直接拼接
+      const mergedPlotClues = [...state.plotClues, ...savedPlotClues];
+      // 根据 id 去重
+      const uniquePlotClues = Array.from(new Map(mergedPlotClues.map(c => [c.id, c])).values());
+
+      return {
+        chapters: [...state.chapters, savedChapter],
+        characters: [...state.characters, ...savedCharacters],
+        plotClues: uniquePlotClues,
+        generatedContent: null,
+      };
+    });
 
     // --- Step 4: Final novel stats update in DB ---
     await get().updateNovelStats(novelId);
