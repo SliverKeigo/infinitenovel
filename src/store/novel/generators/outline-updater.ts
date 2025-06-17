@@ -302,8 +302,13 @@ ${truncatedOutline}
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
-              const delta = data?.choices?.[0]?.delta?.content;
+              const data = line.substring(6);
+              if (data.trim() === '[DONE]') {
+                // End of stream signal
+                break;
+              }
+              const chunk = JSON.parse(data);
+              const delta = chunk.choices?.[0]?.delta?.content;
               if (delta) {
                 newContent += delta;
                 const store = useNovelStore.getState();

@@ -195,7 +195,7 @@ export const generateNovelChapters = async (
     try {
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) {
           break;
         }
@@ -211,9 +211,14 @@ export const generateNovelChapters = async (
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
-              if (data.choices?.[0]?.delta?.content) {
-                const content = data.choices[0].delta.content;
+              const data = line.substring(6);
+              if (data.trim() === '[DONE]') {
+                // End of stream signal
+                break;
+              }
+              const chunk = JSON.parse(data);
+              if (chunk.choices?.[0]?.delta?.content) {
+                const content = chunk.choices[0].delta.content;
                 worldSetting += content;
                 // 更新生成状态
                 const store = useNovelStore.getState();
@@ -329,8 +334,13 @@ export const generateNovelChapters = async (
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
-              const deltaContent = data?.choices?.[0]?.delta?.content;
+              const data = line.substring(6);
+              if (data.trim() === '[DONE]') {
+                // End of stream signal
+                break;
+              }
+              const chunk = JSON.parse(data);
+              const deltaContent = chunk.choices?.[0]?.delta?.content;
               if (deltaContent) {
                 plotOutline += deltaContent;
                 // 实时更新 UI
@@ -664,7 +674,7 @@ export const generateNovelChapters = async (
       const saved = await verifyChapterSaved(novelId, nextChapterNumber);
       if (!saved) {
         throw new Error(`第 ${nextChapterNumber} 章保存失败：数据库中未找到该章节`);
-      } 
+      }
     }
 
     set({
