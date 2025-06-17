@@ -5,7 +5,7 @@ import type { Novel } from '@/types/novel';
 import type { Chapter } from '@/types/chapter';
 import type { Character } from '@/types/character';
 import type { PlotClue } from '@/types/plot-clue';
-import { loadVectorIndex } from './utils/rag-utils';
+import { loadVectorIndex } from './rag-utils';
 import { toast } from 'sonner';
 
 /**
