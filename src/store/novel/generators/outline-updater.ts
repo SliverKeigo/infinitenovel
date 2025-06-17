@@ -225,6 +225,18 @@ const reviseFutureOutline = async (
     return futureOutline;
   }
 
+  // 为防止请求体过大导致 502，可按字符数截断未来大纲
+  const MAX_OUTLINE_CHARS = 15000; // 约 6-8k tokens，按需调整
+
+  // --- 对未来大纲进行截断处理 ---
+  let tail = '';
+  let truncatedOutline = futureOutline;
+  if (futureOutline.length > MAX_OUTLINE_CHARS) {
+    tail = futureOutline.slice(MAX_OUTLINE_CHARS);
+    truncatedOutline = futureOutline.slice(0, MAX_OUTLINE_CHARS) + '\n...(后续章节已省略)...';
+    console.warn(`[Outline Editor] 未来大纲过长(${futureOutline.length} chars)，已截断至 ${MAX_OUTLINE_CHARS} chars`);
+  }
+
   const editorPrompt = `
 你是一位经验丰富的首席编辑，负责维护一部长篇小说的逻辑一致性和长期吸引力。你的任务是根据刚刚发生的最新剧情进展，对未来的章节大纲进行精细的、必要的微调。
 
@@ -237,7 +249,7 @@ ${JSON.stringify(driftReport, null, 2)}
 【原定的未来章节规划】
 这是我们之前制定的、从下一个章节开始的全部规划：
 ---
-${futureOutline}
+${truncatedOutline}
 ---
 
 【你的核心任务】
@@ -314,6 +326,11 @@ ${futureOutline}
 
     // 清理AI可能返回的markdown代码块标记
     newContent = newContent.replace(/```[\s\S]*?```/g, '').trim();
+
+    // 如果之前截断过，则将尾部原样拼接回来
+    if (tail) {
+      newContent += '\n' + tail;
+    }
 
     if (!newContent) {
       console.error('编辑AI未能生成任何内容，将返回原始大纲。');
