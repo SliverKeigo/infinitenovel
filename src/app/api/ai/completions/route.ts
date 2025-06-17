@@ -48,6 +48,8 @@ export async function POST(req: Request) {
         ...restOfBody,
         model: model,
         stream: true,
+        timeout: 300000, // 300秒超时
+        max_retries: 2, // 最多重试2次
       });    
       // 将OpenAI的流转换为Web标准的ReadableStream
       const webReadableStream = new ReadableStream({
@@ -62,7 +64,7 @@ export async function POST(req: Request) {
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
             controller.close();
           } catch (err) {
-            console.error('[API Completions] Stream error:', err);
+            console.error('[API Completions] Stream error:', err instanceof Error ? err.message : err);
             controller.error(err as any);
           }
         },
@@ -81,6 +83,8 @@ export async function POST(req: Request) {
         ...restOfBody,
         model: model,
         stream: false,
+        timeout: 300000, // 300秒超时
+        max_retries: 2, // 最多重试2次
       });
       return NextResponse.json(response);
     }
