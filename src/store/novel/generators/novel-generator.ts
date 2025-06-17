@@ -552,14 +552,7 @@ export const generateNovelChapters = async (
     };
 
     for (const i of chaptersToGenerate) {
-      // 在每次循环开始时获取最新的上下文
-      const allCharactersResponse = await fetch(`/api/characters?novel_id=${novelId}`);
-      if (!allCharactersResponse.ok) {
-        throw new Error("获取角色信息失败");
-      }
-      const allCharacters = await allCharactersResponse.json();
-
-      const generationContext = { plotOutline: processedOutline, characters: allCharacters, settings };
+      const generationContext = { plotOutline: processedOutline, characters: [], settings };
 
       const nextChapterNumber = maxChapterNumber + i + 1;
       const chapterProgress = 70 + Math.floor((i / chaptersToGenerateCount) * 30); // 从70%开始，最多到100%

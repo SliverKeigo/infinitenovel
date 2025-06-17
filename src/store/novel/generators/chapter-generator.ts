@@ -133,22 +133,17 @@ export const generateNewChapter = async (
   userPrompt: string | undefined,
   chapterToGenerate: number,
 ) => {
-  set({ generationLoading: true, generatedContent: "" });
-
+  // 在生成新章节前，重置内容状态，防止内容串扰
+  set({ generatedContent: "" });
+  let completedScenesContent = "";
 
   const { configs, activeConfigId } = useAIConfigStore.getState();
   if (!activeConfigId) throw new Error("没有激活的AI配置。");
   const activeConfig = configs.find(c => c.id === activeConfigId);
   if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到或API密钥缺失。");
 
-  const openai = new OpenAI({
-    apiKey: activeConfig.api_key,
-    baseURL: activeConfig.api_base_url || undefined,
-    dangerouslyAllowBrowser: true,
-  });
-
   // 从上下文中提取大纲，并只使用章节部分
-  const { plotOutline: fullOutline, characters, settings } = context;
+  const { plotOutline: fullOutline, settings } = context;
   
   // 使用健壮的函数分离宏观规划和详细章节
   const { detailed: chapterOnlyOutline, macro: macroOutline } = extractDetailedAndMacro(fullOutline);
@@ -417,7 +412,6 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
 
   // 步骤 2: 逐场景生成内容
   let accumulatedContent = "";
-  let completedScenesContent = "";
 
   set({ generatedContent: "" }); // 清空预览
 
