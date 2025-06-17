@@ -125,7 +125,7 @@ ${generatedChaptersContent}
       return { newCharacters: [], newPlotClues: [], plotTwists: [], relationshipChanges: [] };
     }
 
-    const parsedReport = parseJsonFromAiResponse(reportContent) as DriftReport;
+    const parsedReport = parseJsonFromAiResponse(extractTextFromAIResponse(response)) as DriftReport;
     console.log("分析师AI完成工作，漂移报告已生成:", parsedReport);
     return parsedReport;
 

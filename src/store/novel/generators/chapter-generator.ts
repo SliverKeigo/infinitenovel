@@ -393,7 +393,7 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
       throw new Error(`API request failed with status ${apiResponse.status}: ${errorText}`);
     }
 
-    const decompResponse = await apiResponse.json() as { choices: { message: { content: string } }[] };
+    const decompResponse = await apiResponse.json() as { choices: { message: { content: any } }[] };
 
     const decompResult = parseJsonFromAiResponse(extractTextFromAIResponse(decompResponse));
     chapterTitle = decompResult.title;
