@@ -12,10 +12,10 @@ import { handleOpenAIError } from '../error-handlers';
 import { getGenreStyleGuide } from '../style-guides';
 import { getOrCreateStyleGuide } from './style-guide-generator';
 import { getOrCreateCharacterRules } from './character-rules-generator';
-import { 
-  parseJsonFromAiResponse, 
+import {
+  parseJsonFromAiResponse,
   extractDetailedAndMacro,
-  extractNarrativeStages, 
+  extractNarrativeStages,
   getCurrentNarrativeStage,
   type NarrativeStage
 } from '../parsers';
@@ -66,18 +66,18 @@ const generateNarrativeStageGuidance = (fullOutline: string, chapterNumber: numb
   }
 
   // 获取下一个阶段（如果有）
-  const currentStageIndex = narrativeStages.findIndex(stage => 
-    stage.chapterRange.start === currentStage.chapterRange.start && 
+  const currentStageIndex = narrativeStages.findIndex(stage =>
+    stage.chapterRange.start === currentStage.chapterRange.start &&
     stage.chapterRange.end === currentStage.chapterRange.end
   );
-  
+
   const nextStage = currentStageIndex < narrativeStages.length - 1 ? narrativeStages[currentStageIndex + 1] : null;
   const previousStage = currentStageIndex > 0 ? narrativeStages[currentStageIndex - 1] : null;
 
   // 计算当前章节在当前阶段中的进度百分比
   const stageProgress = Math.floor(
-    ((chapterNumber - currentStage.chapterRange.start) / 
-    (currentStage.chapterRange.end - currentStage.chapterRange.start + 1)) * 100
+    ((chapterNumber - currentStage.chapterRange.start) /
+      (currentStage.chapterRange.end - currentStage.chapterRange.start + 1)) * 100
   );
 
   // 生成阶段指导提示
@@ -144,13 +144,13 @@ export const generateNewChapter = async (
 
   // 从上下文中提取大纲，并只使用章节部分
   const { plotOutline: fullOutline, settings } = context;
-  
+
   // 使用健壮的函数分离宏观规划和详细章节
   const { detailed: chapterOnlyOutline, macro: macroOutline } = extractDetailedAndMacro(fullOutline);
-  
+
   // 生成宏观叙事规划指导
   const narrativeStageGuidance = generateNarrativeStageGuidance(macroOutline, chapterToGenerate);
-  
+
   const {
     max_tokens,
     temperature,
@@ -160,7 +160,7 @@ export const generateNewChapter = async (
     segments_per_chapter,
   } = settings;
 
-  
+
   // 确保场景数量至少为1
   const actualSegmentsPerChapter = segments_per_chapter && segments_per_chapter > 0 ? segments_per_chapter : 1;
 
@@ -171,7 +171,7 @@ export const generateNewChapter = async (
   const characterBehaviorRules = await getOrCreateCharacterRules(novel.id);
 
   const stateFromGet = get();
-  
+
   const { chapters = [], currentNovelIndex, currentNovelDocuments } = stateFromGet;
 
   if (chapters === undefined) {
@@ -180,7 +180,7 @@ export const generateNewChapter = async (
 
   // --- RAG 检索增强 (用于章节解构) ---
   const nextChapterNumber = chapterToGenerate;
-   
+
   // 只获取当前章节的大纲，而不是整个大纲
   const chapterOutline = getChapterOutline(chapterOnlyOutline, nextChapterNumber);
   if (!chapterOutline) {
@@ -190,21 +190,21 @@ export const generateNewChapter = async (
     set({ generationLoading: false });
     return;
   }
-   
+
   // 获取前一章和后一章的大纲，用于上下文理解
   const prevChapterOutline = nextChapterNumber > 1 ? getChapterOutline(chapterOnlyOutline, nextChapterNumber - 1) : null;
   const nextChapterOutline = getChapterOutline(chapterOnlyOutline, nextChapterNumber + 1);
-   
+
   // 构建上下文感知大纲
   let contextAwareOutline = "";
   if (prevChapterOutline) {
-    contextAwareOutline += `**上一章大纲:**\n第${nextChapterNumber-1}章: ${prevChapterOutline}\n\n`;
+    contextAwareOutline += `**上一章大纲:**\n第${nextChapterNumber - 1}章: ${prevChapterOutline}\n\n`;
   }
   contextAwareOutline += `**当前章节大纲:**\n第${nextChapterNumber}章: ${chapterOutline}\n\n`;
   if (nextChapterOutline) {
-    contextAwareOutline += `**下一章大纲:**\n第${nextChapterNumber+1}章: ${nextChapterOutline}`;
+    contextAwareOutline += `**下一章大纲:**\n第${nextChapterNumber + 1}章: ${nextChapterOutline}`;
   }
-   
+
   // 使用RAG检索相关上下文
   const ragQuery = `${novel.name} ${chapterOutline} ${userPrompt || ""}`;
   const relevantContext = await retrieveRelevantContext(
@@ -396,12 +396,12 @@ ${contextAwareOutline || `这是第 ${nextChapterNumber} 章，但我们没有�
     if (!chapterTitle || !chapterScenes || chapterScenes.length === 0) {
       throw new Error("AI未能返回有效的章节标题或场景列表。");
     }
-    
+
     // 如果AI返回的场景数量超过了设置值，只保留前N个场景
     if (chapterScenes.length > actualSegmentsPerChapter) {
       chapterScenes = chapterScenes.slice(0, actualSegmentsPerChapter);
     }
-    
+
   } catch (e) {
     console.error("[章节解构] 失败:", e);
     handleOpenAIError(e);
@@ -455,7 +455,7 @@ ${narrativeStageGuidance}
 
 **大纲指导（最高优先级）:**
 根据小说大纲，本章必须实现以下关键事件：
-${bigOutlineEvents.map((event, idx) => `${idx+1}. ${event}`).join('\n')}
+${bigOutlineEvents.map((event, idx) => `${idx + 1}. ${event}`).join('\n')}
 
 **进度状态:** ${progressStatus}
 ${progressStatus === "严重偏离" ? "由于当前小说进度已严重偏离大纲轨道，你必须在本章中想办法尽快推进剧情，确保回归大纲预设的情节发展。" : ""}
@@ -484,79 +484,203 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + "\n\n" }));
       }
 
-      const response = await fetch('/api/ai/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activeConfigId: activeConfig.id,
-          model: activeConfig.model,
-          messages: [{ role: 'user', content: scenePrompt }],
-          stream: true,
-          max_tokens: max_tokens,
-          temperature,
-          top_p,
-          frequency_penalty,
-          presence_penalty,
-        })
-      });
-
-      if (!response.ok || !response.body) {
-        const errorText = await response.text();
-        throw new Error(`API request failed with status ${response.status}: ${errorText}`);
-      }
-
-      const reader = response.body.getReader();
+      const MAX_RETRIES = 3;
       const decoder = new TextDecoder();
-      let buffer = '';
-      let currentSceneContent = "";
+      
+      // 场景记忆缓存
+      const sceneMemory = new Set<string>();
+      
+      // 检查句子是否完整
+      const isCompleteSentence = (text: string) => {
+        // 检查是否以标点符号结尾
+        const endWithPunctuation = /[。！？"」』\.\!\?\"\'\)\]\}]$/.test(text.trim());
+        // 检查最后一句是否看起来像是中断的
+        const seemsIncomplete = /[，,、；;：:]$/.test(text.trim()) || 
+                              /[的地得了着过看往向在和与及]$/.test(text.trim()) ||
+                              /[\u4e00-\u9fa5]$/.test(text.trim()); // 检查是否以单个汉字结尾
+        
+        // 检查是否存在明显的语法不完整（如单字词）
+        const lastSentence = text.split(/[。！？"」』]/).pop() || '';
+        const hasIncompleteWord = /^[\u4e00-\u9fa5]{1,2}$/.test(lastSentence.trim());
+        
+        return endWithPunctuation && !seemsIncomplete && !hasIncompleteWord;
+      };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep the last, possibly incomplete line
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.substring(6);
-            if (data.trim() === '[DONE]') {
-              // End of stream signal
-              break;
-            }
-            try {
-              const chunk = JSON.parse(data);
-        const token = chunk.choices[0]?.delta?.content || "";
-        if (token) {
-          set((state: NovelStateSlice) => ({ generatedContent: (state.generatedContent || "") + token }));
-          currentSceneContent += token;
+      // 检查场景连续性
+      const checkSceneContinuity = (text: string): { continuous: boolean; reason?: string } => {
+        // 分析当前文本的最后一个段落
+        const paragraphs = text.split('\n\n');
+        const lastParagraph = paragraphs[paragraphs.length - 1] || '';
+        
+        // 检测场景突变标志词
+        const sceneBreakPatterns = [
+          /突然.*?出现/,
+          /突然.*?传来/,
+          /忽然.*?映入/,
+          /陡然.*?变化/,
+          /蓦地.*?出现/
+        ];
+        
+        // 如果是段落开头就出现这些标志词，可能是场景突变
+        if (sceneBreakPatterns.some(pattern => pattern.test(lastParagraph.slice(0, 20)))) {
+          // 将场景描述提取并检查是否出现过
+          const sceneDescription = lastParagraph.slice(0, 50);
+          if (sceneMemory.has(sceneDescription)) {
+            return { 
+              continuous: false, 
+              reason: 'scene_repeat' 
+            };
+          }
+          sceneMemory.add(sceneDescription);
         }
-            } catch (e) {
-              // console.error("Failed to parse stream chunk", data, e);
-            }
+        
+        return { continuous: true };
+      };
+
+      // 获取最后一个完整句子的位置
+      const getLastCompleteSentenceIndex = (text: string) => {
+        const sentences = text.split(/(?<=[。！？"」』])/);
+        if (sentences.length <= 1) return 0;
+        
+        // 找到最后一个完整的句子
+        for (let i = sentences.length - 1; i >= 0; i--) {
+          const sentence = sentences[i].trim();
+          if (sentence && isCompleteSentence(sentence)) {
+            return text.lastIndexOf(sentences[i]) + sentences[i].length;
           }
         }
+        return 0;
+      };
+
+      const generateContent = async (startFromIncomplete = '', retryReason?: string): Promise<string> => {
+        try {
+          // 构建重试提示词
+          let retryPrompt = scenePrompt;
+          if (startFromIncomplete) {
+            if (retryReason === 'scene_repeat') {
+              retryPrompt = `${scenePrompt}\n\n【严格要求】\n- 继续发展当前场景，不要突然切换到新场景\n- 保持人物动作和对话的连贯性\n- 不要重复之前的场景描述\n\n当前场景（请继续发展）：\n${startFromIncomplete}`;
+            } else {
+              retryPrompt = `${scenePrompt}\n\n【严格要求】\n- 继续完成未完成的句子和场景\n- 保持文字的连贯性\n- 确保每个句子都语法完整\n\n已生成的内容（请从最后一个完整句子继续）：\n${startFromIncomplete}`;
+            }
+          }
+
+          // 发起请求
+          const response = await fetch('/api/ai/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              activeConfigId: activeConfig.id,
+              model: activeConfig.model,
+              messages: [{ role: 'user', content: retryPrompt }],
+              stream: true,
+              max_tokens,
+              temperature: temperature * 0.8, // 降低温度以增加连贯性
+              top_p,
+              frequency_penalty: frequency_penalty * 1.2, // 增加频率惩罚以减少重复
+              presence_penalty: presence_penalty * 1.2,
+            })
+          });
+
+          if (!response.ok || !response.body) {
+            throw new Error(`API request failed with status ${response.status}`);
+          }
+
+          const reader = response.body.getReader();
+          let buffer = '';
+          let content = startFromIncomplete;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.substring(6);
+                if (data.trim() === '[DONE]') break;
+                try {
+                  const chunk = JSON.parse(data);
+                  const token = chunk.choices[0]?.delta?.content || "";
+                  if (token) {
+                    content += token;
+                    set((state: NovelStateSlice) => {
+                      const currentContent = state.generatedContent || "";
+                      const lastPartIndex = startFromIncomplete ? currentContent.lastIndexOf(startFromIncomplete) : currentContent.length;
+                      return { 
+                        generatedContent: lastPartIndex >= 0 
+                          ? currentContent.slice(0, lastPartIndex) + content 
+                          : content 
+                      };
+                    });
+                  }
+                } catch (e) {
+                  console.error("Failed to parse chunk", e);
+                }
+              }
+            }
+          }
+
+          return content;
+        } catch (error) {
+          console.error("Generation error:", error);
+          throw error;
+        }
+      };
+
+      try {
+        let finalContent = await generateContent();
+        let retryCount = 0;
+        
+        // 检查内容完整性和连续性，如果有问题则重试
+        while (retryCount < MAX_RETRIES) {
+          const contentComplete = isCompleteSentence(finalContent);
+          const sceneContinuity = checkSceneContinuity(finalContent);
+          
+          if (!contentComplete || !sceneContinuity.continuous) {
+            retryCount++;
+            console.log(`Content needs retry (attempt ${retryCount}): ${!contentComplete ? 'incomplete sentence' : 'scene discontinuity'}`);
+            
+            // 获取最后一个完整句子
+            const lastCompleteIndex = getLastCompleteSentenceIndex(finalContent);
+            const lastCompletePart = finalContent.slice(0, lastCompleteIndex);
+            
+            // 重新生成
+            finalContent = await generateContent(
+              lastCompletePart, 
+              !contentComplete ? 'incomplete' : sceneContinuity.reason
+            );
+          } else {
+            break;
+          }
+        }
+
+        // 更新累积内容
+        completedScenesContent += (i > 0 ? "\n\n" : "") + finalContent;
+        const cleanContent = completedScenesContent.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+        set({ generatedContent: cleanContent });
+      } catch (error) {
+        console.error("Failed to generate chapter", error);
+        handleOpenAIError(error);
+        toast.error(`生成章节 ${nextChapterNumber} 时出错，章节生成中止。`);
+        set({ generationLoading: false });
+        return;
       }
-
-      // 当前场景流式结束后，将其完整内容更新到内部累积器中
-      completedScenesContent += (i > 0 ? "\n\n" : "") + currentSceneContent;
-      const finalContent = completedScenesContent.replace(/<think>[\s\S]*?<\/think>/, '').trim();
-      set({ generatedContent: finalContent });
-
     } catch (error) {
-      console.error(`[场景生成] 场景 ${i + 1} 失败:`, error);
+      console.error("Failed to generate chapter", error);
       handleOpenAIError(error);
-      toast.error(`生成场景 ${i + 1} 时出错，章节生成中止。`);
+      toast.error(`生成章节 ${nextChapterNumber} 时出错，章节生成中止。`);
       set({ generationLoading: false });
       return;
     }
-  }
 
-  // 步骤 3: 整合最终结果
-  const finalBody = get().generatedContent || "";
-  const separator = '\n|||CHAPTER_SEPARATOR|||\n';
-  const finalContent = `${chapterTitle}${separator}${finalBody}`;
-  set({ generatedContent: finalContent });
-  toast.success(`第 ${nextChapterNumber} 章已生成完毕，准备保存...`);
-};
+    // 步骤 3: 整合最终结果
+    const finalBody = get().generatedContent || "";
+    const separator = '\n|||CHAPTER_SEPARATOR|||\n';
+    const finalContent = `${chapterTitle}${separator}${finalBody}`;
+    set({ generatedContent: finalContent });
+    toast.success(`第 ${nextChapterNumber} 章已生成完毕，准备保存...`);
+  }
+}
