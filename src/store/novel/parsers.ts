@@ -135,33 +135,55 @@ export interface NarrativeStage {
  * @returns 宏观叙事规划的各个阶段
  */
 export const extractNarrativeStages = (content: string): NarrativeStage[] => {
-  console.log("content",content);
   // 将内容按详细章节大纲的分隔符分割
   const parts = content.split(/---\s*\*\*逐章细纲\*\*\s*---/);
   // 如果没有分隔符，直接使用整个内容
   const macroPlanningPart = parts.length > 1 ? parts[0].trim() : content.trim();
   
   const stages: NarrativeStage[] = [];
-  // 简单匹配所有的章节范围（数字-数字）
+  // 存储所有匹配到的范围位置
+  const ranges: { start: number; end: number; match: string; index: number }[] = [];
+  
+  // 先找到所有的章节范围
   const regex = /(\d+)\s*-\s*(\d+)/g;
   let match;
-  let actNumber = 1;
-
+  
   while ((match = regex.exec(macroPlanningPart)) !== null) {
-    const startChapter = parseInt(match[1], 10);
-    const endChapter = parseInt(match[2], 10);
+    ranges.push({
+      start: parseInt(match[1], 10),
+      end: parseInt(match[2], 10),
+      match: match[0],
+      index: match.index
+    });
+  }
+  
+  // 处理每一个范围
+  for (let i = 0; i < ranges.length; i++) {
+    const range = ranges[i];
+    let coreSummary = '';
+    
+    // 提取当前范围到下一个范围之间的内容作为 coreSummary
+    if (i < ranges.length - 1) {
+      // 从当前范围结束到下一个范围开始
+      const nextRange = ranges[i + 1];
+      const summaryStart = range.index + range.match.length;
+      const summaryEnd = nextRange.index;
+      coreSummary = macroPlanningPart.slice(summaryStart, summaryEnd).trim();
+    } else {
+      // 最后一个范围，提取到文本末尾
+      const summaryStart = range.index + range.match.length;
+      coreSummary = macroPlanningPart.slice(summaryStart).trim();
+    }
     
     stages.push({
-      stageName: `第${actNumber}幕`,
+      stageName: `第${i + 1}幕`,
       chapterRange: {
-        start: startChapter,
-        end: endChapter
+        start: range.start,
+        end: range.end
       },
-      coreSummary: '',
+      coreSummary,
       keyElements: []
     });
-    
-    actNumber++;
   }
   
   return stages;

@@ -217,7 +217,6 @@ export const generateNovelChapters = async (
     // 使用 extractNarrativeStages 函数来解析章节范围，代替手动正则
     const stages = extractNarrativeStages(worldSetting);
     
-    console.log("解析到的大纲内容:", JSON.stringify(stages, null, 2));
     
     let actOneStart = 1;
     let actOneEnd = 100; // 默认值
@@ -226,7 +225,6 @@ export const generateNovelChapters = async (
       actOneStart = stages[0].chapterRange.start;
       actOneEnd = stages[0].chapterRange.end;
     } else {
-      console.log("stages",stages);
       console.warn("[Act Planner] 未能从宏观大纲中解析出第一幕的章节范围，将使用默认值 1-100。");
     }
 

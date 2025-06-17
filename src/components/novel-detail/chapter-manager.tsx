@@ -415,8 +415,6 @@ export function ChapterManager() {
             <DialogTitle>确认发布章节</DialogTitle>
             <DialogDescription>
               您确定要发布第 {publishingChapter?.chapter_number} 章 "{publishingChapter?.title}" 吗？
-              <br />
-              发布后将不能再编辑。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
