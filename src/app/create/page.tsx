@@ -30,7 +30,15 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { GenerationProgress } from "@/components/generation-progress";
-import { Sparkles, Book, Bot, Gem, PencilRuler, Target, Text, Workflow } from "lucide-react";
+import { Sparkles, Book, Bot, Gem, PencilRuler, Target, Text, Workflow, Upload } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 
 const formSchema = z.object({
@@ -144,12 +152,12 @@ const GenerationView = ({ submittedValues }: { submittedValues: FormValues }) =>
 
 export default function CreateNovelPage() {
   const router = useRouter();
-  // 2. Main component now only subscribes to what it strictly needs.
   const addNovel = useNovelStore(state => state.addNovel);
   const generateNovelChapters = useNovelStore(state => state.generateNovelChapters);
   const isGenerating = useNovelStore(state => state.generationTask.isActive);
-
   const [submittedValues, setSubmittedValues] = useState<FormValues | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importText, setImportText] = useState('');
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -162,7 +170,108 @@ export default function CreateNovelPage() {
       specialRequirements: '',
     },
   });
-  
+
+  // 处理JSON导入
+  const handleImport = () => {
+    try {
+      // 尝试格式化输入的文本
+      const formatJsonString = (input: string) => {
+        // 清理输入文本，移除所有不可见的特殊字符
+        const cleanInput = input
+          .replace(/[\u200B-\u200D\uFEFF]/g, '') // 移除零宽字符
+          .replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '') // 移除首尾空白和特殊空格
+          .replace(/^`+|`+$/g, ''); // 移除反引号
+        
+        // 检查是否是有效的JSON格式
+        if (!cleanInput.startsWith('{') || !cleanInput.endsWith('}')) {
+          throw new Error('无效的JSON格式：必须以{开始，以}结束');
+        }
+
+        try {
+          // 首先尝试直接解析
+          return JSON.parse(cleanInput);
+        } catch {
+          try {
+            // 如果直接解析失败，尝试处理多行文本
+            const lines = cleanInput.split(/\r?\n/);
+            let processedJson = '';
+            let inString = false;
+
+            // 逐行处理，保持字符串内的换行符
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
+              // 计算当前行中的引号数量（排除转义的引号）
+              const quotes = line.match(/(?<!\\)"/g)?.length || 0;
+              
+              if (!inString) {
+                // 不在字符串内
+                processedJson += line;
+                if (quotes % 2 !== 0) {
+                  // 进入字符串
+                  inString = true;
+                }
+              } else {
+                // 在字符串内
+                processedJson += '\\n' + line;
+                if (quotes % 2 !== 0) {
+                  // 退出字符串
+                  inString = false;
+                }
+              }
+            }
+
+            console.log('处理后的JSON字符串:', processedJson);
+            return JSON.parse(processedJson);
+          } catch (e: unknown) {
+            console.error('JSON处理失败:', e);
+            throw new Error('JSON格式处理失败：' + (e instanceof Error ? e.message : String(e)));
+          }
+        }
+      };
+
+      const jsonData = formatJsonString(importText);
+      console.log('解析后的数据:', jsonData);
+      
+      // 使用schema验证导入的数据
+      const result = formSchema.safeParse({
+        ...jsonData,
+        initialChapterGoal: jsonData.initialChapterGoal || 3, // 设置默认值
+      });
+
+      if (result.success) {
+        // 更新表单数据
+        Object.entries(result.data).forEach(([key, value]) => {
+          form.setValue(key as keyof FormValues, value);
+        });
+        setImportDialogOpen(false);
+        setImportText('');
+        toast.success('导入成功！');
+      } else {
+        console.error('Schema validation failed:', result.error);
+        toast.error('导入的数据格式不正确，请检查必填字段。');
+      }
+    } catch (error: unknown) {
+      console.error('JSON parsing error:', error);
+      toast.error(
+        error instanceof Error 
+          ? error.message 
+          : 'JSON格式错误。请确保粘贴完整的JSON数据，包括开头的{和结尾的}。'
+      );
+    }
+  };
+
+  // 处理文件导入
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImportText(e.target?.result as string);
+      };
+      reader.readAsText(file);
+    }
+  };
+
   async function onSubmit(values: FormValues) {
     setSubmittedValues(values);
     try {
@@ -203,10 +312,49 @@ export default function CreateNovelPage() {
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)}>
                   <CardHeader>
-                    <CardTitle className="text-2xl">创作新小说</CardTitle>
-                    <CardDescription>
-                      填写下面的信息，开始您的创作之旅。
-                    </CardDescription>
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <CardTitle className="text-2xl">创作新小说</CardTitle>
+                        <CardDescription>
+                          填写下面的信息，开始您的创作之旅。
+                        </CardDescription>
+                      </div>
+                      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" className="flex items-center gap-2">
+                            <Upload className="h-4 w-4" />
+                            导入配置
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>导入小说配置</DialogTitle>
+                            <DialogDescription>
+                              请粘贴JSON格式的小说配置，或选择一个JSON文件导入。
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <Textarea
+                              value={importText}
+                              onChange={(e) => setImportText(e.target.value)}
+                              placeholder="在此粘贴JSON配置..."
+                              className="min-h-[200px] font-mono text-sm"
+                            />
+                            <div className="flex flex-col gap-4">
+                              <Input
+                                type="file"
+                                accept=".json"
+                                onChange={handleFileImport}
+                                className="cursor-pointer"
+                              />
+                              <Button onClick={handleImport} className="w-full">
+                                导入配置
+                              </Button>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <FormField
