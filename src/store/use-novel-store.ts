@@ -74,7 +74,7 @@ export interface NovelState {
   indexLoading: boolean;
   generationLoading: boolean;
   isPlanningAct: boolean; // 新增：用于追踪幕间规划状态
-  generatedContent: string | null;
+  generatedContent: string;
   generationTask: GenerationTask;
   fetchNovels: (page?: number, pageSize?: number) => Promise<void>;
   fetchNovelDetails: (id: number) => Promise<{ novel: Novel; chapters: Chapter[]; characters: Character[] } | null>;
@@ -116,6 +116,7 @@ export interface NovelState {
   totalNovels: number;
   currentPage: number;
   pageSize: number;
+  setGeneratedContent: (content: string) => void;
 }
 
 export const useNovelStore = create<NovelState>((set, get) => ({
@@ -134,7 +135,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   pageSize: 10,
   generationLoading: false,
   isPlanningAct: false,
-  generatedContent: null,
+  generatedContent: '',
   generationTask: {
     isActive: false,
     progress: 0,
@@ -289,4 +290,6 @@ export const useNovelStore = create<NovelState>((set, get) => ({
   resetGenerationTask: () => {
     resetTask(get, set);
   },
+
+  setGeneratedContent: (content) => set({ generatedContent: content }),
 }));
