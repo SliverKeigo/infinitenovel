@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { parseJsonFromAiResponse } from "../parsers";
 import { useAIConfigStore } from "@/store/ai-config";
 import { extractTextFromAIResponse } from '../utils/ai-utils';
+import { useNovelStore } from '../../use-novel-store';
 
 /**
  * 分析师-编辑双AI协作模型的核心实现。
@@ -101,7 +102,7 @@ ${generatedChaptersContent}
     if (!activeConfigId) throw new Error("没有激活的AI配置。");
     const activeConfig = configs.find(c => c.id === activeConfigId);
     if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到。");
-    
+
     const openai = new OpenAI({
       apiKey: activeConfig.api_key,
       baseURL: activeConfig.api_base_url || undefined,
@@ -113,19 +114,19 @@ ${generatedChaptersContent}
       body: JSON.stringify({
         activeConfigId: activeConfig.id,
         model: activeConfig.model,
-      messages: [{ role: 'user', content: driftReportPrompt }],
+        messages: [{ role: 'user', content: driftReportPrompt }],
       })
     });
     if (!apiResponse.ok) throw new Error(`API request failed: ${await apiResponse.text()}`);
     const response = await apiResponse.json();
 
-    const reportContent = response.choices[0].message.content;
+    const reportContent = extractTextFromAIResponse(response);
     if (!reportContent) {
       console.error("分析师AI未能生成任何内容。");
       return { newCharacters: [], newPlotClues: [], plotTwists: [], relationshipChanges: [] };
     }
 
-    const parsedReport = parseJsonFromAiResponse(extractTextFromAIResponse(response)) as DriftReport;
+    const parsedReport = parseJsonFromAiResponse(reportContent) as DriftReport;
     console.log("分析师AI完成工作，漂移报告已生成:", parsedReport);
     return parsedReport;
 
@@ -147,7 +148,7 @@ const updateDatabaseWithDriftReport = async (
   currentChapter: number
 ): Promise<void> => {
   console.log("开始将漂移报告更新至数据库...");
-  
+
   try {
     // 1. 更新新角色
     if (driftReport.newCharacters && driftReport.newCharacters.length > 0) {
@@ -156,17 +157,18 @@ const updateDatabaseWithDriftReport = async (
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-          name: char.name,
-          description: char.description,
-          coreSetting: char.description, // 使用description作为核心设定的初始值
-          personality: char.personality || '待补充',
-          backgroundStory: char.background || '待补充',
-          appearance: '待补充',
-          background: char.background || '待补充', // 保持旧字段以防万一
-          novelId: novelId,
-          firstAppearedInChapter: currentChapter,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+            name: char.name,
+            novel_id: novelId,
+            description: char.description,
+            core_setting: char.description, // 使用description作为核心设定的初始值
+            personality: char.personality || '待补充',
+            background_story: char.background || '待补充',
+            appearance: '待补充',
+            background: char.background || '待补充', // 保持旧字段以防万一
+            first_appeared_in_chapter: currentChapter,
+            created_at: new Date(),
+            updated_at: new Date(),
+            is_protagonist: false,
           })
         });
         console.log(`新角色 "${char.name}" 已添加至数据库。`);
@@ -176,16 +178,17 @@ const updateDatabaseWithDriftReport = async (
     // 2. 更新新情节线索
     if (driftReport.newPlotClues && driftReport.newPlotClues.length > 0) {
       for (const clue of driftReport.newPlotClues) {
-        await fetch(`/api/plotClues`, {
+        await fetch(`/api/plot-clues`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-          title: clue.content,
-          description: clue.details || '待补充',
-          novelId: novelId,
-          firstMentionedInChapter: currentChapter,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+            title: clue.content,
+            novel_id: novelId,
+            description: clue.details || '待补充',
+            first_mentioned_in_chapter: currentChapter,
+            created_at: new Date(),
+            updated_at: new Date(),
+            status: '未解决',
           })
         });
         console.log(`新线索 "${clue.content}" 已添加至数据库。`);
@@ -211,7 +214,7 @@ const reviseFutureOutline = async (
   console.log("编辑AI开始工作...");
 
   // 优化：如果漂移报告为空，则无需修正，直接返回原大纲，节省AI调用成本。
-  const isReportEmpty = 
+  const isReportEmpty =
     (!driftReport.newCharacters || driftReport.newCharacters.length === 0) &&
     (!driftReport.newPlotClues || driftReport.newPlotClues.length === 0) &&
     (!driftReport.plotTwists || driftReport.plotTwists.length === 0) &&
@@ -255,36 +258,69 @@ ${futureOutline}
     if (!activeConfigId) throw new Error("没有激活的AI配置。");
     const activeConfig = configs.find(c => c.id === activeConfigId);
     if (!activeConfig || !activeConfig.api_key) throw new Error("有效的AI配置未找到。");
-    
-    const openai = new OpenAI({
-      apiKey: activeConfig.api_key,
-      baseURL: activeConfig.api_base_url || undefined,
-      dangerouslyAllowBrowser: true,
-    });
+
     const editorApiResponse = await fetch('/api/ai/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         activeConfigId: activeConfig.id,
         model: activeConfig.model,
-      messages: [{ role: 'user', content: editorPrompt }],
+        messages: [{ role: 'user', content: editorPrompt }],
         temperature: 0.5,
+        stream: true
       })
     });
     if (!editorApiResponse.ok) throw new Error(`Editor API request failed: ${await editorApiResponse.text()}`);
-    const response = await editorApiResponse.json();
 
-    let newContent = extractTextFromAIResponse(response);
+    if (!editorApiResponse.body) throw new Error('Editor API returned empty body');
+
+    const reader = editorApiResponse.body.getReader();
+    const decoder = new TextDecoder();
+    let newContent = '';
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        buffer += chunk;
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const delta = data?.choices?.[0]?.delta?.content;
+              if (delta) {
+                newContent += delta;
+                const store = useNovelStore.getState();
+                store.setGeneratedContent(newContent);
+              }
+            } catch (e) {
+              console.error('[Outline Editor] SSE parse error:', e);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Outline Editor] Stream read error:', err);
+      throw new Error('读取大纲修正数据流失败');
+    } finally {
+      reader.releaseLock();
+    }
 
     // 清理AI可能返回的markdown代码块标记
     newContent = newContent.replace(/```[\s\S]*?```/g, '').trim();
 
     if (!newContent) {
-      console.error("编辑AI未能生成任何内容，将返回原始大纲。");
+      console.error('编辑AI未能生成任何内容，将返回原始大纲。');
       return futureOutline;
     }
-    
-    console.log("编辑AI完成工作，未来大纲已修正。");
+
+    console.log('编辑AI完成工作，未来大纲已修正。');
     return newContent;
 
   } catch (error) {
