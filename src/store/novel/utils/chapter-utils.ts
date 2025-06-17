@@ -9,6 +9,7 @@ import type { PlotClue } from '@/types/plot-clue';
 import { useAIConfigStore } from '@/store/ai-config';
 import { parseJsonFromAiResponse } from '../parsers';
 import type { AIConfig } from "@/types/ai-config";
+import { extractTextFromAIResponse } from "./ai-utils";
 
 /**
  * 获取小说当前的最大章节号
@@ -179,9 +180,9 @@ ${content}
       const errorText = await aiApiResponse.text();
       throw new Error(`API request failed with status ${aiApiResponse.status}: ${errorText}`);
     }
-    const analysisResponse = await aiApiResponse.json() as { choices: { message: { content: string } }[] };
-    
-    const analysisResult = parseJsonFromAiResponse(analysisResponse.choices[0].message.content || '');
+    const analysisResponse = await aiApiResponse.json() as { choices: { message: { content: any } }[] };
+    const analysisContent = extractTextFromAIResponse(analysisResponse);
+    const analysisResult = parseJsonFromAiResponse(analysisContent);
     
     // 用AI分析的结果更新章节数据
     newChapterData.summary = analysisResult.summary || '';
