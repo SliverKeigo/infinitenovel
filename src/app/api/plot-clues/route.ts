@@ -38,11 +38,11 @@ export async function POST(request: Request) {
     }
 
     const insertQuery = `
-      INSERT INTO plot_clues (novel_id, title, description, status)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO plot_clues (novel_id, title, description)
+      VALUES ($1, $2, $3)
       RETURNING *;
     `;
-    const values = [novel_id, title, description || '', status || '未解决'];
+    const values = [novel_id, title, description || ''];
 
     const result = await query(insertQuery, values);
     return NextResponse.json(result.rows[0], { status: 201 });
