@@ -19,7 +19,7 @@ import {
   getChapterOutline,
   getChapterOutlineByIndex,
   extractChapterNumbers
-} from './novel/outline-utils';
+} from './novel/utils/outline-utils';
 import { parseJsonFromAiResponse } from './novel/parsers';
 import { handleOpenAIError } from './novel/error-handlers';
 import { getGenreStyleGuide } from './novel/style-guides';
@@ -37,19 +37,19 @@ import {
 import { 
   generateChapters as genChapters 
 } from './novel/generators/chapter-controller';
-import { saveGeneratedChapter as saveChapter } from './novel/chapter-utils';
-import { updateNovelStats, recordExpansion } from './novel/stats-utils';
-import { resetGenerationTask as resetTask } from './novel/task-utils';
+import { saveGeneratedChapter as saveChapter } from './novel/utils/chapter-utils';
+import { updateNovelStats, recordExpansion } from './novel/utils/stats-utils';
+import { resetGenerationTask as resetTask } from './novel/utils/task-utils';
 import { 
   fetchNovels as fetchNovelsData,
   fetchNovelDetails as fetchNovelDetailsData,
   addNovel as addNovelData,
   deleteNovel as deleteNovelData
-} from './novel/data-utils';
+} from './novel/utils/data-utils';
 import { 
   buildNovelIndex as buildNovelIndexUtil,
   deleteVectorIndex as deleteNovelIndexUtil 
-} from './novel/index-utils';
+} from './novel/utils/index-utils';
 import { planNextAct } from './novel/generators/act-planner';
 import { extractNarrativeStages, extractDetailedAndMacro } from './novel/parsers';
 
