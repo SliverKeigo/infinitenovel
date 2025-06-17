@@ -53,16 +53,24 @@ export const extractTextFromAIResponse = (response: any): string => {
       return "";
     }
 
-    const content = response.choices[0].message.content;
+    let content = response.choices[0].message.content;
 
     // 处理数组格式的响应
     if (Array.isArray(content)) {
       const textContent = content.find((item: { type: string; text: string }) => item.type === 'text');
-      return textContent?.text || "";
+      content = textContent?.text || "";
     }
 
-    // 处理字符串格式的响应
-    return typeof content === 'string' ? content : "";
+    // 确保 content 是字符串，然后移除 <think> 标签
+    if (typeof content === 'string') {
+      // 标准化AI响应中的标点符号，防止因全角/半角问题导致解析失败
+      content = content.replace(/：/g, ':');
+      content = content.replace(/“/g, '"');
+      content = content.replace(/”/g, '"');
+      return content.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    }
+
+    return "";
   } catch (error) {
     console.error('[AI响应处理] 提取文本内容时出错:', error);
     return "";

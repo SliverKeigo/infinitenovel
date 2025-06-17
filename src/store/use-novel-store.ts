@@ -240,6 +240,7 @@ export const useNovelStore = create<NovelState>((set, get) => ({
         await get().fetchNovelDetails(novelId);
       } else {
         // 后端跳过了规划，打印消息但不是错误
+        console.log(`[Watcher] ${result.message}`);
       }
     } catch (error) {
       console.error("[Watcher] 规划下一幕时发生错误:", error);

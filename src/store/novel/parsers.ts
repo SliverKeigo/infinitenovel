@@ -141,22 +141,30 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
   const macroPlanningPart = parts[0].trim();
   
   const stages: NarrativeStage[] = [];
-  // 修改正则表达式以更好地匹配大纲格式，支持全角和半角字符
-  const regex = /\*\*(第[一二三四五六七八九十]+幕)\s*[:：]\s*(.*?)\s*[（\(]大约章节范围\s*[:：]\s*(\d+)\s*-\s*(\d+)\s*[）\)]\*\*/gm;
+  // 正则表达式解释:
+  // \*\*...\*\*            - 匹配粗体标记
+  // (第[...]+幕)         - 分组1: 捕获 "第X幕"
+  // \s*[:：]\s*           - 匹配全角或半角冒号
+  // ([^\(（\n]+?)        - 分组2: 非贪婪地捕获标题，直到遇到括号或换行符
+  // \s*                   - 匹配标题和括号间的空格
+  // (?: ... )?            - 整个章节范围部分是可选的
+  // \([（]               - 匹配全角或半角开括号
+  // (?:大约)?章节范围      - "大约"是可选的
+  // (\d+)\s*-\s*(\d+)   - 分组3和4: 捕获起始和结束章节号
+  // [）\)]               - 匹配全角或半角闭括号
+  const regex = /\*\*(第[一二三四五六七八九十]+幕)\s*[:：]\s*([^\(（\n]+?)\s*(?:\([（](?:大约)?章节范围\s*[:：]\s*(\d+)\s*-\s*(\d+)\s*[）\)])?\s*\*\*/gm;
   let match;
 
   while ((match = regex.exec(macroPlanningPart)) !== null) {
-    
-    const stageName = match[1].trim();
-    const stageTitle = match[2].trim(); // 完整标题，包含破折号
+    const stageName = match[1]?.trim() || '';
+    const stageTitle = match[2]?.trim() || '';
     const startChapter = parseInt(match[3], 10);
     const endChapter = parseInt(match[4], 10);
-    
-    
+
     // 提取该阶段的核心概述
     const stageStart = match.index! + match[0].length;
     let stageEnd = macroPlanningPart.length;
-    
+
     // 寻找下一个阶段的开始位置
     const nextMatch = macroPlanningPart.slice(stageStart).match(/^\s*\*\*第[一二三四五六七八九十]+幕/m);
     if (nextMatch) {
@@ -166,14 +174,9 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
     // 提取阶段内容
     let stageContent = macroPlanningPart.substring(stageStart, stageEnd).trim();
     
-    // 整个阶段内容就是核心概述
-    // 移除开头的-、*、空格等列表标记
-    const coreSummary = stageContent.replace(/^[\s*\-•]+/, '').trim();
-    
-    
-    // 不再单独提取关键元素，因为它们已经包含在核心概述中
-    const keyElements: string[] = [];
-    
+    // 整个阶段内容就是核心概述, 移除开头的-、*、空格等列表标记
+    const coreSummary = stageContent.replace(/^[\s*\-•]+核心剧情概述\s*[:：]?\s*/, '').trim();
+
     stages.push({
       stageName: `${stageName}: ${stageTitle}`,
       chapterRange: {
@@ -181,7 +184,7 @@ export const extractNarrativeStages = (content: string): NarrativeStage[] => {
         end: endChapter
       },
       coreSummary,
-      keyElements
+      keyElements: []
     });
   }
   

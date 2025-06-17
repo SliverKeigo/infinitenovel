@@ -48,8 +48,7 @@ export async function POST(req: Request) {
         ...restOfBody,
         model: model,
         stream: true,
-      });
-
+      });    
       // 将OpenAI的流转换为Web标准的ReadableStream
       const webReadableStream = new ReadableStream({
         async start(controller) {

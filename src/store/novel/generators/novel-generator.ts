@@ -175,79 +175,27 @@ export const generateNovelChapters = async (
         model: activeConfig.model,
         messages: [{ role: 'user', content: architectPrompt }],
         temperature: settings.temperature,
-        stream: true
+        stream: false
       })
     });
 
     if (!architectApiResponse.ok) {
-      throw new Error('世界观构建请求失败');
+      const errorText = await architectApiResponse.text();
+      console.error('世界观构建请求失败:', errorText);
+      throw new Error(`世界观构建请求失败: ${errorText}`);
     }
 
-    if (!architectApiResponse.body) {
-      throw new Error('响应体为空');
-    }
-
-    const reader = architectApiResponse.body.getReader();
-    const decoder = new TextDecoder();
-    let worldSetting = '';
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        // 解码本次接收的数据
-        const chunk = decoder.decode(value);
-        buffer += chunk;
-
-        // 处理SSE格式的数据
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // 保留最后一个不完整的行
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = line.substring(6);
-              if (data.trim() === '[DONE]') {
-                // End of stream signal
-                break;
-              }
-              const chunk = JSON.parse(data);
-              if (chunk.choices?.[0]?.delta?.content) {
-                const content = chunk.choices[0].delta.content;
-                worldSetting += content;
-                // 更新生成状态
-                const store = useNovelStore.getState();
-                store.setGeneratedContent(worldSetting);
-              }
-            } catch (e) {
-              console.error('解析流数据时出错:', e);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('读取流数据时出错:', error);
-      throw new Error('读取世界观数据流失败');
-    } finally {
-      reader.releaseLock();
-    }
-
-    if (!worldSetting) {
-      throw new Error('未能成功获取世界观设定');
-    }
-
-    // 清理和处理最终的世界观设定
-    worldSetting = worldSetting.trim();
+    const architectResponse = await architectApiResponse.json();
+    let worldSetting = extractTextFromAIResponse(architectResponse);
 
     if (!worldSetting) {
       console.error("[大纲生成] 宏观叙事蓝图生成失败：响应为空");
       throw new Error("宏观叙事蓝图生成失败：AI响应为空");
     }
+
+    // 更新生成状态
+    const store = useNovelStore.getState();
+    store.setGeneratedContent(worldSetting);
 
     // 验证大纲格式
     if (!worldSetting.includes("**第一幕:")) {
@@ -276,6 +224,7 @@ export const generateNovelChapters = async (
       actOneStart = stages[0].chapterRange.start;
       actOneEnd = stages[0].chapterRange.end;
     } else {
+      console.log("stages",stages);
       console.warn("[Act Planner] 未能从宏观大纲中解析出第一幕的章节范围，将使用默认值 1-100。");
     }
 
@@ -308,57 +257,19 @@ export const generateNovelChapters = async (
         model: activeConfig.model,
         messages: [{ role: 'user', content: plannerPrompt }],
         temperature: settings.temperature,
-        stream: true
+        stream: false
       })
     });
     if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
-    if (!plannerApiResponse.body) throw new Error('Planner API returned empty body');
 
-    const plannerReader = plannerApiResponse.body.getReader();
-    const plannerDecoder = new TextDecoder();
-    let plotOutline = '';
-    let plannerBuffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await plannerReader.read();
-        if (done) break;
-
-        // 解码本次接收的数据
-        const chunk = plannerDecoder.decode(value);
-        plannerBuffer += chunk;
-
-        // 处理SSE格式的数据 (以"data: "开头, 每行一个JSON)
-        const lines = plannerBuffer.split('\n');
-        plannerBuffer = lines.pop() || '';
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = line.substring(6);
-              if (data.trim() === '[DONE]') {
-                // End of stream signal
-                break;
-              }
-              const chunk = JSON.parse(data);
-              const deltaContent = chunk.choices?.[0]?.delta?.content;
-              if (deltaContent) {
-                plotOutline += deltaContent;
-                // 实时更新 UI
-                const store = useNovelStore.getState();
-                store.setGeneratedContent(plotOutline);
-              }
-            } catch (e) {
-              console.error('[Act Planner] SSE 行解析失败:', e);
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.error('[Act Planner] 读取流数据时出错:', err);
-      throw new Error('读取逐章大纲数据流失败');
-    } finally {
-      plannerReader.releaseLock();
-    }
+    const plannerResponse = await plannerApiResponse.json();
+    let plotOutline = extractTextFromAIResponse(plannerResponse);
+    
+    // 标准化AI响应中的标点符号
+    plotOutline = plotOutline.replace(/：/g, ':');
+    
+    // 实时更新 UI
+    store.setGeneratedContent(plotOutline);
 
     plotOutline = plotOutline.replace(/```markdown/g, '').replace(/```/g, '').trim();
     if (!plotOutline) throw new Error('未能生成任何章节大纲');

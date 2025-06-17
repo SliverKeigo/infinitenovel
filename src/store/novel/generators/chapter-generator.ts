@@ -547,6 +547,8 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
 
       // 当前场景流式结束后，将其完整内容更新到内部累积器中
       completedScenesContent += (i > 0 ? "\n\n" : "") + currentSceneContent;
+      const finalContent = completedScenesContent.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+      set({ generatedContent: finalContent });
 
     } catch (error) {
       console.error(`[场景生成] 场景 ${i + 1} 失败:`, error);
