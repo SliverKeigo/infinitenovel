@@ -66,12 +66,18 @@ export async function POST(req: Request) {
       const webReadableStream = new ReadableStream({
         async start(controller) {
           const encoder = new TextEncoder();
-          for await (const chunk of responseStream as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>) {
-             // 确保我们发送的是前端期望的 'data: {..}\n\n' 格式
-             const data = `data: ${JSON.stringify(chunk)}\n\n`;
-             controller.enqueue(encoder.encode(data));
+          try {
+            for await (const chunk of responseStream as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>) {
+              const data = `data: ${JSON.stringify(chunk)}\n\n`;
+              controller.enqueue(encoder.encode(data));
+            }
+            // 正常结束时发送 [DONE] 标记
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          } catch (err) {
+            console.error('[API Completions] Stream error:', err);
+            controller.error(err as any);
           }
-          controller.close();
         },
       });
 
