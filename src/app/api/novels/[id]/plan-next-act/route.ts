@@ -2,7 +2,7 @@ import { query } from '@/lib/pg-db';
 import { NextResponse } from 'next/server';
 import { planNextAct } from '@/store/novel/generators/act-planner';
 import { extractNarrativeStages, extractDetailedAndMacro } from '@/store/novel/parsers';
-import { extractChapterNumbers } from '@/store/novel/outline-utils';
+import { extractChapterNumbers } from '@/store/novel/utils/outline-utils';
 
 const ACT_PLANNING_THRESHOLD = 10;
 
