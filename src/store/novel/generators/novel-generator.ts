@@ -217,23 +217,69 @@ export const generateNovelChapters = async (
         model: activeConfig.model,
         messages: [{ role: 'user', content: architectPrompt }],
         temperature: settings.temperature,
-        stream: false
+        stream: true
       })
     });
 
     if (!architectApiResponse.ok) {
       const errorText = await architectApiResponse.text();
-      console.error('世界观构建请求失败:', errorText);
-      throw new Error(`世界观构建请求失败: ${errorText}`);
+      throw new Error(`Architect AI failed: ${errorText}`);
     }
 
-    const architectResponse = await architectApiResponse.json();
-    let worldSetting = extractTextFromAIResponse(architectResponse);
+    if (!architectApiResponse.body) {
+      throw new Error("响应体为空");
+    }
+
+    // 处理流式响应
+    let architectContent = '';
+    const streamReader = architectApiResponse.body.getReader();
+    const streamDecoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await streamReader.read();
+      if (done) break;
+
+      const chunk = streamDecoder.decode(value, { stream: true });
+      architectContent += chunk;
+
+      // 实时更新UI上的生成内容
+      updateGenerationContent(architectContent);
+    }
+
+    architectContent = architectContent.replace(/```markdown/g, "").replace(/```/g, "").trim();
+
+    if (!architectContent) {
+      throw new Error("未能生成任何宏观叙事蓝图");
+    }
+
+    // 更新任务状态
+    set({ generationTask: { ...get().generationTask, progress: 10, currentStep: '阶段1/3: 宏观叙事蓝图已完成，正在解析...' } });
+
+    let worldSetting = extractTextFromAIResponse(architectContent);
 
     if (!worldSetting) {
-      console.error("[大纲生成] 宏观叙事蓝图生成失败：响应为空");
-      throw new Error("宏观叙事蓝图生成失败：AI响应为空");
+      throw new Error('未能从AI响应中提取有效内容');
     }
+
+    // 解析宏观叙事蓝图
+    const architectInfo = extractArchitectInfo(architectContent);
+    const narrativeStages = extractNarrativeStages(architectContent);
+
+    // 更新任务状态
+    set({ generationTask: { ...get().generationTask, progress: 15, currentStep: '阶段1/3: 正在分析宏观叙事结构...' } });
+
+    // 更新生成状态
+    set({
+      generationTask: {
+        ...get().generationTask,
+        progress: 20,
+        currentStep: '阶段1/3: 正在生成第一幕大纲...'
+      },
+      firstActInfo: architectInfo.firstActInfo,
+      actOneStart: architectInfo.actOneStart,
+      actOneEnd: architectInfo.actOneEnd,
+      narrativeStages
+    });
 
     // 更新生成状态
     const store = useNovelStore.getState();
@@ -846,3 +892,17 @@ ${firstActInfo}
     return { plotOutline: null };
   }
 };
+
+// 添加辅助函数
+function extractArchitectInfo(content: string): { firstActInfo: string; actOneStart: number; actOneEnd: number } {
+  // 使用正则表达式提取第一幕信息
+  const firstActMatch = content.match(/第一幕[：:](.*?)(?=第二幕|$)/);
+  const firstActInfo = firstActMatch ? firstActMatch[1].trim() : '';
+
+  // 提取章节范围
+  const chapterRangeMatch = content.match(/第(\d+)章.*?第(\d+)章/);
+  const start = chapterRangeMatch ? parseInt(chapterRangeMatch[1]) : 1;
+  const end = chapterRangeMatch ? parseInt(chapterRangeMatch[2]) : 80;
+
+  return { firstActInfo, actOneStart: start, actOneEnd: end };
+}
