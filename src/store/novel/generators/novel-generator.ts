@@ -21,6 +21,7 @@ import { Novel } from '@/types/novel';
 import type { Chapter } from '@/types/chapter';
 import { extractTextFromAIResponse } from '../utils/ai-utils';
 import { useNovelStore } from '../../use-novel-store';
+import { log } from 'console';
 
 /**
  * 更新生成内容的状态
@@ -128,20 +129,13 @@ export const generateNovelChapters = async (
     // [新增] 获取角色行为准则 (在此处统一定义)
     const characterRules = await getOrCreateCharacterRules(novelId);
 
-    const openai = new OpenAI({
-      apiKey: activeConfig.api_key,
-      baseURL: activeConfig.api_base_url || undefined,
-      dangerouslyAllowBrowser: true,
-    });
 
     // === STAGE 1A: THE GRAND ARCHITECT ===
     set({ generationTask: { ...get().generationTask, progress: 5, currentStep: '阶段1/3: 正在构建宏观叙事蓝图...' } });
 
-    const architectPrompt = `
-     # 小说宏观叙事蓝图设计师 v1.0
+    const architectPrompt = ` # 小说宏观叙事蓝图设计师 v1.1
 
 你是一位顶级的世界构建师和叙事战略家，专精于创造节奏舒缓、内容丰富的长篇小说结构。请为一部名为《${novel.name}》的小说设计一个符合章节上限的分幕宏观叙事蓝图。
-
 
 ## 核心信息
 - 小说类型: ${novel.genre}
@@ -151,33 +145,29 @@ export const generateNovelChapters = async (
 - 风格指导: ${outlineStyleGuide}
 - 角色行为准则: ${characterRules}
 
+## 核心结构约束 (最高优先级)
+- **强制幕数上限**: 无论总章节数多少，总幕数**绝对不能**超过12幕。
+- **合并策略**: 如果根据 "计划总章节数 / 70" 计算出的幕数超过12，你**必须**将多余的幕内容合并到前面的幕中，并相应地扩大每幕的章节范围，直至总幕数不多于12幕。
+- **最小幕数**: 最终结构的总幕数不得少于3幕。
+
 ## 设计要求
 
-### 1. 章节分配策略
-- 计算所需幕数：N = ⌈计划总章节数 ÷ 70⌉（降低每幕章节密度以支持缓慢节奏）
-- 每一幕的章节数量 ≤ 70
-- 如果N < 3，仍使用3幕结构；如果N > 12，可将后期剧情合并，但总幕数不得超过12幕
+### 1. 节奏控制原则
+- **极度缓慢推进**: 前三幕应仅完成世界观建立、角色介绍和初步冲突设定。
+- **渐进式发展**: 重大转折点应均匀分布在各幕中，避免前期过于密集。
+- **留白艺术**: 每幕应有足够的"呼吸空间"供角色发展和世界探索。
 
-### 2. 节奏控制原则
-- **极度缓慢推进**：前三幕应仅完成世界观建立、角色介绍和初步冲突设定
-- **渐进式发展**：重大转折点应均匀分布在各幕中，避免前期过于密集
-- **留白艺术**：每幕应有足够的"呼吸空间"供角色发展和世界探索
-
-### 3. 支线设计要求
-- **多线并行**：每幕至少设计2-3条支线，与主线形成呼应
-- **支线类型**：
-  - 角色发展支线（深化人物背景和成长）
-  - 世界观探索支线（丰富设定和历史）
-  - 情感关系支线（人际关系和情感纠葛）
-  - 悬念伏笔支线（为后续剧情埋下种子）
-- **支线融合**：支线应与主线有机结合，不可游离于主体叙事之外
+### 2. 支线设计要求
+- **多线并行**: 每幕至少设计2-3条支线，与主线形成呼应。
+- **支线类型**: 角色发展、世界观探索、情感关系、悬念伏笔等。
+- **支线融合**: 支线应与主线有机结合，不可游离于主体叙事之外。
 
 ## 你的任务
 
 ### 阶段一：结构规划
-1. 根据总章节数确定幕数
-2. 为每一幕分配章节范围
-3. 确保节奏分布合理，避免前重后轻
+1.  **最终确认幕数**: 首先，根据总章节数和**强制幕数上限(12幕)**，确定最终的总幕数。
+2.  **分配章节范围**: 为你确定的每一幕分配章节范围，确保所有章节都被无缝覆盖。
+3.  **确保节奏合理**: 确保整体节奏分布合理，避免前重后轻。
 
 ### 阶段二：内容设计
 为每一幕提供：
@@ -188,9 +178,9 @@ export const generateNovelChapters = async (
 - 节奏特点（该幕的叙事节奏和重点）
 
 ## 绝对禁止
-- 提供任何逐章的具体细节
-- 在前两幕完成过多关键里程碑
-- 忽略支线与主线的有机结合
+- **忽略幕数上限**: 严禁输出超过12幕的结构。
+- 提供任何逐章的具体细节。
+- 在前两幕完成过多关键里程碑。
 
 ## 输出格式
 请严格按照以下格式输出，每一幕之间用空行隔开：
@@ -205,10 +195,10 @@ export const generateNovelChapters = async (
 - 支线设计：[2-3条支线的简要说明]
 - 节奏特点：[该幕的叙事节奏描述]
 
-[继续后续各幕...]
+[继续后续各幕... 直到覆盖所有章节，且总幕数不超过12幕]
 
 请确保整体叙事节奏舒缓，内容层次丰富，支线与主线相互支撑，创造出一个引人入胜的长篇小说蓝图。
-    `;
+`;
     const architectApiResponse = await fetch('/api/ai/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -252,18 +242,14 @@ export const generateNovelChapters = async (
       throw new Error("未能生成任何宏观叙事蓝图");
     }
 
+    console.log('architectContent', architectContent.slice(0, 200));
+
     // 更新任务状态
     set({ generationTask: { ...get().generationTask, progress: 10, currentStep: '阶段1/3: 宏观叙事蓝图已完成，正在解析...' } });
 
-    let worldSetting = extractTextFromAIResponse(architectContent);
-
-    if (!worldSetting) {
-      throw new Error('未能从AI响应中提取有效内容');
-    }
-
     // 解析宏观叙事蓝图
     const architectInfo = extractArchitectInfo(architectContent);
-    const narrativeStages = extractNarrativeStages(architectContent);
+    console.log('architectInfo', architectInfo);
 
     // 更新任务状态
     set({ generationTask: { ...get().generationTask, progress: 15, currentStep: '阶段1/3: 正在分析宏观叙事结构...' } });
@@ -278,49 +264,64 @@ export const generateNovelChapters = async (
       firstActInfo: architectInfo.firstActInfo,
       actOneStart: architectInfo.actOneStart,
       actOneEnd: architectInfo.actOneEnd,
-      narrativeStages
     });
 
     // 更新生成状态
     const store = useNovelStore.getState();
-    store.setGeneratedContent(worldSetting);
+    store.setGeneratedContent(architectContent);
 
     // 验证大纲格式
-    if (!worldSetting.includes("**第一幕:")) {
+    if (!architectContent.includes("第一幕")) {
       console.error("[大纲生成] 宏观叙事蓝图格式错误，缺少第一幕标记");
       throw new Error("宏观叙事蓝图格式错误：未找到第一幕标记");
     }
 
-    set({ generationTask: { ...get().generationTask, progress: 0.2, currentStep: `世界观已构建: ${worldSetting.substring(0, 30)}...` } });
+    set({ generationTask: { ...get().generationTask, progress: 0.2, currentStep: `世界观已构建: ${architectContent.substring(0, 30)}...` } });
 
-    // === STAGE 1B: THE ACT PLANNER ===
+    // === STAGE 1B: THE ACT PLANNER (BATCHED) ===
     set({ generationTask: { ...get().generationTask, progress: 10, currentStep: '阶段2/3: 正在策划第一幕详细情节...' } });
 
     // 从宏观蓝图中提取第一幕的信息
-    const firstActRegex = /\*\*第一幕:[\s\S]*?(?=\n\n\*\*第二幕:|\s*$)/;
-    const firstActMatch = worldSetting.match(firstActRegex);
+    const firstActRegex = /\*\*第一幕[：:][\s\S]*?(?=\n\n\*\*第二幕[：:]|\s*$)/;
+    const firstActMatch = architectContent.match(firstActRegex);
     if (!firstActMatch) throw new Error("无法从宏观蓝图中解析出第一幕。");
     const firstActInfo = firstActMatch[0];
 
-    // 使用 extractNarrativeStages 函数来解析章节范围，代替手动正则
-    const stages = extractNarrativeStages(worldSetting);
-
-
     let actOneStart = 1;
-    let actOneEnd = 100; // 默认值
-
-    if (stages.length > 0 && stages[0].chapterRange) {
-      actOneStart = stages[0].chapterRange.start;
-      actOneEnd = stages[0].chapterRange.end;
-    } else {
-      console.warn("[Act Planner] 未能从宏观大纲中解析出第一幕的章节范围，将使用默认值 1-100。");
+    let actOneEnd = 70; // Default, consistent with architect prompt
+    if (architectInfo.actOneStart && architectInfo.actOneEnd) {
+      actOneStart = architectInfo.actOneStart;
+      actOneEnd = architectInfo.actOneEnd;
     }
 
-    // 生成逐章节大纲
-    const plannerPrompt = `
-    # 逐章节大纲生成专家 v1.0
+    let plotOutline = "";
+    const BATCH_SIZE = 20; // Generate 10 chapters at a time
 
-你是一位才华横溢、深谙故事节奏的总编剧和细节大师。你的任务是为一部名为《${novel.name}》的小说的**第一幕**撰写详细的、逐章的剧情大纲。
+    for (let currentStart = actOneStart; currentStart <= actOneEnd; currentStart += BATCH_SIZE) {
+      const currentEnd = Math.min(currentStart + BATCH_SIZE - 1, actOneEnd);
+      const totalChaptersInAct = actOneEnd - actOneStart + 1;
+      const chaptersDone = currentStart - actOneStart;
+      const batchProgress = Math.round((chaptersDone / totalChaptersInAct) * 30); // 10% to 40% of total progress is for this stage
+
+      set({
+        generationTask: {
+          ...get().generationTask,
+          progress: 10 + batchProgress,
+          currentStep: `阶段2/3: 正在策划情节 ${currentStart}-${currentEnd}章...`,
+        }
+      });
+
+      // Context from previous chapters, take last 2.
+      const previousChaptersContext = plotOutline
+        .split('**第')
+        .slice(-3) // Take last 2 chapters + empty string from split
+        .join('**第')
+        .trim();
+
+      const outlinePrompt = `
+# 逐章节大纲生成专家 v2.1 (连续生成模式)
+
+你是一位才华横溢、深谙故事节奏的总编剧。你的任务是为小说《${novel.name}》**继续**生成从第${currentStart}章到第${currentEnd}章的详细大纲。
 
 ## 核心材料
 **第一幕的宏观规划:**
@@ -331,120 +332,87 @@ ${firstActInfo}
 - 写作风格: ${novel.style}
 - 核心设定与特殊要求: ${novel.special_requirements || '无'}
 
+${previousChaptersContext ? `## 已有大纲 (用于衔接)
+**请务必紧密衔接以下最新章节内容，确保故事的连贯性：**
+${previousChaptersContext}` : ''}
+
 ## 创作核心原则
-
-### 1. 节奏控制原则（最高优先级）
-- **极度缓慢推进**: 将每个重大事件拆分成多个微小步骤
-- **渐进式发展**: 任何重要目标都需要通过多章节的累积才能达成
-- **细节填充**: 用大量日常互动、环境描写、心理活动填充剧情
-- **阻力设计**: 为主角的每个行动设置合理的障碍和挫折
-
-### 2. 内容丰富度要求
-- **人物互动**: 每章至少包含2-3个角色的有意义互动
-- **世界探索**: 持续展现世界观的不同侧面
-- **支线融入**: 将支线任务和人物关系自然融入主线
-- **情感层次**: 每章都要有情感起伏和角色内心变化
-
-### 3. 逻辑连贯性
-- **因果关系**: 每章事件必须有明确的前因后果
-- **时间连续**: 确保时间线的自然流动，避免突兀跳跃
-- **角色一致**: 角色行为符合其性格和动机
-- **设定遵循**: 严格遵守已建立的世界观规则
-
-## 输出技术要求
-
-### 1. 完整性标准（强制要求）
-- 必须涵盖第 ${actOneStart} 章到第 ${actOneEnd} 章的每一章
-- 绝对禁止跳过、省略或合并任何章节
-- 严禁使用"..."、"等等"、"继续"等敷衍表达
-- 每章都必须有独立完整的剧情事件
-
-### 2. 内容质量标准
-- 每章大纲包含80-120字的具体描述
-- 每章必须有明确的开始、发展、结束
-- 每章都要推进剧情或深化角色
-- 避免重复性内容和无意义的填充
-
-### 3. 特殊遵循要求
-- 如果"核心设定与特殊要求"中规定了开篇情节，第一章必须严格遵循
-- 保持与宏观规划的一致性
-- 确保支线剧情的合理分布
-
-## 章节大纲结构模板
-
-每章大纲应包含以下要素：
-- **核心事件**: 本章的主要情节发展
-- **角色动态**: 涉及的主要角色及其行为
-- **推进作用**: 对整体剧情的推进意义
-- **细节丰富**: 具体的场景、对话、行动描述
+- **极度缓慢推进**: 将每个重大事件拆分成多个微小步骤。
+- **渐进式发展**: 任何重要目标都需要通过多章节的累积才能达成。
+- **细节填充**: 用大量日常互动、环境描写、心理活动填充剧情。
+- **逻辑连贯性**: 每章事件必须有明确的前因后果，角色行为符合其性格和动机。
 
 ## 输出格式要求
+**请严格按照以下格式，仅输出从第${currentStart}章到第${currentEnd}章的内容。**
+- 每章之间用一个空行分隔。
+- 禁止任何形式的中断、说明、总结或进度提示。
 
-请严格按照以下格式输出，确保章节编号连续且完整：
+**第N章：具体章节标题**  
+[200-300字的具体叙事内容，包含完整的场景、对话和行动描述]
 
-**第${actOneStart}章：[具体章节标题]**
-[80-120字的详细剧情描述，包含核心事件、角色行为、场景设置、推进作用等要素]
+[空行]
 
-**第${actOneStart + 1}章：[具体章节标题]**
-[80-120字的详细剧情描述，包含核心事件、角色行为、场景设置、推进作用等要素]
+## 绝对禁止
+- **重复生成已有章节**: 不要生成${currentStart}章之前的内容。
+- **任何形式的总结**: 不要添加"因篇幅限制"或任何类似的解释性文字。
+- **任何多余的文本**: 除了要求的章节内容，不要输出任何其他文字。
 
-[继续后续每一章，直到第${actOneEnd}章]
+## 强制完整性要求
+1. **严格范围**: 必须且仅必须生成第${currentStart}章到第${currentEnd}章的大纲。
+2. **无缝衔接**: 如果提供了"已有大纲"，必须自然地延续剧情。
+3. **格式纯净**: 严格遵守输出格式，无任何杂质。
 
-## 质量检查清单
-在输出前，请确认：
-- [ ] 每章都有独特且推进剧情的内容
-- [ ] 章节编号完全连续，无跳跃
-- [ ] 每章描述足够详细具体
-- [ ] 整体节奏缓慢但不拖沓
-- [ ] 角色行为逻辑合理
-- [ ] 与宏观规划保持一致
+现在，请从第${currentStart}章开始，连续生成到第${currentEnd}章结束。
+`;
 
-现在，请开始生成第 ${actOneStart} 章到第 ${actOneEnd} 章的完整、详细的逐章大纲。记住：每一章都必须精雕细琢，不可敷衍。
-    `;
+      const plannerApiResponse = await fetch('/api/ai/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeConfigId: activeConfig.id,
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: outlinePrompt }],
+          temperature: settings.temperature,
+          stream: true,
+        })
+      });
 
-    const plannerApiResponse = await fetch('/api/ai/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        activeConfigId: activeConfig.id,
-        model: activeConfig.model,
-        messages: [{ role: 'user', content: plannerPrompt }],
-        temperature: settings.temperature,
-        stream: true,
-      })
-    });
-
-    if (!plannerApiResponse.ok) {
-      const errorText = await plannerApiResponse.text();
-      throw new Error(`Planner AI failed: ${errorText}`);
-    }
-
-    if (!plannerApiResponse.body) {
-      throw new Error("响应体为空");
-    }
-
-    // 处理流式响应
-    let plotOutline = "";
-    const reader = plannerApiResponse.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
+      if (!plannerApiResponse.ok) {
+        const errorText = await plannerApiResponse.text();
+        throw new Error(`Planner AI failed during chapters ${currentStart}-${currentEnd}: ${errorText}`);
       }
-      const chunk = decoder.decode(value, { stream: true });
-      plotOutline += chunk;
 
-      // 实时更新UI上的生成内容
-      updateGenerationContent(plotOutline);
+      if (!plannerApiResponse.body) {
+        throw new Error("响应体为空");
+      }
+
+      const reader = plannerApiResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let chunkContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        const chunk = decoder.decode(value, { stream: true });
+        plotOutline += chunk;
+        chunkContent += chunk;
+
+        updateGenerationContent(plotOutline);
+      }
+
+      // Add a newline if it's not the last batch and the content doesn't end with one.
+      if (currentEnd < actOneEnd && chunkContent.trim() && !chunkContent.endsWith('\n\n')) {
+        plotOutline += '\n\n';
+      }
     }
 
     plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
 
     if (!plotOutline) throw new Error("未能生成任何章节大纲");
 
-    console.log(`[Act Planner] 分块生成完成，总章节 ${actOneEnd - actOneStart + 1}`);
+    console.log(`[Act Planner] Batched generation complete. Total chapters: ${actOneEnd - actOneStart + 1}`);
 
     set({ generationTask: { ...get().generationTask, progress: 40, currentStep: `故事大纲已生成...` } });
 
@@ -452,7 +420,7 @@ ${firstActInfo}
     set({ generationTask: { ...get().generationTask, progress: 45, currentStep: '阶段3/3: 正在整合最终大纲...' } });
 
     // 调整顺序：宏观规划在前，逐章细纲在后，使用新的分隔符
-    const finalOutline = `${worldSetting.trim()}\n\n---\n**逐章细纲**\n---\n\n${plotOutline.trim()}`;
+    const finalOutline = `${architectContent.trim()}\n\n---\n**逐章细纲**\n---\n\n${plotOutline.trim()}`;
 
     // 使用现有的处理函数清理最终大纲
     const processedOutline = processOutline(finalOutline);
@@ -896,13 +864,23 @@ ${firstActInfo}
 // 添加辅助函数
 function extractArchitectInfo(content: string): { firstActInfo: string; actOneStart: number; actOneEnd: number } {
   // 使用正则表达式提取第一幕信息
-  const firstActMatch = content.match(/第一幕[：:](.*?)(?=第二幕|$)/);
-  const firstActInfo = firstActMatch ? firstActMatch[1].trim() : '';
+  const firstActMatch = content.match(/\*\*第一幕[：:][\s\S]*?(?=\n\n\*\*第二幕[：:]|\s*$)/);
+  const firstActInfo = firstActMatch ? firstActMatch[0].trim() : '';
+  
 
-  // 提取章节范围
-  const chapterRangeMatch = content.match(/第(\d+)章.*?第(\d+)章/);
+  // 提取章节范围 - 更新正则表达式以匹配更多格式
+  const chapterRangeRegex = /章节范围[：:]\s*第(\d+)章[：:\s-]*第(\d+)章/;
+  const chapterRangeMatch = content.match(chapterRangeRegex);
+  
+  console.log('Chapter range matching:', {
+    content: content.substring(0, 200), // 只打印前200个字符避免日志过长
+    match: chapterRangeMatch
+  });
+
   const start = chapterRangeMatch ? parseInt(chapterRangeMatch[1]) : 1;
-  const end = chapterRangeMatch ? parseInt(chapterRangeMatch[2]) : 80;
+  const end = chapterRangeMatch ? parseInt(chapterRangeMatch[2]) : 70;
+
+  console.log('Extracted chapter range:', { start, end });
 
   return { firstActInfo, actOneStart: start, actOneEnd: end };
 }

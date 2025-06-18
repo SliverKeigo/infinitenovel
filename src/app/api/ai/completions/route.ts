@@ -50,7 +50,7 @@ export async function POST(req: Request) {
         model: openai(model),
         messages: restOfBody.messages,
         temperature: restOfBody.temperature,
-        // ... any other parameters from restOfBody can be passed here
+        maxTokens: 8192,
       });
       
       // 返回一个纯文本流式响应
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
         model: openai(model),
         messages: restOfBody.messages,
         temperature: restOfBody.temperature,
-        // ... any other parameters from restOfBody can be passed here
+        maxTokens: 8192,
       });
 
       // The AI SDK's generateText returns a specific structure.
