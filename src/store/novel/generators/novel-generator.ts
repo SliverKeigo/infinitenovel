@@ -274,15 +274,36 @@ export const generateNovelChapters = async (
         model: activeConfig.model,
         messages: [{ role: 'user', content: plannerPrompt }],
         temperature: settings.temperature,
-        max_tokens: 4000,
-        timeout: 300000,
-        max_retries: 2,
+        stream: true,
       })
     });
-    if (!plannerApiResponse.ok) throw new Error(`Planner AI failed: ${await plannerApiResponse.text()}`);
-    const plannerResponse = await plannerApiResponse.json() as any;
 
-    let plotOutline = extractTextFromAIResponse(plannerResponse);
+    if (!plannerApiResponse.ok) {
+      const errorText = await plannerApiResponse.text();
+      throw new Error(`Planner AI failed: ${errorText}`);
+    }
+    
+    if (!plannerApiResponse.body) {
+      throw new Error("响应体为空");
+    }
+
+    // 处理流式响应
+    let plotOutline = "";
+    const reader = plannerApiResponse.body.getReader();
+    const decoder = new TextDecoder();
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = decoder.decode(value, { stream: true });
+      plotOutline += chunk;
+      
+      // 实时更新UI上的生成内容
+      updateGenerationContent(plotOutline);
+    }
+    
     plotOutline = plotOutline.replace(/```markdown/g, "").replace(/```/g, "").trim();
 
     if (!plotOutline) throw new Error("未能生成任何章节大纲");

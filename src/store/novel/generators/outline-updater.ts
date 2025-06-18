@@ -287,38 +287,18 @@ ${truncatedOutline}
     const reader = editorApiResponse.body.getReader();
     const decoder = new TextDecoder();
     let newContent = '';
-    let buffer = '';
-
+    
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        buffer += chunk;
-
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = line.substring(6);
-              if (data.trim() === '[DONE]') {
-                // End of stream signal
-                break;
-              }
-              const chunk = JSON.parse(data);
-              const delta = chunk.choices?.[0]?.delta?.content;
-              if (delta) {
-                newContent += delta;
-                const store = useNovelStore.getState();
-                store.setGeneratedContent(newContent);
-              }
-            } catch (e) {
-              console.error('[Outline Editor] SSE parse error:', e);
-            }
-          }
-        }
+        const chunk = decoder.decode(value, { stream: true });
+        newContent += chunk;
+        
+        // 实时更新UI
+        const store = useNovelStore.getState();
+        store.setGeneratedContent(newContent);
       }
     } catch (err) {
       console.error('[Outline Editor] Stream read error:', err);
@@ -326,6 +306,7 @@ ${truncatedOutline}
     } finally {
       reader.releaseLock();
     }
+
 
     // 清理AI可能返回的markdown代码块标记
     newContent = newContent.replace(/```[\s\S]*?```/g, '').trim();

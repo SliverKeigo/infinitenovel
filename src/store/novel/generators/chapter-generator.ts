@@ -499,8 +499,7 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
           activeConfigId: activeConfig.id,
           model: activeConfig.model,
           messages: [{ role: 'user', content: scenePrompt }],
-          stream: false,
-          max_tokens,
+          stream: true,
           temperature,
           top_p,
           frequency_penalty,
@@ -512,16 +511,36 @@ ${i > 0 ? `到目前为止，本章已经写下的内容如下，请你无缝地
         const errorText = await response.text();
         throw new Error(`API request failed with status ${response.status}: ${errorText}`);
       }
+      
+      if (!response.body) {
+        throw new Error("API响应体为空");
+      }
 
-      const result = await response.json();
-      const sceneContent = result.choices[0]?.message?.content || '';
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let sceneContent = '';
 
-      // 更新生成内容
-      set((state: NovelStateSlice) => ({
-        generatedContent: (state.generatedContent || "") + (i > 0 ? "\n\n" : "") + sceneContent
-      }));
+      // 如果不是第一个场景，先在UI上添加分隔符
+      if (i > 0) {
+        set((state: NovelStateSlice) => ({
+          generatedContent: (state.generatedContent || "") + "\n\n"
+        }));
+      }
 
-      // 更新累积内容
+      while(true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        sceneContent += chunk;
+
+        // 实时追加内容到UI
+        set((state: NovelStateSlice) => ({
+          generatedContent: (state.generatedContent || "") + chunk
+        }));
+      }
+
+      // 更新累积内容，为下一个场景的上下文做准备
       completedScenesContent += (i > 0 ? "\n\n" : "") + sceneContent;
 
       // 场景生成完成提示
