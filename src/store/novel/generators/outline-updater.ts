@@ -49,7 +49,7 @@ const analyzeGeneratedContent = async (
   generatedChaptersContent: string,
   openai: OpenAI
 ): Promise<DriftReport> => {
-  
+
   const driftReportPrompt = `
 你是一位专业的剧情分析师。请仔细阅读以下几个章节的小说内容。你的任务是识别并以严格的JSON格式，报告在此期间发生的、可能对未来故事走向产生重大影响的**新信息**和**关键变化**。
 
@@ -127,7 +127,7 @@ ${generatedChaptersContent}
     }
 
     const parsedReport = parseJsonFromAiResponse(reportContent) as DriftReport;
-    
+
     return parsedReport;
 
   } catch (error) {
@@ -147,7 +147,7 @@ const updateDatabaseWithDriftReport = async (
   novelId: number,
   currentChapter: number
 ): Promise<void> => {
-  
+
   try {
     // 1. 更新新角色
     if (driftReport.newCharacters && driftReport.newCharacters.length > 0) {
@@ -170,7 +170,7 @@ const updateDatabaseWithDriftReport = async (
             is_protagonist: false,
           })
         });
-        
+
       }
     }
 
@@ -190,7 +190,7 @@ const updateDatabaseWithDriftReport = async (
             status: '未解决',
           })
         });
-        
+
       }
     }
   } catch (error) {
@@ -210,7 +210,7 @@ const reviseFutureOutline = async (
   futureOutline: string,
   openai: OpenAI
 ): Promise<string> => {
-  
+
   // 优化：如果漂移报告为空，则无需修正，直接返回原大纲，节省AI调用成本。
   const isReportEmpty =
     (!driftReport.newCharacters || driftReport.newCharacters.length === 0) &&
@@ -228,7 +228,7 @@ const reviseFutureOutline = async (
   // --- 对未来大纲进行截断处理 ---
   let tail = '';
   let truncatedOutline = futureOutline;
-  
+
   if (futureOutline.length > MAX_OUTLINE_CHARS) {
     tail = futureOutline.slice(MAX_OUTLINE_CHARS);
     truncatedOutline = futureOutline.slice(0, MAX_OUTLINE_CHARS) + '\n...(后续章节已省略)...';
@@ -236,31 +236,49 @@ const reviseFutureOutline = async (
   }
 
   const editorPrompt = `
-你是一位经验丰富的首席编辑，负责维护一部长篇小说的逻辑一致性和长期吸引力。你的任务是根据刚刚发生的最新剧情进展，对未来的章节大纲进行精细的、必要的微调。
+# 小说大纲动态调整编辑器 v1.0
 
-【最新剧情变化摘要 (漂移报告)】
-这是刚刚在故事中实际发生的、未经规划的新情况：
-\`\`\`json
-${JSON.stringify(driftReport, null, 2)}
-\`\`\`
+你是一位资深的小说编辑总监，专门负责维护长篇小说的叙事逻辑一致性和情节连贯性。当实际写作内容与预定大纲产生偏差时，你需要对后续章节大纲进行精准的适应性调整。
 
-【原定的未来章节规划】
-这是我们之前制定的、从下一个章节开始的全部规划：
----
-${truncatedOutline}
----
+## 核心职责
+基于最新的剧情漂移情况，对未来章节规划进行最小化但必要的修订，确保故事逻辑完整性和可读性。
 
-【你的核心任务】
-请仔细阅读"漂移报告"，并以其为依据，审阅并微调"未来章节规划"。你的修改必须遵循以下原则：
-1.  **最小化修改原则**: 只在绝对必要时进行修改。不要进行不相关的大规模重写。
-2.  **无缝整合原则**: 将报告中的新角色、新线索、新情节自然地融入到未来的规划中，使其看起来就像是"本该如此"。
-3.  **解决冲突原则**: 如果新进展与未来某个规划有逻辑冲突，请巧妙地解决它。例如，如果主角意外获得了一个关键物品，那么未来他"苦苦寻找该物品"的情节就需要被修改。
-4.  **主线稳定原则**: 保持故事的核心主线和重大里程碑事件不变。你的工作是调整细节，而不是改变故事的骨架。
+## 输入材料分析
+**漂移报告解读**：仔细分析JSON格式的漂移报告，识别：
+- 新增角色及其特征
+- 意外的情节发展
+- 新出现的线索或物品
+- 与原计划的具体差异点
 
-【输出要求】
--   **请只输出经过你修订后的、完整的未来章节规划文本**。
--   不要添加任何"好的，这是修改后的大纲"之类的解释性文字。
--   保持与原始大纲完全相同的格式。
+**原大纲评估**：审查现有的未来章节规划，标记可能产生逻辑冲突的部分。
+
+## 修订原则
+1. **最小干预原则**：仅在必要时修改，避免无关的大幅改动
+2. **无缝融合原则**：让新元素自然融入，仿佛本就是原始设计
+3. **冲突解决原则**：巧妙化解新旧内容间的逻辑矛盾
+4. **主线保护原则**：维护核心情节走向和关键节点不变
+5. **连贯性优先**：确保修改后的大纲内部逻辑自洽
+
+## 修订策略
+- **角色整合**：将意外出现的角色合理安排到后续情节中
+- **线索调整**：重新安排线索的揭示时机和方式
+- **情节重构**：调整因新发展而变得不合理的既定情节
+- **节奏平衡**：保持故事张弛有度的节奏感
+
+## 输出规范
+- 直接输出修订后的完整大纲文本
+- 保持原有格式和结构完全一致
+- 无需任何解释说明或修改标注
+- 确保修订内容与原文风格统一
+
+## 质量标准
+修订后的大纲应当：
+- 逻辑严密，无内在矛盾
+- 情节自然，过渡流畅
+- 保持原作的核心主题和风格
+- 为后续创作提供清晰指导
+
+开始处理漂移报告和大纲调整任务。
 `;
 
   try {
@@ -287,7 +305,7 @@ ${truncatedOutline}
     const reader = editorApiResponse.body.getReader();
     const decoder = new TextDecoder();
     let newContent = '';
-    
+
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -295,7 +313,7 @@ ${truncatedOutline}
 
         const chunk = decoder.decode(value, { stream: true });
         newContent += chunk;
-        
+
         // 实时更新UI
         const store = useNovelStore.getState();
         store.setGeneratedContent(newContent);
