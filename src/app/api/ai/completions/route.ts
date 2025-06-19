@@ -4,6 +4,8 @@ import { AIConfig } from '@/types/ai-config';
 import { streamText, generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 
+export const maxDuration = 300; // 5 minutes
+
 // 根据ID从数据库获取AI配置的辅助函数
 async function getAIConfig(id: number): Promise<AIConfig | null> {
   try {
@@ -61,8 +63,7 @@ export async function POST(req: Request) {
       const result = await generateText({
         model: openai(model),
         messages: restOfBody.messages,
-        temperature: restOfBody.temperature,
-        maxTokens: 8192,
+        temperature: restOfBody.temperature
       });
 
       // The AI SDK's generateText returns a specific structure.
