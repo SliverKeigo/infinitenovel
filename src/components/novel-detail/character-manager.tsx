@@ -49,7 +49,7 @@ export const CharacterManager = () => {
                         {characters.map((character) => (
                             <li key={character.id} className="border-b border-muted pb-2 last:border-b-0">
                                 <p className="font-semibold">{character.name}</p>
-                                <p className="text-sm text-muted-foreground">{character.core_setting}</p>
+                                <p className="text-sm text-muted-foreground">{character.core_setting || character.description}</p>
                             </li>
                         ))}
                     </ul>
