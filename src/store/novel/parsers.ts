@@ -19,56 +19,66 @@ export const parseJsonFromAiResponse = (content: string): any => {
   }
 
   // 移除 <think> 标签（如果存在）
-  const thinkEnd = content.lastIndexOf('</think>');
+  let cleanContent = content;
+  const thinkEnd = cleanContent.lastIndexOf('</think>');
   if (thinkEnd !== -1) {
-    content = content.substring(thinkEnd + 8).trim();
+    cleanContent = cleanContent.substring(thinkEnd + 8).trim();
   }
 
-  const tryParse = (str: string): any | null => {
+  // 生成一个候选字符串列表，按可能性从高到低排序
+  const candidates: string[] = [];
+  
+  // 候选1: 原始（清理后）内容
+  candidates.push(cleanContent);
+
+  // 候选2: 第一个Markdown代码块内的内容
+  const codeBlockMatch = cleanContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (codeBlockMatch?.[1]) {
+    candidates.push(codeBlockMatch[1]);
+  }
+
+  // 候选3: 第一个 '{' 和最后一个 '}' 之间的内容
+  const firstBrace = cleanContent.indexOf('{');
+  const lastBrace = cleanContent.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    candidates.push(cleanContent.substring(firstBrace, lastBrace + 1));
+  }
+  
+  // 使用 Set 去除重复的候选字符串
+  const uniqueCandidates = [...new Set(candidates)];
+
+  for (const candidate of uniqueCandidates) {
+    if (!candidate) continue;
+
     try {
-      return JSON.parse(str);
-    } catch {
-      return null;
+      // 步骤 A: 尝试使用标准的、严格的解析器
+      let parsed = JSON.parse(candidate);
+
+      // 步骤 B: 如果解析结果是字符串，则尝试二次解析（处理双重编码的JSON）
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+      
+      // 确认最终得到的是一个对象
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed; // 成功，返回结果
+      }
+    } catch (e) {
+      // 步骤 C: 如果标准解析失败，则回退到使用宽容的 dirty-json 解析器
+      try {
+        const parsed = parseDirtyJson(candidate);
+        // 不对 dirty-json 的结果进行二次解析，因为它本身的行为可能不稳定
+        if (typeof parsed === 'object' && parsed !== null) {
+          return parsed; // 成功，返回结果
+        }
+      } catch (dirtyError) {
+        // dirty-json 也失败了，继续尝试下一个候选字符串
+        continue;
+      }
     }
-  };
-
-  // 1) 直接解析
-  let result = tryParse(content);
-  if (result !== null) return result;
-
-  // 2) 提取首个 Markdown 代码块再解析
-  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (codeBlockMatch) {
-    result = tryParse(codeBlockMatch[1]);
-    if (result !== null) return result;
   }
 
-  // 3) 截取第一个 { 到最后一个 }
-  const firstBrace = content.indexOf('{');
-  const lastBrace = content.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    const slice = content.substring(firstBrace, lastBrace + 1);
-    result = tryParse(slice);
-    if (result !== null) return result;
-  }
-
-  // 4) 使用 dirty-json 宽容解析（依次尝试原文 → 代码块 → slice）
-  const dirtyTry = (str: string): any | null => {
-    try {
-      return parseDirtyJson(str);
-    } catch {
-      return null;
-    }
-  };
-
-  result = dirtyTry(content);
-  if (result !== null) return result;
-  if (codeBlockMatch && (result = dirtyTry(codeBlockMatch[1])) !== null) return result;
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    result = dirtyTry(content.substring(firstBrace, lastBrace + 1));
-    if (result !== null) return result;
-  }
-
+  // 如果所有候选字符串和所有方法都失败了，则抛出错误
   throw new Error('AI返回了无效的JSON格式，无法解析');
 };
 
