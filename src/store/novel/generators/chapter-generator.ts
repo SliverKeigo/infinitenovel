@@ -420,7 +420,24 @@ ${contextAwareOutline || `第 ${nextChapterNumber} 章缺少具体大纲。请�
 
     const decompResponse = await apiResponse.json() as { choices: { message: { content: any } }[] };
 
-    const decompResult = parseJsonFromAiResponse(extractTextFromAIResponse(decompResponse));
+    console.log('[DEBUG] Raw decompResponse from API:', decompResponse);
+
+    const rawText = extractTextFromAIResponse(decompResponse);
+    console.log('[DEBUG] Extracted raw text for parsing:', rawText);
+
+    const decompResult = parseJsonFromAiResponse(rawText);
+
+    console.log('[DEBUG] Parsed decompResult:', decompResult);
+
+    if (!decompResult) {
+      throw new Error("解析场景规划失败，AI返回内容为空或格式错误。");
+    }
+
+    console.log(`[DEBUG] Type of decompResult: ${typeof decompResult}`);
+    console.log(`[DEBUG] decompResult.title: ${decompResult.title}`);
+    console.log(`[DEBUG] Type of decompResult.scenes: ${typeof decompResult.scenes}`);
+    console.log(`[DEBUG] Is decompResult.scenes an array: ${Array.isArray(decompResult.scenes)}`);
+    
     chapterTitle = decompResult.title;
     progressStatus = decompResult.progressStatus || "未知";
     bigOutlineEvents = decompResult.bigOutlineEvents || [];
@@ -466,9 +483,13 @@ ${contextAwareOutline || `第 ${nextChapterNumber} 章缺少具体大纲。请�
   set({ generatedContent: "" }); // 清空预览
 
   // 确保场景数量与设置一致
+  console.log('[DEBUG] --- Entering Step 2: Generating scenes ---');
+  console.log('[DEBUG] Total scenes to generate:', chapterScenes.length);
+  console.log('[DEBUG] Scenes list:', chapterScenes);
 
   for (let i = 0; i < chapterScenes.length; i++) {
     const sceneDescription = chapterScenes[i];
+    console.log(`[DEBUG] Starting scene ${i + 1} generation. Description: ${sceneDescription}`);
     set({
       generationTask: {
         ...get().generationTask,
