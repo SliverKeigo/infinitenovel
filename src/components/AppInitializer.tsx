@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAIConfigStore } from '@/store/ai-config';
 import { useGenerationSettingsStore } from '@/store/generation-settings';
+import { voyInitializer } from '@/lib/voy-initializer';
 
 /**
  * This component is responsible for running initialization logic when the app loads.
@@ -15,8 +16,12 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const initialize = async () => {
-      await fetchAIConfigs();
-      await fetchGenerationSettings();
+      // Run initializations in parallel
+      await Promise.all([
+        fetchAIConfigs(),
+        fetchGenerationSettings(),
+        voyInitializer.init(),
+      ]);
       setIsInitialized(true);
     };
 

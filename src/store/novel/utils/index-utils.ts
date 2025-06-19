@@ -13,6 +13,7 @@ import type { PlotClue } from '@/types/plot-clue';
 import { saveVectorIndex, deleteVectorIndex as deleteIndexFile } from './rag-utils';
 import { toast } from "sonner";
 import type { NovelState } from '../../use-novel-store';
+import { voyInitializer } from '@/lib/voy-initializer';
 
 interface DocumentToIndex {
   id: string;
@@ -63,6 +64,11 @@ const validateEmbeddings = (embeddings: number[][]): boolean => {
     if (hasInvalidValue) {
       throw new Error(`向量 #${index} 包含无效的非数字或无穷大值。`);
     }
+
+    const isZeroVector = embedding.every(value => value === 0);
+    if (isZeroVector) {
+      throw new Error(`向量 #${index} 是一个无效的零向量，可能由空文本生成。`);
+    }
   });
 
   return true;
@@ -76,9 +82,8 @@ const createVoyIndex = async (
   embeddings: number[][]
 ): Promise<Voy | null> => {
   try {
-    // 增加一个短暂的延迟，以确保Wasm模块已准备好
-    await new Promise(resolve => setTimeout(resolve, 100));
-
+    // 等待Wasm模块可靠地初始化
+    await voyInitializer.ready();
 
     if (!validateEmbeddings(embeddings)) {
       throw new Error('向量数据验证失败');
