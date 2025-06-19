@@ -20,29 +20,20 @@ interface DocumentToIndex {
   text: string;
 }
 
-interface VoyResource {
-  embeddings: Array<{
-    id: string;
-    title: string;
-    url: string;
-    embeddings: Float32Array;
-  }>;
-}
-
 /**
- * 格式化向量数据为 Voy 所需格式
+ * 格式化向量数据为 Voy 所需的 Resource 格式
  */
 const formatVoyResource = (docs: DocumentToIndex[], embeddings: number[][]) => {
-  return {
-    embeddings: docs.map((doc, index) => {
-      return {
-        id: doc.id,
-        title: doc.title,
-        url: `/docs/${doc.id}`,
-        embeddings: embeddings[index]
-      };
-    })
-  };
+  const resourceEmbeddings = docs.map((doc, index) => {
+    return {
+      id: doc.id,
+      title: doc.title,
+      url: `/docs/${doc.id}`, // 根据官方文档，url是必需的
+      embeddings: embeddings[index] // 根据官方文档，应为 number[]
+    };
+  });
+
+  return { embeddings: resourceEmbeddings };
 };
 
 /**
@@ -50,30 +41,31 @@ const formatVoyResource = (docs: DocumentToIndex[], embeddings: number[][]) => {
  */
 const validateEmbeddings = (embeddings: number[][]): boolean => {
   if (!Array.isArray(embeddings) || embeddings.length === 0) {
-    console.error('[RAG] 向量数据无效：空数组');
-    return false;
+    throw new Error('向量数据无效：嵌入向量数组为空。');
   }
 
   const dimension = embeddings[0].length;
-  return embeddings.every((embedding, index) => {
+  if (dimension === 0) {
+    throw new Error('向量数据无效：嵌入向量维度为0。');
+  }
+
+  embeddings.forEach((embedding, index) => {
     if (!Array.isArray(embedding) || embedding.length !== dimension) {
-      console.error(`[RAG] 向量 ${index} 维度不一致：${embedding.length} != ${dimension}`);
-      return false;
+      throw new Error(`向量 #${index} 维度不一致: 期望维度 ${dimension}，实际为 ${embedding.length}。`);
     }
 
-    const isValid = embedding.every(value =>
-      typeof value === 'number' &&
-      !Number.isNaN(value) &&
-      Number.isFinite(value)
+    const hasInvalidValue = embedding.some(value =>
+      typeof value !== 'number' ||
+      Number.isNaN(value) ||
+      !Number.isFinite(value)
     );
 
-    if (!isValid) {
-      console.error(`[RAG] 向量 ${index} 包含无效值`);
-      return false;
+    if (hasInvalidValue) {
+      throw new Error(`向量 #${index} 包含无效的非数字或无穷大值。`);
     }
-
-    return true;
   });
+
+  return true;
 };
 
 /**
@@ -94,8 +86,10 @@ const createVoyIndex = async (
 
     const resource = formatVoyResource(documents, embeddings);
 
+    // 严格遵循官方文档的用法，传递完整的Resource对象
     const voyIndex = new Voy(resource);
 
+    // search方法的查询向量需要是 Float32Array
     const testQuery = new Float32Array(embeddings[0].length).fill(0);
     const testResult = voyIndex.search(testQuery, 1) as SearchResult;
     if (!testResult || !testResult.neighbors || testResult.neighbors.length === 0) {
@@ -105,7 +99,8 @@ const createVoyIndex = async (
     return voyIndex;
   } catch (error: any) {
     console.error('[RAG] 创建 Voy 实例失败:', error);
-    return null;
+    // 重新抛出错误，以便上层可以捕获并显示更详细的信息
+    throw new Error(`创建Voy实例时发生底层错误: ${error.message || error}`);
   }
 }
 
