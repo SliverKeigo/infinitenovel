@@ -425,7 +425,24 @@ ${contextAwareOutline || `第 ${nextChapterNumber} 章缺少具体大纲。请�
     const rawText = extractTextFromAIResponse(decompResponse);
     console.log('[DEBUG] Extracted raw text for parsing:', rawText);
 
-    const decompResult = parseJsonFromAiResponse(rawText);
+    let decompResult;
+    try {
+      // 优先从Markdown代码块中提取纯净的JSON字符串
+      const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (match && match[1]) {
+        console.log('[DEBUG] Found JSON in markdown block. Parsing content from block.');
+        decompResult = JSON.parse(match[1]);
+      } else {
+        // 如果没有找到代码块，作为回退，直接尝试解析整个文本
+        console.log('[DEBUG] No markdown block found. Attempting to parse raw text directly.');
+        decompResult = JSON.parse(rawText);
+      }
+    } catch (e) {
+      console.error("[DEBUG] JSON.parse failed. Falling back to dirty-json parser.", e);
+      // 如果标准解析失败，再使用原来的宽容解析器作为最后的尝试
+      decompResult = parseJsonFromAiResponse(rawText);
+    }
+
 
     console.log('[DEBUG] Parsed decompResult:', decompResult);
 
