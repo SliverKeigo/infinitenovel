@@ -3,8 +3,11 @@ import { query } from '@/lib/pg-db';
 import { AIConfig } from '@/types/ai-config';
 import { streamText, generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
+import { z } from 'zod';
+import { type CoreMessage, StreamData } from 'ai';
 
-export const maxDuration = 300; // 5 minutes
+export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // Vercel-specific config
 
 // 根据ID从数据库获取AI配置的辅助函数
 async function getAIConfig(id: number): Promise<AIConfig | null> {
@@ -21,10 +24,10 @@ async function getAIConfig(id: number): Promise<AIConfig | null> {
 }
 
 export async function POST(req: Request) {
+  console.log(`[${new Date().toISOString()}] /api/ai/completions: Request received.`);
   try {
     const body = await req.json();
     const { activeConfigId, stream, ...restOfBody } = body;
-
 
     if (!activeConfigId) {
       console.error("[API Completions] 缺少 activeConfigId");
@@ -38,49 +41,52 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'AI configuration not found or API key is missing.' }, { status: 500 });
     }
 
-    // 使用从数据库获取的配置创建OpenAI provider
     const openai = createOpenAI({
       apiKey: activeConfig.api_key,
       baseURL: activeConfig.api_base_url || undefined,
+      compatibility: 'compatible',
     });
     
     const model = restOfBody.model || activeConfig.model;
 
-    // 根据 stream 参数决定响应类型
     if (stream) {
-      const result = await streamText({
+      console.log(`[${new Date().toISOString()}] /api/ai/completions: Preparing to call streamText for model ${model}.`);
+      const result = streamText({
         model: openai(model),
         messages: restOfBody.messages,
+        maxTokens: restOfBody.maxTokens,
         temperature: restOfBody.temperature,
-        maxTokens: 8192,
+        topP: restOfBody.topP,
+        frequencyPenalty: restOfBody.frequencyPenalty,
+        presencePenalty: restOfBody.presencePenalty,
+        abortSignal: AbortSignal.timeout(300000), // 5 minutes timeout
       });
+      console.log(`[${new Date().toISOString()}] /api/ai/completions: streamText call completed, creating response stream.`);
+      console.log('result',result.textStream);
+      
       
       // 返回一个纯文本流式响应
       return new Response(result.textStream);
-
     } else {
-      // For non-streaming, we use generateText for consistency.
       const result = await generateText({
         model: openai(model),
         messages: restOfBody.messages,
         temperature: restOfBody.temperature
       });
-
-      // The AI SDK's generateText returns a specific structure.
-      // We might need to adapt this if the client expects the raw OpenAI response.
-      // For now, we'll return the text content.
-      // To return a similar structure to the original, you might do:
       return NextResponse.json({
         choices: [{ message: { content: result.text, role: 'assistant' }, finish_reason: result.finishReason }]
       });
     }
   } catch (error: any) {
-    console.error('[API Completions] Error:', error);
-    // The AI SDK might throw its own specific errors, but OpenAI.APIError will no longer be relevant here
-    // if the raw client isn't used.
-    if (error.name === 'APIError') { // A generic way to check for API errors from the SDK
-      return new NextResponse(error.message, { status: error.status });
+    console.error(`[${new Date().toISOString()}] [API Completions] Caught an error:`, error);
+    // 检查错误是否是由于中止操作引起的
+    if (error instanceof Error && error.name === 'AbortError') {
+      return new Response('Request timed out', { status: 408 }); // Request Timeout
     }
-    return new NextResponse('Internal Server Error', { status: 500 });
+    // 处理其他类型的错误
+    const zodError = error instanceof z.ZodError ? error.errors : null;
+    const errorMessage =
+      zodError?.[0]?.message || (error as Error)?.message || 'Unknown error';
+    return new Response(errorMessage, { status: 500 });
   }
 } 
