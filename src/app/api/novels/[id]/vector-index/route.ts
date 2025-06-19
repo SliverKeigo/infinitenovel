@@ -83,12 +83,14 @@ export async function PUT(
 
     // 获取请求体中的数据
     const body = await request.json();
-    const indexData = body.data;
+    const indexDataString = body.data;
     
     // 验证数据格式
-    if (!indexData) {
-      return NextResponse.json({ error: 'Invalid index data' }, { status: 400 });
+    if (typeof indexDataString !== 'string') {
+      return NextResponse.json({ error: 'Invalid index data format, expected base64 string' }, { status: 400 });
     }
+
+    const indexData = Buffer.from(indexDataString, 'base64');
 
     // 开始事务
     await client.query('BEGIN');
