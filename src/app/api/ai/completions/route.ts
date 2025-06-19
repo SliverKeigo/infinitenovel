@@ -62,7 +62,6 @@ export async function POST(req: Request) {
         abortSignal: AbortSignal.timeout(300000), // 5 minutes timeout
       });
       console.log(`[${new Date().toISOString()}] /api/ai/completions: streamText call completed, creating response stream.`);
-      console.log('result',result.textStream);
       
       
       // 返回一个纯文本流式响应
