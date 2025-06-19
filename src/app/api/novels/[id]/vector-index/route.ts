@@ -39,9 +39,11 @@ export async function GET(
 
     // 返回序列化的数据
     const indexDump = result.rows[0].index_dump;
+    // 将二进制数据转换为Base64字符串以便通过JSON传输
+    const base64Data = indexDump.toString('base64');
     
     return NextResponse.json({ 
-      data: indexDump 
+      data: base64Data
     });
   } catch (error) {
     console.error('[向量索引] 获取向量索引失败:', error);
@@ -87,10 +89,11 @@ export async function PUT(
     
     // 验证数据格式
     if (typeof indexDataString !== 'string') {
-      return NextResponse.json({ error: 'Invalid index data format, expected base64 string' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid index data format, expected a string' }, { status: 400 });
     }
 
-    const indexData = Buffer.from(indexDataString, 'base64');
+    // 在写入数据库前，必须将字符串转换为Buffer
+    const indexDataBuffer = Buffer.from(indexDataString, 'utf-8');
 
     // 开始事务
     await client.query('BEGIN');
@@ -107,7 +110,8 @@ export async function PUT(
         RETURNING id;
       `;
 
-      const result = await client.query(query, [id, indexData]);
+      // 直接将原始字符串传递给数据库，驱动程序会处理编码
+      const result = await client.query(query, [id, indexDataBuffer]);
 
       if (result.rows.length === 0) {
         throw new Error('向量索引保存失败');
