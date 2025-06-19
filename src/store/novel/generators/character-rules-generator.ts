@@ -71,7 +71,7 @@ export const generateCharacterRules = async (novel: Novel, activeConfig: AIConfi
         activeConfigId: activeConfig.id,
         model: activeConfig.model,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
+        temperature: 0.4,
       }),
     });
 

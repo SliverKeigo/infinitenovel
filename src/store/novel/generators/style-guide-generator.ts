@@ -80,7 +80,7 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
         activeConfigId: activeConfig.id,
       model: activeConfig.model,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 0.4,
       }),
     });
 
