@@ -422,8 +422,13 @@ ${contextAwareOutline || `第 ${nextChapterNumber} 章缺少具体大纲。请�
 
     console.log('[DEBUG] Raw decompResponse from API:', decompResponse);
 
-    const rawText = extractTextFromAIResponse(decompResponse);
+    let rawText = extractTextFromAIResponse(decompResponse);
     console.log('[DEBUG] Extracted raw text for parsing:', rawText);
+
+    // 预处理：移除AI可能添加的Markdown代码块
+    if (rawText.trim().startsWith('```json')) {
+      rawText = rawText.trim().replace(/^```json\n/, '').replace(/\n```$/, '').trim();
+    }
 
     let decompResult = parseJsonFromAiResponse(rawText);
 
@@ -685,7 +690,7 @@ ${i > 0 ? `**前续场景内容**:\n---\n${completedScenesContent}\n---\n\n**衔
           activeConfigId: activeConfig.id,
           model: activeConfig.model,
           messages: [{ role: 'user', content: scenePrompt }],
-          stream: true,
+          stream: false,
           temperature,
           top_p,
           frequency_penalty,
@@ -697,14 +702,13 @@ ${i > 0 ? `**前续场景内容**:\n---\n${completedScenesContent}\n---\n\n**衔
         const errorText = await response.text();
         throw new Error(`API request failed with status ${response.status}: ${errorText}`);
       }
+      
+      const aiResponse = await response.json();
+      const sceneContent = extractTextFromAIResponse(aiResponse);
 
-      if (!response.body) {
-        throw new Error("API响应体为空");
+      if (!sceneContent) {
+        throw new Error("AI未能返回有效的场景内容。");
       }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let sceneContent = '';
 
       // 如果不是第一个场景，先在UI上添加分隔符
       if (i > 0) {
@@ -712,19 +716,11 @@ ${i > 0 ? `**前续场景内容**:\n---\n${completedScenesContent}\n---\n\n**衔
           generatedContent: (state.generatedContent || "") + "\n\n"
         }));
       }
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        sceneContent += chunk;
-
-        // 实时追加内容到UI
-        set((state: NovelStateSlice) => ({
-          generatedContent: (state.generatedContent || "") + chunk
-        }));
-      }
+      
+      // 一次性追加完整内容到UI
+      set((state: NovelStateSlice) => ({
+        generatedContent: (state.generatedContent || "") + sceneContent
+      }));
 
       // 更新累积内容，为下一个场景的上下文做准备
       completedScenesContent += (i > 0 ? "\n\n" : "") + sceneContent;
