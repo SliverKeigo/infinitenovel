@@ -135,10 +135,8 @@ export const loadVectorIndex = async (novelId: number): Promise<Voy | null> => {
         throw new Error('响应数据格式无效');
       }
 
-      // 从 Base64 解码
-      const binaryData = Buffer.from(data.data, 'base64');
-      // 转换为二进制保真字符串
-      const finalString = binaryData.toString('latin1');
+      // 从 Base64 解码并转换为 UTF-8 字符串
+      const finalString = Buffer.from(data.data, 'base64').toString('utf-8');
       const index = Voy.deserialize(finalString);
       
       return index;
