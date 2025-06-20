@@ -18,32 +18,34 @@ const MACRO_PLANNING_SEPARATOR_REGEX = /\s*(?:---)?\s*(?:\*\*)?\s*宏观叙事�
 const sanitizeJsonString = (jsonString: string): string => {
   let sanitized = '';
   let inString = false;
+  let escape = false;
   for (let i = 0; i < jsonString.length; i++) {
     const char = jsonString[i];
-    const prevChar = i > 0 ? jsonString[i - 1] : null;
-
-    // 当遇到一个非转义的双引号时，切换 inString 状态
-    if (char === '"' && prevChar !== '\\') {
+    if (char === '"' && !escape) {
       inString = !inString;
+      sanitized += char;
+      escape = false;
+      continue;
     }
-
-    if (inString && char === '"' && prevChar !== '\\') {
-      // 这是字符串的起始引号，直接添加
-      sanitized += char;
-    } else if (inString) {
-      // 在字符串内部
-      if (char === '"') {
-        sanitized += '\\"'; // 修复非法的内部双引号
-      } else if (char === '\n') {
-        sanitized += '\\n'; // 修复非法的内部换行符
-      } else if (char === '\r') {
-        // 忽略 \r
-      } else {
+    if (inString) {
+      if (char === '\\') {
         sanitized += char;
+        escape = !escape;
+        continue;
       }
-    } else {
-      // 不在字符串内部，直接添加
+      if (char === '"' && !escape) {
+        sanitized += '\\"'; // 字符串内部的非法双引号
+        continue;
+      }
+      if ((char === '\n' || char === '\r') && !escape) {
+        sanitized += '\\n'; // 字符串内部的非法换行符
+        continue;
+      }
       sanitized += char;
+      escape = false;
+    } else {
+      sanitized += char;
+      escape = false;
     }
   }
   return sanitized;
@@ -124,8 +126,9 @@ export const parseJsonFromAiResponse = (content: string): any => {
     }
   }
 
-  // 如果所有候选字符串和所有方法都失败了，则抛出错误
-  throw new Error('AI返回了无效的JSON格式，无法解析');
+  // 如果所有候选字符串和所有方法都失败了，则兜底返回原始内容并给出详细提示
+  console.error('AI返回了无效的JSON格式，无法解析。原始内容如下：', content);
+  return content;
 };
 
 /**
