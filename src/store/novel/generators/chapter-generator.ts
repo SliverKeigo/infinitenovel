@@ -436,56 +436,6 @@ ${contextAwareOutline || `第 ${nextChapterNumber} 章缺少具体大纲。请�
 
     let decompResult = parseJsonFromAiResponse(rawText);
 
-    // [NEW] Check for and handle the nested AST structure from dirty-json
-    if (
-      Array.isArray(decompResult) &&
-      decompResult.length > 0 &&
-      decompResult[0] &&
-      typeof decompResult[0] === 'object' &&
-      decompResult[0].key === '```json'
-    ) {
-      console.log('[DEBUG] Nested AST from dirty-json detected. Attempting to reconstruct object.');
-
-      const convertAstNodeToObject = (node: any): any => {
-        if (typeof node !== 'object' || node === null) {
-          return node;
-        }
-
-        if (Array.isArray(node)) {
-          return node.map(convertAstNodeToObject);
-        }
-
-        if (node.type === 10 && Array.isArray(node.value)) { // Represents an Object
-          const obj: { [key: string]: any } = {};
-          for (const pair of node.value) {
-            if (pair && typeof pair === 'object' && pair.key !== undefined) {
-               const keyName = Array.isArray(pair.key) ? pair.key[0] : pair.key;
-               // Handle malformed key:value pairs like { key: "some string: more string" }
-               if (pair.value === undefined && typeof keyName === 'string' && keyName.includes(':')) {
-                 const parts = keyName.split(':');
-                 const actualKey = parts[0].trim();
-                 const actualValue = parts.slice(1).join(':').trim().replace(/^"/, '').replace(/"$/, '');
-                 obj[actualKey] = actualValue;
-               } else {
-                 obj[keyName] = convertAstNodeToObject(pair.value);
-               }
-            }
-          }
-          return obj;
-        }
-
-        if (node.hasOwnProperty('value')) {
-          return convertAstNodeToObject(node.value);
-        }
-        
-        return node;
-      };
-      
-      const astRoot = decompResult[0].value;
-      decompResult = convertAstNodeToObject(astRoot);
-      console.log('[DEBUG] Reconstructed object from AST:', decompResult);
-    }
-
     console.log('[DEBUG] Parsed decompResult:', decompResult);
 
     if (!decompResult) {
