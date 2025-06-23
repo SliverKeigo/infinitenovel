@@ -11,5 +11,5 @@ export const OUTLINE_CHAPTER_WORD_LIMIT = 100; // 每个章节大纲的最大字
 export const OUTLINE_CHAPTER_MAX_EVENTS = 2; // 每个章节大纲中的最大事件数量
 
 // 章节内容生成相关常量
-export const CHAPTER_WORD_TARGET = 2000; // 每章的目标字数
+export const CHAPTER_WORD_TARGET = 4000; // 每章的目标字数
 export const CHAPTER_WORD_TOLERANCE = 0.15; // 允许的字数浮动范围（15%） 
