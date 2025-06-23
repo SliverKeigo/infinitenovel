@@ -1,8 +1,8 @@
 ---
 name: 缺陷报告 (Bug Report)
-description: 详细报告一个可复现的缺陷，帮助开发者定位并修复问题。
+about: 详细报告一个可复现的缺陷，帮助开发者定位并修复问题。
 title: "[Bug]: <请在此处填写简明扼要的缺陷描述>"
-labels: ["bug", "needs-triage"]
+labels: bug, question
 assignees: ''
 
 ---

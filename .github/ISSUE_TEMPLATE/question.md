@@ -1,8 +1,8 @@
 ---
 name: 提问 (Question)
-description: 如果您对项目的使用或设计有任何疑问，请使用此模板。
+about: 如果您对项目的使用或设计有任何疑问，请使用此模板。
 title: "[提问]: <请在此处填写您的问题标题>"
-labels: ["question", "help-wanted"]
+labels: question
 assignees: ''
 
 ---

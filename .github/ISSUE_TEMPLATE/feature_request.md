@@ -1,8 +1,8 @@
 ---
 name: 功能请求 (Feature Request)
-description: 为项目提出一个新功能或改进建议。
+about: 为项目提出一个新功能或改进建议。
 title: "[功能请求]: <请在此处填写简明扼要的标题>"
-labels: ["enhancement", "feature-request"]
+labels: enhancement
 assignees: ''
 
 ---

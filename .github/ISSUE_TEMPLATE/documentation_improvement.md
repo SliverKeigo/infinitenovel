@@ -1,8 +1,8 @@
 ---
 name: 文档改进 (Documentation Improvement)
-description: 报告文档中的错误、过时信息或提出改进建议。
+about: 报告文档中的错误、过时信息或提出改进建议。
 title: "[文档]: <请简要描述改进内容>"
-labels: ["documentation"]
+labels: documentation
 assignees: ''
 
 ---
