@@ -49,7 +49,12 @@ export const useAIConfigStore = create<AIConfigStore>()(
             throw new Error('Failed to fetch AI configurations.');
           }
           const configs = await response.json() as AIConfig[];
-          set({ configs, loading: false });
+          const activeConfig = configs.find(c => c.status === 'active');
+          set({ 
+            configs, 
+            loading: false, 
+            activeConfigId: activeConfig ? activeConfig.id : null 
+          });
         } catch (error) {
           console.error(error);
           toast.error("加载AI配置失败。");
@@ -57,17 +62,47 @@ export const useAIConfigStore = create<AIConfigStore>()(
         }
       },
 
-      setActiveConfigId: (id) => {
+      setActiveConfigId: async (id) => {
+        if (!id) {
+          set({ activeConfigId: null });
+          return;
+        }
+        
         const currentActiveId = get().activeConfigId;
-        set({ activeConfigId: currentActiveId === id ? null : id });
+        if (currentActiveId === id) {
+          return; // 如果点击的已经是激活的，则不执行任何操作
+        }
+        
+        try {
+          const response = await fetch(`/api/ai-configs/${id}/activate`, {
+            method: 'POST',
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to activate config.');
+          }
+
+          const newActiveConfig = await response.json() as AIConfig;
+          set({ activeConfigId: newActiveConfig.id });
+          toast.success(`配置 "${newActiveConfig.name}" 已激活。`);
+          // 重新获取所有配置以更新状态
+          await get().fetchConfigs();
+        } catch (error) {
+          console.error(error);
+          toast.error(`激活配置失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
       },
       
       addConfig: async (config) => {
-        await fetch('/api/ai-configs', {
+        const response = await fetch('/api/ai-configs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(config),
         });
+        if (!response.ok) {
+          throw new Error('Failed to add AI configuration.');
+        }
         await get().fetchConfigs();
       },
       
