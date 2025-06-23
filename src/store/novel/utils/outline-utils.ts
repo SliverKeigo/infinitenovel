@@ -292,4 +292,45 @@ export const combineWithRevisedOutline = (
 
   // 将过去的部分和修正后的未来部分拼接起来。
   return `${pastOutlinePart.trim()}\n\n${revisedFutureOutline.trim()}`.trim();
-}; 
+};
+
+/**
+ * 从完整的细纲文本中，根据指定的章节范围提取出相应的大纲。
+ * @param detailedOutline - 完整的逐章细纲文本。
+ * @param range - 一个包含 start 和 end 属性的对象，定义了章节范围。
+ * @returns 提取出的大纲文本字符串，如果未找到则为空字符串。
+ */
+export function getOutlineForChapterRange(
+  detailedOutline: string,
+  range: { start: number; end: number }
+): string {
+  if (!detailedOutline || !range) {
+    return '';
+  }
+
+  const lines = detailedOutline.split('\n');
+  const resultLines: string[] = [];
+  const chapterRegex = /^\s*第\s*(\d+)\s*章/;
+
+  for (const line of lines) {
+    const match = line.match(chapterRegex);
+    if (match) {
+      const chapterNumber = parseInt(match[1], 10);
+      if (chapterNumber >= range.start && chapterNumber <= range.end) {
+        resultLines.push(line);
+      }
+    } else if (resultLines.length > 0) {
+      // 如果当前行不是章节标题，但我们已经在目标范围内，则将其视为上一章的延续
+      const lastLine = resultLines[resultLines.length - 1];
+      const lastMatch = lastLine.match(chapterRegex);
+      if(lastMatch) {
+          const lastChapterNumber = parseInt(lastMatch[1], 10);
+          if (lastChapterNumber >= range.start && lastChapterNumber < range.end) {
+              resultLines.push(line);
+          }
+      }
+    }
+  }
+
+  return resultLines.join('\n');
+} 
