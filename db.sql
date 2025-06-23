@@ -115,6 +115,7 @@ create table ai_configs
     api_base_url text,
     model        varchar(255)                           not null,
     vision_model varchar(255),
+    status       varchar(50) default 'inactive'::character varying not null,
     created_at   timestamp with time zone default now() not null,
     updated_at   timestamp with time zone
 );
@@ -132,6 +133,8 @@ comment on column ai_configs.api_base_url is 'API的基础URL，用于代理或�
 comment on column ai_configs.model is '主要的文本生成模型';
 
 comment on column ai_configs.vision_model is '支持视觉的模型';
+
+comment on column ai_configs.status is '配置状态 (e.g., active, inactive)';
 
 comment on column ai_configs.created_at is '记录创建时间';
 
