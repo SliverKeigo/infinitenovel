@@ -24,8 +24,8 @@ import { useNovelStore } from '../../use-novel-store';
 import { log } from 'console';
 
 // Narrative Structure Constants
-const MAX_ACTS = 12;
-const MIN_ACTS = 3;
+const MAX_ACTS = 15;
+const MIN_ACTS = 5;
 const INITIAL_SLOW_PACED_ACTS = 3;
 const DEFAULT_ACT_ONE_END_CHAPTER = 70;
 
@@ -401,11 +401,7 @@ export const generateNovelChapters = async (
     // === STAGE 1B: THE ACT PLANNER (FULL NOVEL) ===
     set({ generationTask: { ...get().generationTask, progress: 10, currentStep: '阶段2/3: 正在生成全书详细大纲...' } });
 
-    // 从宏观蓝图中提取第一幕的信息
-    const firstActRegex = /\*\*第一幕[：:][\s\S]*?(?=\n\n\*\*第二幕[：:]|\s*$)/;
-    const firstActMatch = architectContent.match(firstActRegex);
-    if (!firstActMatch) throw new Error("无法从宏观蓝图中解析出第一幕。");
-    const firstActInfo = firstActMatch[0];
+    const firstActInfo = architectInfo.firstActInfo
 
     let actOneStart = 1;
     let actOneEnd = DEFAULT_ACT_ONE_END_CHAPTER; // Default, consistent with architect prompt
@@ -824,12 +820,13 @@ ${firstActInfo}
 // 添加辅助函数
 function extractArchitectInfo(content: string): { firstActInfo: string; actOneStart: number; actOneEnd: number } {
   // 使用正则表达式提取第一幕信息
-  const firstActMatch = content.match(/\*\*第一幕[：:][\s\S]*?(?=\n\n\*\*第二幕[：:]|\s*$)/);
-  const firstActInfo = firstActMatch ? firstActMatch[0].trim() : '';
+  const firstActRegex = /(?:\*{0,2}\s*)?第一幕[：:：]?(.*?)(?=\n{0,2}(?:\*{0,2}\s*)?第二幕[：:：]?|$)/s;
+  const firstActMatch = content.match(firstActRegex);
+  const firstActInfo = firstActMatch ? firstActMatch[1].trim() : '';
 
 
   // 提取章节范围 - 更新正则表达式以匹配更多格式
-  const chapterRangeRegex = /章节范围[：:]\s*第(\d+)章[：:\s-]*第(\d+)章/;
+  const chapterRangeRegex = /[（(]?\s*第?(\d+)[章]?\s*[-~－—]\s*第?(\d+)[章]?\s*[）)]?/;
   const chapterRangeMatch = content.match(chapterRangeRegex);
 
   console.log('Chapter range matching:', {
