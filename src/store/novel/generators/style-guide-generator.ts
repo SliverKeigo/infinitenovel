@@ -6,6 +6,7 @@ import { useAIConfigStore } from '@/store/ai-config';
 import OpenAI from 'openai';
 import { callOpenAIWithRetry, extractTextFromAIResponse } from '../utils/ai-utils';
 import { Novel } from '@/types/novel';
+import { processAIStyleResponse } from '../utils/style-utils';
 
 /**
  * 为小说生成定制化的风格指导
@@ -99,18 +100,8 @@ export const generateCustomStyleGuide = async (novelId: number): Promise<string>
     }
     const response = await apiResponse.json();
 
-    const styleGuideText = extractTextFromAIResponse(response);
-
-    // 新增：尝试解析为JSON结构，若失败则fallback为原有自然语言
-    let styleGuideToSave = styleGuideText;
-    try {
-      const parsed = JSON.parse(styleGuideText);
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].description) {
-        styleGuideToSave = JSON.stringify(parsed, null, 2); // 格式化存储
-      }
-    } catch (e) {
-      // fallback: 保持原有自然语言格式
-    }
+    // 修复：processAIStyleResponse已保证格式化，直接作为最终保存内容
+    const styleGuideToSave = processAIStyleResponse(response);
 
     // 保存生成的风格指导到小说数据中
     await fetch(`/api/novels/${novelId}`, {
