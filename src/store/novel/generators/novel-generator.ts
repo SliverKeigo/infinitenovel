@@ -445,7 +445,53 @@ export const generateNovelChapters = async (
       }
     });
 
+    // === 新增：AI动态生成分幕主线正/负清单 ===
+    set({ generationTask: { ...get().generationTask, progress: 12, currentStep: '正在生成本幕主线正/负清单...' } });
+    // 构建正/负清单生成Prompt
+    const checklistPrompt = `# 分幕主线正/负清单生成器 v1.0\n\n你是一位剧情结构分析专家，善于根据叙事蓝图自动总结本幕允许推进的主线方向（正清单）和禁止提前出现的主线方向（负清单）。请严格输出如下结构：\n\n【输入材料】\n- 宏观叙事蓝图：\n${architectContent}\n- 当前幕叙事蓝图：\n${firstActInfo}\n\n【输出要求】\n- 以通用表达总结本幕"允许推进的主线方向"（正清单），每条为一句话，禁止出现具体小说内容。\n- 以通用表达总结本幕"禁止提前出现的主线方向"（负清单），每条为一句话，禁止出现具体小说内容。\n- 输出JSON对象：{ 'positive': [正清单条目...], 'negative': [负清单条目...] }\n- 严禁输出任何解释、小说具体内容或格式说明。`;
+    let actChecklist = { positive: [], negative: [] };
+    try {
+      const checklistApiResponse = await fetch('/api/ai/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeConfigId: activeConfig.id,
+          model: activeConfig.model,
+          messages: [{ role: 'user', content: checklistPrompt }],
+          temperature: settings.temperature,
+        })
+      });
+      if (!checklistApiResponse.ok) {
+        const errorText = await checklistApiResponse.text();
+        throw new Error(`Checklist AI failed: ${errorText}`);
+      }
+      const checklistResponse = await checklistApiResponse.json();
+      const checklistText = extractTextFromAIResponse(checklistResponse);
+      try {
+        actChecklist = JSON.parse(checklistText);
+      } catch (e) {
+        console.warn('Checklist AI返回内容无法解析为JSON，已忽略：', checklistText);
+      }
+    } catch (e) {
+      console.error('生成分幕主线正/负清单失败：', e);
+    }
 
+    // === 拼接正/负清单到outlinePrompt ===
+    let checklistSection = '';
+    if (actChecklist.positive && actChecklist.positive.length > 0) {
+      checklistSection += '\n## 本幕允许推进的主线方向（正清单）\n';
+      for (const item of actChecklist.positive) {
+        checklistSection += `- ${item}\n`;
+      }
+    }
+    if (actChecklist.negative && actChecklist.negative.length > 0) {
+      checklistSection += '\n## 本幕禁止提前出现的主线方向（负清单）\n';
+      for (const item of actChecklist.negative) {
+        checklistSection += `- ${item}\n`;
+      }
+    }
+
+    // === 原有outlinePrompt插入checklistSection ===
     const outlinePrompt = `# 逐章节大纲生成专家 v4.0 (连续生成模式)
 
 你是一位才华横溢、深谙故事节奏的总编剧。你的任务是为小说《${novel.name}》生成第一幕（从第${actOneStart}章到第${actOneEnd}章）的详细大纲。
@@ -462,6 +508,7 @@ ${firstActInfo}
 - 写作风格: ${novel.style}
 - 核心设定与特殊要求: ${novel.special_requirements || '无'}
 - 第一幕章节范围: 第${actOneStart}章至第${actOneEnd}章
+${checklistSection}
 ${dynamicChapterTemplate}
 ${dynamicSceneDirectives}
 
@@ -490,8 +537,7 @@ ${dynamicSceneDirectives}
 - **逻辑跳跃**: 避免突兀的情节转折或不合理的发展。
 - **剧情透支**: 不要过早展现应该在后续幕节才出现的重要情节。
 
-现在，请严格按照上述约束条件，生成第一幕的完整大纲（第${actOneStart}章到第${actOneEnd}章）。确保每一章都完整且符合设定要求。
-`;
+现在，请严格按照上述约束条件，生成第一幕的完整大纲（第${actOneStart}章到第${actOneEnd}章）。确保每一章都完整且符合设定要求。`
 
     let plotOutline = "";
 
