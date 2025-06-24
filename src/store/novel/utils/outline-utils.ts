@@ -292,7 +292,7 @@ export const combineWithRevisedOutline = (
 
   // 将过去的部分和修正后的未来部分拼接起来。
   return `${pastOutlinePart.trim()}\n\n${revisedFutureOutline.trim()}`.trim();
-};
+}; 
 
 /**
  * 从完整的细纲文本中，根据指定的章节范围提取出相应的大纲。

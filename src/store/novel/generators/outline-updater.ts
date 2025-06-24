@@ -203,12 +203,14 @@ const updateDatabaseWithDriftReport = async (
  * @param driftReport - 漂移报告。
  * @param futureOutline - 未来的章节大纲。
  * @param openai - OpenAI实例。
+ * @param narrativeBlueprint - 小说的宏观叙事蓝图，作为修改的最高准则。
  * @returns 经过修正的未来大纲。
  */
 const reviseFutureOutline = async (
   driftReport: DriftReport,
   futureOutline: string,
-  openai: OpenAI
+  openai: OpenAI,
+  narrativeBlueprint: string
 ): Promise<string> => {
 
   // 优化：如果漂移报告为空，则无需修正，直接返回原大纲，节省AI调用成本。
@@ -236,7 +238,7 @@ const reviseFutureOutline = async (
   }
 
   const editorPrompt = `
-# 小说大纲动态调整编辑器 v1.0
+# 小说大纲动态调整编辑器 v2.0
 
 你是一位资深的小说编辑总监，专门负责维护长篇小说的叙事逻辑一致性和情节连贯性。当实际写作内容与预定大纲产生偏差时，你需要对后续章节大纲进行精准的适应性调整。
 
@@ -244,20 +246,32 @@ const reviseFutureOutline = async (
 基于最新的剧情漂移情况，对未来章节规划进行最小化但必要的修订，确保故事逻辑完整性和可读性。
 
 ## 输入材料分析
-**漂移报告解读**：仔细分析JSON格式的漂移报告，识别：
-- 新增角色及其特征
-- 意外的情节发展
-- 新出现的线索或物品
-- 与原计划的具体差异点
+**1. 宏观叙事蓝图 (不可违背的最高准则):**
+这是整个故事的顶层设计，包含所有幕的规划。你的任何修改都绝对不能违背这个蓝图设定的长期走向。
+---
+${narrativeBlueprint}
+---
 
-**原大纲评估**：审查现有的未来章节规划，标记可能产生逻辑冲突的部分。
+**2. 剧情漂移报告 (最新变化):**
+这是刚刚生成的章节中与原计划不符的新情况。你需要基于这些变化来调整未来。
+\`\`\`json
+${JSON.stringify(driftReport, null, 2)}
+\`\`\`
+
+**3. 原未来大纲 (待修订):**
+这是原计划的后续章节。
+---
+${truncatedOutline}
+---
+
 
 ## 修订原则
-1. **最小干预原则**：仅在必要时修改，避免无关的大幅改动
-2. **无缝融合原则**：让新元素自然融入，仿佛本就是原始设计
-3. **冲突解决原则**：巧妙化解新旧内容间的逻辑矛盾
-4. **主线保护原则**：维护核心情节走向和关键节点不变
-5. **连贯性优先**：确保修改后的大纲内部逻辑自洽
+1. **蓝图遵从原则**: 这是最高原则。所有修改都必须服务于或至少不违背"宏观叙事蓝图"设定的长期目标。绝不能因为修正短期情节而破坏长期规划。
+2. **最小干预原则**：仅在必要时修改，避免无关的大幅改动
+3. **无缝融合原则**：让新元素自然融入，仿佛本就是原始设计
+4. **冲突解决原则**：巧妙化解新旧内容间的逻辑矛盾
+5. **主线保护原则**：维护核心情节走向和关键节点不变
+6. **连贯性优先**：确保修改后的大纲内部逻辑自洽
 
 ## 修订策略
 - **角色整合**：将意外出现的角色合理安排到后续情节中
@@ -370,6 +384,15 @@ export const runOutlineUpdateCycle = async (
     throw new Error("小说ID无效，无法执行大纲更新周期。");
   }
 
+  // 从完整大纲中提取宏观叙事蓝图
+  const outlineSeparator = '\\n\\n---\\n**逐章细纲**\\n---\\n\\n';
+  let narrativeBlueprint = "未找到宏观叙事蓝图，请检查大纲格式。";
+  if (novel.plot_outline) {
+    const separatorIndex = novel.plot_outline.indexOf(outlineSeparator);
+    narrativeBlueprint = separatorIndex !== -1 ? novel.plot_outline.substring(0, separatorIndex) : "未找到宏观叙事蓝图，请检查大纲格式。";
+  }
+
+
   // 1. 分析师AI提取漂移报告
   const driftReport = await analyzeGeneratedContent(generatedChaptersContent, openai);
 
@@ -377,7 +400,7 @@ export const runOutlineUpdateCycle = async (
   await updateDatabaseWithDriftReport(driftReport, novel.id, currentChapter);
 
   // 3. 编辑AI修正未来大纲
-  const revisedOutline = await reviseFutureOutline(driftReport, futureOutline, openai);
+  const revisedOutline = await reviseFutureOutline(driftReport, futureOutline, openai, narrativeBlueprint);
 
   return revisedOutline;
 }; 
