@@ -29,7 +29,7 @@ export interface Novel {
   /** 用户的特殊要求或备注 */
   special_requirements?: string;
   /** AI生成的综合风格指导 */
-  style_guide?: string;
+  style_guide?: string; // 兼容自然语言或结构化JSON字符串
   /** AI生成的角色行为准则 */
   character_behavior_rules?: string;
   /** 创建时间 */

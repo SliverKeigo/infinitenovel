@@ -24,6 +24,7 @@ import { retrieveRelevantContext, formatRetrievedContextForPrompt } from '../uti
 import { callOpenAIWithRetry } from '../utils/ai-utils';
 import { Novel } from '@/types/novel';
 import { extractTextFromAIResponse } from '../utils/ai-utils';
+import { parseStyleGuideEntries, getDynamicSceneDirectives } from '../utils/style-utils';
 
 /**
  * 生成单个新章节的上下文接口
@@ -266,6 +267,10 @@ ${start}...
     console.error("[风格指导] 获取定制风格指导失败，使用默认风格指导:", error);
     styleGuide = getGenreStyleGuide(novel.genre, novel.style);
   }
+
+  // 新增：解析风格指导条目，动态生成网络小说特色硬性指令
+  const styleGuideEntries = parseStyleGuideEntries(styleGuide);
+  const dynamicSceneDirectives = getDynamicSceneDirectives(styleGuideEntries);
 
   // 步骤 1: 章节解构，获取标题和场景列表
   let chapterTitle = "";
@@ -534,6 +539,7 @@ ${styleGuide}
 ${characterBehaviorRules}
 ${sceneRagPrompt}
 ${narrativeStageGuidance}
+${dynamicSceneDirectives}
 
 ## 核心执行指令
 
@@ -680,8 +686,8 @@ ${i > 0 ? `**前续场景内容**:\n---\n${completedScenesContent}\n---\n\n**衔
         generatedContent: (state.generatedContent || "") + sceneContent
       }));
 
-      // 更新累积内容，为下一个场景的上下文做准备
-      completedScenesContent += (i > 0 ? "\n\n" : "") + sceneContent;
+      // [修复] 更新累积内容，为下一个场景的上下文做准备
+      completedScenesContent += (completedScenesContent ? "\n\n" : "") + sceneContent;
 
       // 场景生成完成提示
       toast.success(`第 ${i + 1} 个场景创作完成！`, {
