@@ -88,7 +88,7 @@ export async function POST(
         return NextResponse.json({ message: `Next act "${nextStageToPlan.stageName}" is already planned, skipping.` }, { status: 200 });
     }
 
-    const newPlotOutline = await planNextAct(novelId, nextStageToPlan, novel.plot_outline, activeConfig, previousActOutline);
+    const newPlotOutline = await planNextAct(novel, activeConfig, nextStageToPlan, previousActOutline || null);
 
     await query('UPDATE novels SET plot_outline = $1, updated_at = NOW() WHERE id = $2', [newPlotOutline, novelId]);
     
