@@ -668,10 +668,73 @@ ${i > 0 ? `**前续场景内容**:\n---\n${completedScenesContent}\n---\n\n**衔
       }
       
       const aiResponse = await response.json();
-      const sceneContent = extractTextFromAIResponse(aiResponse);
+      let sceneContent = extractTextFromAIResponse(aiResponse);
 
       if (!sceneContent) {
         throw new Error("AI未能返回有效的场景内容。");
+      }
+
+      // === 后处理：去除大段重复内容 ===
+      function removeRepeats(text: string) {
+        // 1. 句子级去重
+        const sentences = text.split(/(?<=[。！？!?.])|\n/).map(s => s.trim()).filter(Boolean);
+        const seen = new Set<string>();
+        const uniqueSentences: string[] = [];
+        for (const s of sentences) {
+          if (!seen.has(s)) {
+            uniqueSentences.push(s);
+            seen.add(s);
+          }
+        }
+        let result = uniqueSentences.join('');
+
+        // 2. N-gram滑动窗口去重（100字窗口，出现3次及以上只保留第一次）
+        const n = 100;
+        const threshold = 3;
+        const ngramMap = new Map<string, number[]>(); // ngram -> [出现位置]
+        for (let i = 0; i <= result.length - n; i += 10) { // 步长10，兼顾效率和覆盖
+          const ngram = result.slice(i, i + n);
+          if (!ngramMap.has(ngram)) ngramMap.set(ngram, []);
+          ngramMap.get(ngram)!.push(i);
+        }
+        let cutPos = -1;
+        for (const [ngram, positions] of ngramMap.entries()) {
+          if (positions.length >= threshold) {
+            // 只保留第一次出现，截断到第一次出现+n
+            cutPos = Math.max(cutPos, positions[0] + n);
+          }
+        }
+        if (cutPos > 0 && cutPos < result.length) {
+          result = result.slice(0, cutPos);
+        }
+        return result;
+      }
+      sceneContent = removeRepeats(sceneContent);
+
+      // === 润色：调用AI优化表达，提升文学性，结尾自然有钩子且无重复 ===
+      try {
+        const polishPrompt = `请对以下小说片段进行润色，要求：1. 不改变情节和信息量；2. 优化表达，提升文学性和流畅度；3. 结尾自然、有吸引力（可适当设置钩子/悬念/期待）；4. 禁止内容重复或机械循环。直接输出润色后的正文，无需任何解释。\n\n【待润色内容】\n${sceneContent}`;
+        const polishResponse = await fetch('/api/ai/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activeConfigId: activeConfig.id,
+            model: activeConfig.model,
+            messages: [{ role: 'user', content: polishPrompt }],
+            stream: false,
+            temperature: 0.4,
+          })
+        });
+        if (polishResponse.ok) {
+          const polishAIResp = await polishResponse.json();
+          const polished = extractTextFromAIResponse(polishAIResp);
+          if (polished && polished.length > 50) {
+            sceneContent = polished;
+          }
+        }
+      } catch (e) {
+        // 润色失败则保留原内容
+        console.warn('[润色失败]', e);
       }
 
       // 如果不是第一个场景，先在UI上添加分隔符
@@ -680,12 +743,10 @@ ${i > 0 ? `**前续场景内容**:\n---\n${completedScenesContent}\n---\n\n**衔
           generatedContent: (state.generatedContent || "") + "\n\n"
         }));
       }
-      
       // 一次性追加完整内容到UI
       set((state: NovelStateSlice) => ({
         generatedContent: (state.generatedContent || "") + sceneContent
       }));
-
       // [修复] 更新累积内容，为下一个场景的上下文做准备
       completedScenesContent += (completedScenesContent ? "\n\n" : "") + sceneContent;
 
