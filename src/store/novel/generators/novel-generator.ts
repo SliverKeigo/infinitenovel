@@ -22,6 +22,7 @@ import type { Chapter } from '@/types/chapter';
 import { extractTextFromAIResponse } from '../utils/ai-utils';
 import { useNovelStore } from '../../use-novel-store';
 import { log } from 'console';
+import { parseStyleGuideEntries, getDynamicSceneDirectives } from '../utils/style-utils';
 
 // Narrative Structure Constants
 const MAX_ACTS = 15;
@@ -130,6 +131,32 @@ export const generateNovelChapters = async (
       // 如果获取失败，回退到默认风格指导
       console.error("[大纲生成] 获取定制风格指导失败，使用默认风格指导:", error);
       outlineStyleGuide = getGenreStyleGuide(novel.genre, novel.style);
+    }
+
+    // 动态解析风格指导条目，生成推进粒度、结构模板、网文特色硬性要求
+    const styleGuideEntries = parseStyleGuideEntries(outlineStyleGuide);
+    const dynamicSceneDirectives = getDynamicSceneDirectives(styleGuideEntries);
+    // 章节推进粒度与结构模板（示例，后续可扩展为更细粒度的条目驱动）
+    let dynamicChapterTemplate = '';
+    if (styleGuideEntries.length > 0) {
+      dynamicChapterTemplate = '\n## 章节推进与结构建议（根据风格指导自动生成）\n';
+      for (const entry of styleGuideEntries) {
+        if (entry.type === '苟道' || entry.type === '慢热') {
+          dynamicChapterTemplate += '- 每章推进极小主线节点，主角以隐忍、低调、积累为主，避免高调出风头。\n';
+        }
+        if (entry.type === '日常' || entry.type === '恋爱' || entry.type === '轻松' || entry.type === '吐槽') {
+          dynamicChapterTemplate += '- 每章可包含日常互动、生活细节、轻松吐槽、情感升温等内容。\n';
+        }
+        if (entry.type === '推理') {
+          dynamicChapterTemplate += '- 每章推进一个小谜题或推理节点，主角/配角有推理、分析、反转。\n';
+        }
+        if (entry.type === '爽点' || entry.type === '钩子' || entry.type === 'scene_end' || entry.type === 'hook') {
+          dynamicChapterTemplate += '- 每章结尾应有钩子、爽点、悬念或反转，激发读者继续阅读。\n';
+        }
+        if (entry.type === '系统消息' || entry.type === '系统流') {
+          dynamicChapterTemplate += '- 如为系统流，每章可适当插入系统提示、奖励、属性面板等内容。\n';
+        }
+      }
     }
 
     // [新增] 获取角色行为准则 (在此处统一定义)
@@ -435,6 +462,8 @@ ${firstActInfo}
 - 写作风格: ${novel.style}
 - 核心设定与特殊要求: ${novel.special_requirements || '无'}
 - 第一幕章节范围: 第${actOneStart}章至第${actOneEnd}章
+${dynamicChapterTemplate}
+${dynamicSceneDirectives}
 
 ## 绝对约束条件 (违反即废弃)
 - **严禁跨幕引用**: 绝对禁止在生成第一幕的细节时，使用或预演在"完整叙事蓝图"中明确属于后续幕次的情节、人物、地点或概念。你的任务只是填充第一幕，不是整个故事。
