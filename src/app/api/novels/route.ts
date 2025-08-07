@@ -76,7 +76,7 @@ export async function POST(request: Request) {
         summary,
         type: `${category} / ${subCategory}`,
         presetChapters,
-        outline: mainOutline,
+        outline: mainOutline, // Use the resolved string here
       },
     });
 

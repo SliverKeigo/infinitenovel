@@ -56,18 +56,8 @@ export async function generateInitialWorldElements(
   detailedOutline: DetailedOutlineBatch,
   generationConfig: ModelConfig,
 ): Promise<InitialWorldBuild> {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const context = `
-    主大纲:
-    ${mainOutline}
-
-    初始章节详细规划:
-    ${JSON.stringify(detailedOutline, null, 2)}
-  `;
-
   const worldBuildingPrompt = `
-    你是一位世界构建大师和小说分析师。请仔细阅读以下的故事主大纲和初始几章的详细规划。
-    你的任务是识别出这个故事最核心的、必须预先设定的“世界元素”。
+    你是一位世界构建大师和小说分析师。请仔细阅读以下的故事主大纲和初始几章的详细规划，然后基于这些信息，识别出这个故事最核心的、必须预先设定的“世界元素”。
 
     **输出格式要求:**
     请严格按照以下 JSON 格式提供你的回答，不要包含任何 markdown 语法 (\`\`\`json\`) 或其他解释性文本。
@@ -86,6 +76,16 @@ export async function generateInitialWorldElements(
         { "name": "关键线索或物品1", "description": "这个线索或物品的详细信息、作用..." }
       ]
     }
+
+    ---
+    **故事背景资料**
+    ---
+
+    **主大纲:**
+    ${mainOutline}
+
+    **初始章节详细规划:**
+    ${JSON.stringify(detailedOutline, null, 2)}
   `;
 
   logger.info("正在生成初始世界设定...");

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus, BookOpen } from "lucide-react";
 import { Novel } from "@prisma/client";
+import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
 
 function NovelCard({ novel }: { novel: Novel }) {
