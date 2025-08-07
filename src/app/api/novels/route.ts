@@ -68,8 +68,7 @@ export async function POST(request: Request) {
       subCategory,
       generationConfig,
     );
-    const mainOutlineString = await readStreamToString(mainOutlineStream);
-    const mainOutline = safelyParseJson(mainOutlineString);
+    const mainOutline = await readStreamToString(mainOutlineStream);
 
     // 3. Create the novel record in the database with the main outline
     const newNovel = await prisma.novel.create({
