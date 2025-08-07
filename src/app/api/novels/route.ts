@@ -9,6 +9,7 @@ import {
   generateDetailedOutline,
 } from "@/lib/generation/outline";
 import { readStreamToString } from "@/lib/utils/stream";
+import { safelyParseJson } from "@/lib/utils/json";
 
 // (Keep the existing schema definition)
 const novelCreationRequestSchema = z.object({
@@ -67,7 +68,10 @@ export async function POST(request: Request) {
       subCategory,
       generationConfig,
     );
-    const mainOutline = await readStreamToString(mainOutlineStream);
+    const mainOutlineJson = await readStreamToString(mainOutlineStream);
+    const mainOutline = safelyParseJson<{ outline: string }>(
+      mainOutlineJson,
+    ).outline;
 
     // 3. Create the novel record in the database with the main outline
     const newNovel = await prisma.novel.create({
@@ -76,7 +80,7 @@ export async function POST(request: Request) {
         summary,
         type: `${category} / ${subCategory}`,
         presetChapters,
-        outline: mainOutline, // Use the resolved string here
+        outline: mainOutline,
       },
     });
 

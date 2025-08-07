@@ -6,7 +6,7 @@ type NovelDetailPageProps = {
   };
 };
 
-// 注意：这个页面组件不再是 async！
-export default function NovelDetailPage({ params }: NovelDetailPageProps) {
+// This component is now async to align with Next.js best practices
+export default async function NovelDetailPage({ params }: NovelDetailPageProps) {
   return <NovelDetailView novelId={params.id} />;
 }
