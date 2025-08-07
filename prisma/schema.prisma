@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://keigo:SliverKeigo1024@localhost:5432/novel_ai"
+}
+
+model Novel {
+  id                String         @id @default(uuid()) @db.Uuid
+  title             String
+  summary           String
+  type              String
+  outline           String?
+  detailedOutline   Json?
+  storySoFarSummary String?
+  presetChapters    Int
+  currentWordCount  Int            @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  chapters          NovelChapter[]
+  roles             NovelRole[]
+  scenes            NovelScene[]
+  clues             NovelClue[]
+}
+
+model NovelChapter {
+  id            String   @id @default(uuid()) @db.Uuid
+  novelId       String   @db.Uuid
+  title         String
+  chapterNumber Int
+  content       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  novel         Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+
+  @@unique([novelId, chapterNumber])
+}
+
+model NovelRole {
+  id          String   @id @default(uuid()) @db.Uuid
+  novelId     String   @db.Uuid
+  name        String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+}
+
+model NovelScene {
+  id          String   @id @default(uuid()) @db.Uuid
+  novelId     String   @db.Uuid
+  name        String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+}
+
+model NovelClue {
+  id          String   @id @default(uuid()) @db.Uuid
+  novelId     String   @db.Uuid
+  name        String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+}

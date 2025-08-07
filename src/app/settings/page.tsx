@@ -1,17 +1,10 @@
-"use client";
+import SettingsView from "@/components/settings/SettingsView";
 
-import { GenerationSettingsManager } from "@/components/settings/GenerationSettingsManager";
-
-const SettingsPage = () => {
+export default function SettingsPage() {
   return (
-    <main className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">生成设置</h1>
-      <p className="text-muted-foreground mb-6">
-        在这里调整小说的生成参数，或选择一个预设来快速开始。
-      </p>
-      <GenerationSettingsManager />
-    </main>
+    <div className="p-8">
+      <h1 className="text-4xl font-bold text-white mb-8">AI 模型设置</h1>
+      <SettingsView />
+    </div>
   );
-};
-
-export default SettingsPage; 
+}

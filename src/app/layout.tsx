@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
-import { Header } from "@/components/layout/Header";
-import { ClientProviders } from "@/components/layout/client-providers";
-import { AppInitializer } from "@/components/AppInitializer";
+import Sidebar from "@/components/layout/Sidebar";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "无限小说家",
-  description: "您的专属AI小说创作助手",
+  title: "小说AI - 你的智能创作伙伴",
+  description: "使用AI驱动的工具，轻松创作、管理和分享你的小说。",
 };
 
 export default function RootLayout({
@@ -19,15 +16,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN">
       <body className={inter.className}>
-        <ClientProviders>
-          <Header />
-          <AppInitializer>
-            <main className="container mx-auto">{children}</main>
-          </AppInitializer>
-          <Toaster />
-        </ClientProviders>
+        <div className="flex w-full min-h-screen font-sans">
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto">
+            {children}
+          </main>
+        </div>
       </body>
     </html>
   );
