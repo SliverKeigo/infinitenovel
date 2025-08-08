@@ -10,6 +10,7 @@ import {
 import { evolveWorldFromChapter } from "./world";
 import { queryCollection } from "../vector-store";
 import { getChatCompletion } from "@/lib/ai-client";
+import { log } from "node:console";
 
 const Status = {
   DETERMINING_CHAPTER_NUMBER: "正在确定章节序号...",
@@ -241,6 +242,8 @@ async function getOutlineAndContext(
       embeddingConfig,
       controller,
     );
+
+    logger.info(`小说相关上下文 ${context}`);
 
     return { novel, detailedOutline, context };
   } catch (error) {

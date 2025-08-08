@@ -31,11 +31,11 @@ export async function getOrCreateCollection(name: string): Promise<Collection> {
   const chroma = getClient();
   try {
     const collection = await chroma.getOrCreateCollection({ name });
-    logger.info(`Successfully connected to collection: ${name}`);
+    logger.info(`成功连接到集合: ${name}`);
     return collection;
   } catch (e) {
-    logger.error(`Failed to get or create collection '${name}'`, e);
-    throw new Error(`Could not connect to collection: ${name}`);
+    logger.error(`获取或创建集合 '${name}' 失败`, e);
+    throw new Error(`无法连接到集合: ${name}`);
   }
 }
 
@@ -71,7 +71,7 @@ export async function addElementsToCollection(
   // 2. 调用 AI 服务生成向量嵌入
   const embeddings = await getEmbeddings(embeddingConfig, contents);
   if (!embeddings) {
-    throw new Error("Failed to generate embeddings for world elements.");
+    throw new Error("为世界元素生成嵌入向量失败。");
   }
 
   // 3. 将元素添加到 ChromaDB 集合中
@@ -83,7 +83,7 @@ export async function addElementsToCollection(
   });
 
   logger.info(
-    `Successfully added ${elements.length} elements to collection '${collectionName}'.`,
+    `成功向集合 '${collectionName}' 添加了 ${elements.length} 个元素。`,
   );
 }
 
@@ -107,7 +107,7 @@ export async function queryCollection(
   // 1. 为查询文本生成向量
   const queryEmbedding = await getEmbeddings(embeddingConfig, queryText);
   if (!queryEmbedding) {
-    throw new Error("Failed to generate embedding for query text.");
+    throw new Error("为查询文本生成嵌入向量失败。");
   }
 
   // 2. 在集合中执行查询
@@ -142,7 +142,7 @@ export async function upsertElementsInCollection(
   );
   const embeddings = await getEmbeddings(embeddingConfig, contents);
   if (!embeddings) {
-    throw new Error("Failed to generate embeddings for upserting elements.");
+    throw new Error("为更新插入元素生成嵌入向量失败。");
   }
 
   await collection.upsert({
@@ -153,6 +153,6 @@ export async function upsertElementsInCollection(
   });
 
   logger.info(
-    `Successfully upserted ${elements.length} elements in collection '${collectionName}'.`,
+    `成功在集合 '${collectionName}' 中更新插入了 ${elements.length} 个元素。`,
   );
 }

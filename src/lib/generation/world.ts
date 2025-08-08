@@ -120,7 +120,7 @@ export async function generateInitialWorldElements(
 
     if (!validation.success) {
       logger.error("AI 世界设定响应验证失败:", validation.error.flatten());
-      logger.debug("Failed to validate object:", parsedResponse);
+      logger.debug("验证失败的对象:", parsedResponse);
       throw new Error("AI 返回的世界设定格式不正确。");
     }
 
@@ -149,7 +149,9 @@ export async function saveInitialWorldElements(
 ) {
   const { roles, scenes, clues } = worldElements;
 
+  logger.info(`开始为小说 ${novelId} 保存初始世界元素。`);
   await prisma.$transaction(async (tx) => {
+    logger.info(`[事务] 正在为小说 ${novelId} 向 PostgreSQL 插入初始元素...`);
     // 1. 插入新元素
     await Promise.all([
       tx.novelRole.createMany({
@@ -177,6 +179,7 @@ export async function saveInitialWorldElements(
     logger.info(`已成功为小说 ${novelId} 保存初始世界设定至 PostgreSQL。`);
 
     // 2. 获取我们刚刚创建的记录
+    logger.info(`[事务] 正在从 PostgreSQL 获取为小说 ${novelId} 创建的记录...`);
     const [createdRoles, createdScenes, createdClues] = await Promise.all([
       tx.novelRole.findMany({
         where: { novelId, name: { in: roles.map((r) => r.name) } },
@@ -188,8 +191,10 @@ export async function saveInitialWorldElements(
         where: { novelId, name: { in: clues.map((c) => c.name) } },
       }),
     ]);
+    logger.info(`[事务] 成功为小说 ${novelId} 获取创建的记录。`);
 
     // 3. 填充向量存储
+    logger.info(`[事务] 正在为小说 ${novelId} 填充向量存储...`);
     await Promise.all([
       addElementsToCollection(
         `novel_${novelId}_roles`,
@@ -207,6 +212,7 @@ export async function saveInitialWorldElements(
         embeddingConfig,
       ),
     ]);
+    logger.info(`[事务] 成功为小说 ${novelId} 填充向量存储。`);
   });
 
   logger.info(`已成功为小说 ${novelId} 填充向量存储。`);
