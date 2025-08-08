@@ -7,7 +7,6 @@ import { safelyParseJson } from "../utils/json";
 import { z } from "zod";
 import { readStreamToString, chainStreamables } from "../utils/stream";
 
-// ... (schemas and types remain the same)
 export const detailedChapterOutlineSchema = z.object({
   chapterNumber: z.number().int(),
   title: z.string(),
@@ -21,8 +20,8 @@ export type DetailedChapterOutline = z.infer<
 export type DetailedOutlineBatch = z.infer<typeof detailedOutlineBatchSchema>;
 
 /**
- * Generates a high-level story outline based on the provided novel details.
- * (Existing function - no changes)
+ * 根据提供的小说详情生成一个高层次的故事大纲。
+ * (现有函数 - 无更改)
  */
 export async function generateMainOutline(
   title: string,
@@ -43,7 +42,7 @@ export async function generateMainOutline(
     请直接返回大纲内容，不要包含任何额外的问候或解释。
   `;
 
-  logger.info("Generating main outline...");
+  logger.info("正在生成主大纲...");
   const stream = await getChatCompletion(
     "生成主大纲",
     generationConfig,
@@ -52,20 +51,20 @@ export async function generateMainOutline(
   );
 
   if (!stream) {
-    throw new Error("Failed to generate novel outline from AI service.");
+    throw new Error("从 AI 服务生成小说大纲失败。");
   }
 
-  logger.info("Main outline stream generated successfully.");
+  logger.info("主大纲流生成成功。");
   return stream;
 }
 
 /**
- * Generates the next batch of detailed, chapter-by-chapter outlines.
+ * 生成下一批详细的、逐章的大纲。
  *
- * @param novelId - The ID of the novel.
- * @param generationConfig - The AI model configuration.
- * @param chaptersToGenerate - The number of chapters to outline in this batch.
- * @returns A structured array of detailed chapter outlines.
+ * @param novelId - 小说 ID。
+ * @param generationConfig - AI 模型配置。
+ * @param chaptersToGenerate - 此批次要概述的章节数。
+ * @returns 详细章节大纲的结构化数组。
  */
 export async function generateDetailedOutline(
   novelId: string,
@@ -88,7 +87,7 @@ export async function generateDetailedOutline(
     },
   });
   if (!novel) {
-    throw new Error(`Novel with ID ${novelId} not found.`);
+    throw new Error(`未找到 ID 为 ${novelId} 的小说。`);
   }
   const recentSummary = await summarizeRecentChapters(
     novelId,
@@ -98,7 +97,7 @@ export async function generateDetailedOutline(
     ? novel.chapters[0]?.chapterNumber
     : 0;
 
-  // 3. Construct the intelligent prompt
+  // 3. 构建智能提示
   const detailedOutlinePrompt = `
     你是一位顶尖的小说策划师，任务是为一部正在创作中的小说生成接下来 ${chaptersToGenerate} 章的详细情节大纲。
 
@@ -133,12 +132,12 @@ export async function generateDetailedOutline(
     请基于以上所有信息，富有创造力地规划出接下来 ${chaptersToGenerate} 章的详细情节，确保故事的连贯性和吸引力。
   `;
 
-  // 4. Call AI service
+  // 4. 调用 AI 服务
   logger.info(
-    `Generating detailed outline for next ${chaptersToGenerate} chapters of novel ${novelId}...`,
+    `正在为小说 ${novelId} 的接下来 ${chaptersToGenerate} 章生成详细大纲...`,
   );
 
-  // 4. Call AI service with streaming
+  // 4. 调用带流的 AI 服务
   const responseStream = await getChatCompletion(
     "生成详细大纲",
     generationConfig,
@@ -147,53 +146,44 @@ export async function generateDetailedOutline(
   );
 
   if (!responseStream) {
-    throw new Error(
-      "Failed to generate detailed outline stream from AI service.",
-    );
+    throw new Error("从 AI 服务生成详细大纲流失败。");
   }
 
-  // 5. Consume the stream and assemble the full response
+  // 5. 消费流并组装完整响应
   const fullResponse = await readStreamToString(responseStream);
 
-  // 6. Validate and parse the assembled response
+  // 6. 验证并解析组装后的响应
   try {
-    // First, parse the entire response as a generic object to inspect its structure
+    // 首先，将整个响应解析为通用对象以检查其结构
     const rawParsed = safelyParseJson<any>(fullResponse);
 
-    // Check if the response is nested within a 'message' property
+    // 检查响应是否嵌套在 'message' 属性中
     let potentialOutlines: unknown;
     if (typeof rawParsed.message === "string") {
-      // If 'message' is a string, it might be a stringified JSON. Parse it again.
+      // 如果 'message' 是字符串，它可能是字符串化的 JSON。再次解析它。
       try {
         potentialOutlines = safelyParseJson(rawParsed.message);
       } catch (e) {
-        // If parsing the message fails, fall back to using the raw parsed object
+        // 如果解析消息失败，则回退到使用原始解析对象
         potentialOutlines = rawParsed;
       }
     } else {
-      // Otherwise, assume the main object contains the data
+      // 否则，假设主对象包含数据
       potentialOutlines = rawParsed;
     }
 
-    // The actual outlines might be at the top level, or nested under an 'outlines' key
+    // 实际的大纲可能在顶层，或嵌套在 'outlines' 键下
     const validation = detailedOutlineBatchSchema.safeParse(potentialOutlines);
 
     if (!validation.success) {
-      logger.error(
-        "AI response validation failed:",
-        validation.error.flatten(),
-      );
-      throw new Error(
-        `AI returned a detailed outline in an unexpected format. Raw response: ${fullResponse}`,
-      );
+      logger.error("AI 响应验证失败:", validation.error.flatten());
+      throw new Error(`AI 返回了格式错误的详细大纲。原始响应: ${fullResponse}`);
     }
 
-    logger.info("Detailed outline generated and validated successfully.");
+    logger.info("详细大纲已成功生成并通过验证。");
     return validation.data;
   } catch (error) {
-    logger.error("Error parsing or validating AI response:", error);
-    throw new Error(
-      `Failed to parse the detailed outline from AI response. Raw response: ${fullResponse}`,
-    );
+    logger.error("解析或验证 AI 响应时出错:", error);
+    throw new Error(`从 AI 响应解析详细大纲失败。原始响应: ${fullResponse}`);
   }
 }
