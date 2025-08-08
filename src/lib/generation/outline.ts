@@ -94,32 +94,28 @@ export async function generateDetailedOutline(
     novelId,
     generationConfig,
   );
-  const lastChapterNumber = novel.chapters[0]?.name
-    ? parseInt(novel.chapters[0].name, 10)
+  const lastChapterNumber = novel.chapters[0]?.chapterNumber
+    ? novel.chapters[0]?.chapterNumber
     : 0;
 
   // 3. Construct the intelligent prompt
   const detailedOutlinePrompt = `
     你是一位顶尖的小说策划师，任务是为一部正在创作中的小说生成接下来 ${chaptersToGenerate} 章的详细情节大纲。
 
-    **输出格式要求:**
-    请严格按照以下 JSON 数组格式提供你的回答，不要包含任何 markdown 语法（如 \`\`\`json\`) 或其他解释性文本。
-    每一个对象代表一章。"chapterNumber" 必须从 ${lastChapterNumber + 1} 开始连续递增。
+    **绝对规则:**
+    - 你的输出必须是纯粹的、格式完全正确的 JSON 数组。
+    - 禁止在 JSON 内容之外包含任何文本，包括解释、注释、思考过程或任何非 JSON 字符。
+    - 不要使用 Markdown 语法（如 \`\`\`json）。
+    - 你的整个响应应该直接以 \`[\` 开始，并以 \`]\` 结束。
 
-    \`\`\`json
-    [
-      {
-        "chapterNumber": ${lastChapterNumber + 1},
-        "title": "章节标题",
-        "summary": "本章的简洁摘要，描述核心内容和情节转折。",
-        "keyEvents": [
-          "第一个关键事件或场景。",
-          "第二个关键事件或场景。",
-          "本章的收尾，为下一章埋下伏笔。"
-        ]
-      }
-    ]
-    \`\`\`
+    **JSON 结构:**
+    - 你的输出必须是一个 JSON 数组，数组中的每个对象代表一个章节。
+    - 每个对象必须包含以下四个字段，且字段名必须完全匹配：
+            1. "chapterNumber": (整数) - 章节序号，从 ${lastChapterNumber + 1} 开始连续递增。
+            2. "title": (字符串) - 本章标题。
+            3. "summary": (字符串) - 本章情节的简要概述。
+            4. "keyEvents": (字符串数组) - 描述本章发生的关键事件、对话或场景的列表。
+    - 禁止包含任何额外字段。
 
     **创作所需的上下文信息:**
 
@@ -180,8 +176,7 @@ export async function generateDetailedOutline(
     }
 
     // The actual outlines might be at the top level, or nested under an 'outlines' key
-    const outlines = potentialOutlines.outlines || potentialOutlines;
-    const validation = detailedOutlineBatchSchema.safeParse(outlines);
+    const validation = detailedOutlineBatchSchema.safeParse(potentialOutlines);
 
     if (!validation.success) {
       logger.error(

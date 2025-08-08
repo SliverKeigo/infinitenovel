@@ -95,6 +95,7 @@ export async function generateInitialWorldElements(
     worldBuildingPrompt,
     {
       stream: true,
+      response_format: { type: "json_object" },
     },
   );
 
@@ -106,10 +107,20 @@ export async function generateInitialWorldElements(
 
   try {
     const parsedResponse = safelyParseJson<InitialWorldBuild>(response);
+
+    if (!parsedResponse) {
+      logger.error(
+        "从 AI 响应中未能解析出任何 JSON 内容。原始响应:",
+        response,
+      );
+      throw new Error("AI 响应为空或格式不正确，无法解析为 JSON。");
+    }
+
     const validation = initialWorldBuildSchema.safeParse(parsedResponse);
 
     if (!validation.success) {
       logger.error("AI 世界设定响应验证失败:", validation.error.flatten());
+      logger.debug("Failed to validate object:", parsedResponse);
       throw new Error("AI 返回的世界设定格式不正确。");
     }
 
@@ -117,6 +128,9 @@ export async function generateInitialWorldElements(
     return validation.data;
   } catch (error) {
     logger.error("解析或验证 AI 世界设定响应时出错:", error);
+    if (error instanceof Error) {
+      throw error;
+    }
     throw new Error("从 AI 响应解析世界设定失败。");
   }
 }
