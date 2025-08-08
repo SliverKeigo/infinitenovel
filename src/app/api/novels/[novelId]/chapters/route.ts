@@ -19,7 +19,6 @@ const chapterGenerationRequestSchema = z.object({
   stream: z.boolean().optional().default(false),
 });
 
-
 /**
  * 处理为小说生成下一章节的 POST 请求。
  * 这是迭代生成循环的核心端点。
@@ -29,8 +28,8 @@ export async function POST(
   context: { params: { novelId: string } },
 ) {
   try {
-  const params = await context.params;
-  const { novelId } = params;
+    const params = context.params;
+    const { novelId } = params;
 
     // 1. 验证请求体
     const body = await request.json();
@@ -47,9 +46,7 @@ export async function POST(
     }
 
     const { generationConfig, embeddingConfig, stream } = validation.data;
-    logger.info(
-      `收到为小说 ${novelId} 生成下一章的请求 (stream: ${stream})。`,
-    );
+    logger.info(`收到为小说 ${novelId} 生成下一章的请求 (stream: ${stream})。`);
 
     // 2. 调用核心服务函数
     // 函数是重载的，会根据 stream 参数返回不同类型的结果

@@ -266,9 +266,24 @@ export async function evolveWorldFromChapter(
       return;
     }
 
-    const response = await readStreamToString(responseStream);
+    const reader = responseStream.getReader();
+    const decoder = new TextDecoder();
+    let response = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      response += decoder.decode(value);
+    }
 
     const parsedJson = safelyParseJson<WorldEvolution>(response);
+    if (!parsedJson) {
+      logger.error(
+        "[世界演化] 从 AI 响应中未能解析出任何 JSON 内容。原始响应:",
+        response,
+      );
+      throw new Error("AI 演化响应为空或格式不正确，无法解析为 JSON。");
+    }
+
     const validation = worldEvolutionSchema.safeParse(parsedJson);
 
     if (!validation.success) {
@@ -276,6 +291,7 @@ export async function evolveWorldFromChapter(
         "[世界演化] AI 演化响应验证失败:",
         validation.error.flatten(),
       );
+      logger.debug("[世界演化] 验证失败的对象:", parsedJson);
       throw new Error("AI 返回的世界演化格式不正确。");
     }
 

@@ -161,7 +161,7 @@ export async function generateDetailedOutline(
     const rawParsed = safelyParseJson<any>(fullResponse);
 
     // Check if the response is nested within a 'message' property
-    let potentialOutlines: any;
+    let potentialOutlines: unknown;
     if (typeof rawParsed.message === "string") {
       // If 'message' is a string, it might be a stringified JSON. Parse it again.
       try {

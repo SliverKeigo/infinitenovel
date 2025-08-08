@@ -27,7 +27,10 @@ export async function ChapterList({ novelId }: ChapterListProps) {
                 key={chapter.id}
                 className="text-slate-300 hover:text-white transition-colors cursor-pointer p-2 rounded-md hover:bg-white/5"
               >
-                {chapter.name}
+                <span className="font-semibold">第 </span>
+                <span className="font-semibold">{chapter.chapterNumber} </span>
+                <span className="font-semibold">章 </span>
+                <span className="font-semibold">{chapter.title}</span>
               </li>
             ))}
           </ul>

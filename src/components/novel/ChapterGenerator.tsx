@@ -9,6 +9,14 @@ type ChapterGeneratorProps = {
   novelId: string;
 };
 
+type StoredAiConfig = {
+  state: {
+    models: ModelConfig[];
+    activeGenerationModelId: string;
+    activeEmbeddingModelId: string;
+  };
+};
+
 export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +35,9 @@ export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
   useEffect(() => {
     try {
       const settingsStr = localStorage.getItem("ai-config-storage");
-      const settings = safelyParseJson<any>(settingsStr, {});
+      const settings = safelyParseJson<StoredAiConfig>(settingsStr, {
+        state: { models: [], activeGenerationModelId: "", activeEmbeddingModelId: "" },
+      });
       const { models, activeGenerationModelId, activeEmbeddingModelId } =
         settings.state || {};
       if (!activeGenerationModelId || !activeEmbeddingModelId) {
@@ -35,12 +45,8 @@ export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
           "AI 配置未找到。请先在设置页面配置并保存您的 AI 模型信息。",
         );
       }
-      const genConfig = models.find(
-        (m: any) => m.id === activeGenerationModelId,
-      );
-      const embedConfig = models.find(
-        (m: any) => m.id === activeEmbeddingModelId,
-      );
+      const genConfig = models.find((m) => m.id === activeGenerationModelId);
+      const embedConfig = models.find((m) => m.id === activeEmbeddingModelId);
       if (!genConfig || !embedConfig) {
         throw new Error("激活的AI模型配置无效。请检查设置页面。");
       }

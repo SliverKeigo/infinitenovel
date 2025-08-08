@@ -9,8 +9,11 @@ type NovelDetailPageProps = {
 };
 
 // This component is now async to align with Next.js best practices
-export default async function NovelDetailPage({
+export default function NovelDetailPage({
   params,
-}: NovelDetailPageProps) {
-  return <NovelDetailView novelId={params.id} />;
+}: {
+  params: { id: string };
+}) {
+  const novelId = params.id;
+  return <NovelDetailView novelId={novelId} />;
 }

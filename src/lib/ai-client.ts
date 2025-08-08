@@ -36,6 +36,20 @@ async function* openAIStreamToAsyncGenerator(
   }
 }
 
+function asyncGeneratorToReadableStream(
+  generator: AsyncGenerator<string, void, unknown>,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    async start(controller) {
+      for await (const chunk of generator) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+}
+
 /**
  * 使用指定的模型配置，获取一个聊天补全（Chat Completion）。
  * 这是与大语言模型交互的核心函数，统一处理流式和非流式请求。
@@ -52,44 +66,64 @@ export async function getChatCompletion(
   options: {
     temperature?: number;
     max_tokens?: number;
-    response_format?: any;
+    response_format?: OpenAI.Chat.Completions.ChatCompletionCreateParams.ResponseFormat;
     stream?: boolean;
   } = {},
-): Promise<string | AsyncGenerator<string, void, unknown> | null> {
-  try {
-    const aiClient = createTemporaryClient(config);
-    log(
-      `[AI请求] 任务: ${taskDescription} | 模型配置: ${config.name} | 流式: ${!!options.stream}`,
-    );
+  retries = 3,
+): Promise<string | ReadableStream<Uint8Array> | null> {
+  const aiClient = createTemporaryClient(config);
+  log(
+    `[AI请求] 任务: ${taskDescription} | 模型配置: ${config.name} | 流式: ${!!options.stream}`,
+  );
 
-    const response = await aiClient.chat.completions.create({
-      model: config.model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.max_tokens,
-      response_format: options.response_format,
-      stream: options.stream ?? false,
-    });
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await aiClient.chat.completions.create({
+        model: config.model,
+        messages: [{ role: "user", content: prompt }],
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.max_tokens,
+        response_format: options.response_format,
+        stream: options.stream ?? false,
+      });
 
-    if (options.stream) {
-      const stream =
-        response as Stream<OpenAI.Chat.Completions.ChatCompletionChunk>;
-      return openAIStreamToAsyncGenerator(stream);
-    }
+      if (options.stream) {
+        const stream =
+          response as Stream<OpenAI.Chat.Completions.ChatCompletionChunk>;
+        const asyncGenerator = openAIStreamToAsyncGenerator(stream);
+        return asyncGeneratorToReadableStream(asyncGenerator);
+      }
 
-    const content = (response as OpenAI.Chat.Completions.ChatCompletion)
-      .choices[0]?.message?.content;
+      const content = (response as OpenAI.Chat.Completions.ChatCompletion)
+        .choices[0]?.message?.content;
 
-    if (!content) {
-      console.warn("AI 返回的响应内容为空。");
+      if (!content) {
+        console.warn("AI 返回的响应内容为空。");
+        return null;
+      }
+
+      return content.trim();
+    } catch (error) {
+      const is5xxError =
+        error instanceof OpenAI.APIError &&
+        error.status &&
+        error.status >= 500 &&
+        error.status < 600;
+
+      if (is5xxError && i < retries - 1) {
+        const delay = Math.pow(2, i) * 1000;
+        console.warn(
+          `AI 服务返回 5xx 错误, ${delay / 1000}秒后进行第 ${i + 1} 次重试...`,
+        );
+        await new Promise((res) => setTimeout(res, delay));
+        continue;
+      }
+
+      console.error(`使用模型 [${config.name}] 请求 AI 服务时出错:`, error);
       return null;
     }
-
-    return content.trim();
-  } catch (error) {
-    console.error(`使用模型 [${config.name}] 请求 AI 服务时出错:`, error);
-    return null;
   }
+  return null;
 }
 
 /**

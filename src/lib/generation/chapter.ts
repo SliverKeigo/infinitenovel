@@ -1,4 +1,4 @@
-import { NovelChapter } from "@prisma/client";
+import { Novel, NovelChapter } from "@prisma/client";
 import logger from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { ModelConfig } from "@/types/ai";
@@ -160,7 +160,13 @@ ${lastChapter.content}
                 `后台任务完成: 已保存并演化了第 ${nextChapterNumber} 章。`,
               );
             } catch (e) {
-              logger.error("后台保存与演化任务失败:", e);
+              logger.error({
+                msg: `后台为小说 ${novelId} 保存第 ${nextChapterNumber} 章并进行世界观演化时失败`,
+                err:
+                  e instanceof Error
+                    ? { message: e.message, stack: e.stack }
+                    : e,
+              });
             }
           })();
 
@@ -170,19 +176,31 @@ ${lastChapter.content}
             const { done, value } = await reader.read();
             if (done) break;
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "content", chunk: new TextDecoder().decode(value) })}
-
-`),
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "content", chunk: new TextDecoder().decode(value) })}`,
+              ),
             );
           }
         } catch (error) {
-          logger.error("章节生成流中发生错误:", error);
           const errorMessage =
-            error instanceof Error ? error.message : "未知错误";
+            error instanceof Error ? error.message : "出现未知服务器错误";
+          // 记录结构化错误日志，便于问题追踪
+          logger.error({
+            msg: "章节生成流中捕获到未处理的错误",
+            novelId,
+            err:
+              error instanceof Error
+                ? { message: error.message, stack: error.stack }
+                : error,
+          });
+          // 向客户端发送一个更友好的错误信息
+          const clientErrorMessage = `章节生成失败: ${errorMessage}`;
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "error", message: errorMessage })}
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "error", message: clientErrorMessage })}
 
-`),
+`,
+            ),
           );
         } finally {
           controller.close();
@@ -238,7 +256,7 @@ async function getOrCreateChapterOutline(
   chapterNumber: number,
   generationConfig: ModelConfig,
   controller: ReadableStreamDefaultController<Uint8Array>,
-): Promise<{ novel: any; detailedOutline: DetailedChapterOutline }> {
+): Promise<{ novel: Novel; detailedOutline: DetailedChapterOutline }> {
   let novel = await prisma.novel.findUnique({ where: { id: novelId } });
   if (!novel) throw new Error("找不到指定的小说。");
 
@@ -299,7 +317,7 @@ ${cluesContext.join("") || "无"}
 }
 
 function buildChapterPrompt(
-  novel: any, // Prisma.Novel 类型
+  novel: Novel, // Prisma.Novel 类型
   detailedOutline: DetailedChapterOutline,
   context: string,
   previousChapterContent: string,
