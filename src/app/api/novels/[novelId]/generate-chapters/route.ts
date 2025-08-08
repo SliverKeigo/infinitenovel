@@ -13,7 +13,7 @@ const generationRequestBodySchema = z.object({
       "apiKey" in val &&
       "model" in val
     );
-  }, "A valid generation model configuration is required."),
+  }, "必须提供有效的生成模型配置。"),
   chaptersToGenerate: z.number().int().positive().optional().default(5),
 });
 
@@ -24,20 +24,20 @@ interface PostParams {
 }
 
 /**
- * Handles POST requests to generate and save a new batch of detailed outlines for a novel.
+ * 处理 POST 请求，为小说生成并保存新的一批详细大纲。
  */
 export async function POST(request: Request, { params }: PostParams) {
   try {
     const { novelId } = params;
 
-    // 1. Validate request body
+    // 1. 验证请求体
     const body = await request.json();
     const validation = generationRequestBodySchema.safeParse(body);
 
     if (!validation.success) {
       return new NextResponse(
         JSON.stringify({
-          error: "Invalid request body",
+          error: "无效的请求体",
           details: validation.error.flatten(),
         }),
         { status: 400, headers: { "Content-Type": "application/json" } },
@@ -47,18 +47,18 @@ export async function POST(request: Request, { params }: PostParams) {
     const { generationConfig, chaptersToGenerate } = validation.data;
 
     logger.info(
-      `Received request to generate ${chaptersToGenerate} chapter outlines for novel ${novelId}.`,
+      `收到为小说 ${novelId} 生成 ${chaptersToGenerate} 个章节大纲的请求。`,
     );
 
-    // 2. Call the generation service
+    // 2. 调用生成服务
     const detailedOutlines = await generateDetailedOutline(
       novelId,
       generationConfig,
       chaptersToGenerate,
     );
 
-    // 3. Save the generated outlines to the database
-    // We append to the existing detailed outline if it exists
+    // 3. 将生成的大纲保存到数据库
+    // 如果已存在详细大纲，我们会追加到现有大纲中
     await prisma.novel.update({
       where: { id: novelId },
       data: {
@@ -69,20 +69,18 @@ export async function POST(request: Request, { params }: PostParams) {
     });
 
     logger.info(
-      `Successfully generated and saved new outlines for novel ${novelId}.`,
+      `已成功为小说 ${novelId} 生成并保存新大纲。`,
     );
 
-    // 4. Return the newly generated outlines
+    // 4. 返回新生成的大纲
     return NextResponse.json(detailedOutlines, { status: 201 });
   } catch (error) {
     logger.error(
       { err: error, novelId },
-      `An error occurred in POST /api/novels/[novelId]/generate-chapters`,
+      `在 POST /api/novels/[novelId]/generate-chapters 中发生错误`,
     );
     const errorMessage =
-      error instanceof Error
-        ? error.message
-        : "An internal server error occurred.";
+      error instanceof Error ? error.message : "发生内部服务器错误。";
     return new NextResponse(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

@@ -5,18 +5,18 @@
  * @throws 如果清理后的字符串仍然不是有效的 JSON，则会抛出错误。
  */
 export function safelyParseJson<T>(text: string): T | null {
-  // Trim whitespace
+  // 修剪空白字符
   const trimmedText = text.trim();
 
-  // If the string is empty or just whitespace, return null
+  // 如果字符串为空或仅包含空白，则返回 null
   if (!trimmedText) {
     return null;
   }
 
-  // Clean markdown code blocks
+  // 清理 markdown 代码块
   const cleanedText = trimmedText.replace(/^```json\s*([\s\S]*?)\s*```$/, "$1");
 
-  // If the cleaned string is empty, return null
+  // 如果清理后的字符串为空，则返回 null
   if (!cleanedText) {
     return null;
   }
@@ -25,13 +25,13 @@ export function safelyParseJson<T>(text: string): T | null {
     return JSON.parse(cleanedText);
   } catch (error) {
     console.error(
-      "Failed to parse cleaned JSON string:",
+      "解析清理后的 JSON 字符串失败:",
       cleanedText,
-      "Original text:",
+      "原始文本:",
       text,
     );
     throw new Error(
-      "The provided text could not be parsed as JSON, even after cleaning.",
+      "提供的文本在清理后仍然无法解析为 JSON。",
     );
   }
 }
