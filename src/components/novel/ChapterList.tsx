@@ -46,7 +46,7 @@ export function ChapterList({ novelId }: ChapterListProps) {
     if (novelId) {
       fetchChapters();
     }
-  }, [novelId, currentPage, pageSize]);
+  }, [novelId, currentPage, pageSize, setData, setIsLoading, setError]);
 
   const handlePageSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setPageSize(Number(e.target.value));
@@ -97,7 +97,9 @@ export function ChapterList({ novelId }: ChapterListProps) {
             </button>
             <button
               onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage === data?.totalPages || isLoading}
+              disabled={
+                !data || currentPage === data.totalPages || isLoading
+              }
               className="p-1 rounded-md bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight size={18} />
