@@ -129,9 +129,6 @@ ${lastChapter.content}
                 }
                 const decodedChunk = new TextDecoder().decode(value);
                 fullContent += decodedChunk;
-                logger.info(
-                  `[数据库流] 读取块: ${decodedChunk.substring(0, 100)}...`,
-                );
               }
 
               logger.info(`[数据库流] 完整内容长度: ${fullContent.length}`);

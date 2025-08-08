@@ -67,24 +67,47 @@ export async function addElementsToCollection(
   const contents = elements.map(
     (element) => `${element.name}: ${element.content}`,
   );
+  try {
+    // 2. 调用 AI 服务生成向量嵌入
+    const embeddings = await getEmbeddings(embeddingConfig, contents);
+    if (!embeddings) {
+      // 在 getEmbeddings 内部已经有错误处理和日志记录，这里可以简化
+      logger.warn(
+        `由于无法生成嵌入向量，跳过向集合 ${collectionName} 添加 ${elements.length} 个元素。`,
+      );
+      return;
+    }
 
-  // 2. 调用 AI 服务生成向量嵌入
-  const embeddings = await getEmbeddings(embeddingConfig, contents);
-  if (!embeddings) {
-    throw new Error("为世界元素生成嵌入向量失败。");
+    // 3. 将元素添加到 ChromaDB 集合中
+    await collection.add({
+      ids: elements.map((element) => element.id),
+      embeddings: embeddings,
+      documents: contents,
+      metadatas: elements.map((el) => ({
+        name: el.name,
+        content: el.content,
+      })), // 存储除id外的其他信息
+    });
+
+    logger.info(
+      `成功向集合 '${collectionName}' 添加了 ${elements.length} 个元素。`,
+    );
+  } catch (error: any) {
+    // 专门处理敏感词错误
+    if (error.code === "sensitive_words_detected") {
+      logger.warn({
+        msg: `由于检测到敏感词，无法为集合 ${collectionName} 生成嵌入向量。`,
+        collectionName,
+        failedContent: contents, // 记录下导致失败的内容
+        errorDetails: error.message,
+      });
+      // 在这种情况下，我们选择跳过这些元素的添加，而不是让整个流程失败
+    } else {
+      // 对于所有其他类型的错误，我们仍然向上抛出，让调用者处理
+      logger.error(`向集合 ${collectionName} 添加元素时发生未知错误。`, error);
+      throw error;
+    }
   }
-
-  // 3. 将元素添加到 ChromaDB 集合中
-  await collection.add({
-    ids: elements.map((element) => element.id),
-    embeddings: embeddings,
-    documents: contents,
-    metadatas: elements.map((el) => ({ name: el.name, content: el.content })), // 存储除id外的其他信息
-  });
-
-  logger.info(
-    `成功向集合 '${collectionName}' 添加了 ${elements.length} 个元素。`,
-  );
 }
 
 /**
@@ -117,7 +140,9 @@ export async function queryCollection(
   });
 
   // 3. 提取并返回文档内容，同时过滤掉任何 null 或 undefined 的值
-  return (results.documents[0] ?? []).filter((doc): doc is string => doc !== null);
+  return (results.documents[0] ?? []).filter(
+    (doc): doc is string => doc !== null,
+  );
 }
 
 /**
@@ -140,19 +165,39 @@ export async function upsertElementsInCollection(
   const contents = elements.map(
     (element) => `${element.name}: ${element.content}`,
   );
-  const embeddings = await getEmbeddings(embeddingConfig, contents);
-  if (!embeddings) {
-    throw new Error("为更新插入元素生成嵌入向量失败。");
+  try {
+    const embeddings = await getEmbeddings(embeddingConfig, contents);
+    if (!embeddings) {
+      logger.warn(
+        `由于无法生成嵌入向量，跳过对集合 ${collectionName} 的更新插入操作。`,
+      );
+      return;
+    }
+
+    await collection.upsert({
+      ids: elements.map((element) => element.id),
+      embeddings: embeddings,
+      documents: contents,
+      metadatas: elements.map((el) => ({ name: el.name, content: el.content })),
+    });
+
+    logger.info(
+      `成功在集合 '${collectionName}' 中更新插入了 ${elements.length} 个元素。`,
+    );
+  } catch (error: any) {
+    if (error.code === "sensitive_words_detected") {
+      logger.warn({
+        msg: `由于检测到敏感词，无法为集合 ${collectionName} 生成嵌入向量进行更新插入。`,
+        collectionName,
+        failedContent: contents,
+        errorDetails: error.message,
+      });
+    } else {
+      logger.error(
+        `在集合 ${collectionName} 中更新插入元素时发生未知错误。`,
+        error,
+      );
+      throw error;
+    }
   }
-
-  await collection.upsert({
-    ids: elements.map((element) => element.id),
-    embeddings: embeddings,
-    documents: contents,
-    metadatas: elements.map((el) => ({ name: el.name, content: el.content })),
-  });
-
-  logger.info(
-    `成功在集合 '${collectionName}' 中更新插入了 ${elements.length} 个元素。`,
-  );
 }
