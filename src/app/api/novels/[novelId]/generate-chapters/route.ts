@@ -68,9 +68,7 @@ export async function POST(request: Request, { params }: PostParams) {
       },
     });
 
-    logger.info(
-      `已成功为小说 ${novelId} 生成并保存新大纲。`,
-    );
+    logger.info(`已成功为小说 ${novelId} 生成并保存新大纲。`);
 
     // 4. 返回新生成的大纲
     return NextResponse.json(detailedOutlines, { status: 201 });
