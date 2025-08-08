@@ -128,6 +128,7 @@ ${lastChapter.content}
                   break;
                 }
                 const decodedChunk = new TextDecoder().decode(value);
+                logger.info(`[数据库流] 正在保存数据: ${decodedChunk}`);
                 fullContent += decodedChunk;
               }
 
@@ -139,15 +140,34 @@ ${lastChapter.content}
                 return; // 防止保存空章节
               }
 
-              await prisma.novelChapter.create({
-                data: {
-                  novelId,
-                  title: detailedOutline.title,
-                  chapterNumber: nextChapterNumber,
-                  content: fullContent,
-                },
+              await prisma.$transaction(async (tx) => {
+                // 1. 创建新章节
+                await tx.novelChapter.create({
+                  data: {
+                    novelId,
+                    title: detailedOutline.title,
+                    chapterNumber: nextChapterNumber,
+                    content: fullContent,
+                  },
+                });
+
+                // 2. 更新小说总字数
+                const wordCount = fullContent.length;
+                await tx.novel.update({
+                  where: { id: novelId },
+                  data: {
+                    currentWordCount: {
+                      increment: wordCount,
+                    },
+                  },
+                });
+
+                logger.info(
+                  `小说 ${novelId} 的总字数已更新，增加 ${wordCount} 字。`,
+                );
               });
 
+              // 3. 异步进行世界观演化
               await evolveWorldFromChapter(
                 novelId,
                 fullContent,
