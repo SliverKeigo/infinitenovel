@@ -107,7 +107,7 @@ export async function generateInitialWorldElements(
       }
 
       const response = await readStreamToString(responseStream);
-      
+
       if (!response) {
         throw new Error("从 AI 流中未能读取到任何内容。");
       }
@@ -123,13 +123,15 @@ export async function generateInitialWorldElements(
       if (!validation.success) {
         logger.error("AI 世界设定响应验证失败:", validation.error.flatten());
         logger.debug("验证失败的对象:", parsedResponse);
-        throw new Error(`AI 返回的世界设定格式不正确: ${validation.error.message}`);
+        throw new Error(
+          `AI 返回的世界设定格式不正确: ${validation.error.message}`,
+        );
       }
 
       logger.info("初始世界设定已成功生成并通过验证。");
       return validation.data;
     } catch (error) {
-       logger.warn(
+      logger.warn(
         `生成初始世界设定失败 (尝试次数 ${i + 1}/${retries}):`,
         error instanceof Error ? error.message : String(error),
       );
@@ -137,10 +139,10 @@ export async function generateInitialWorldElements(
         logger.error("已达到最大重试次数，生成初始世界设定失败。");
         throw error;
       }
-      await new Promise(res => setTimeout(res, 1000));
+      await new Promise((res) => setTimeout(res, 1000));
     }
   }
-  
+
   throw new Error("在所有重试后，生成初始世界设定仍然失败。");
 }
 
@@ -159,9 +161,10 @@ export async function saveInitialWorldElements(
   const { roles, scenes, clues } = worldElements;
 
   logger.info(`开始为小说 ${novelId} 保存初始世界元素。`);
+
+  // 步骤 1: 在一个事务中向 PostgreSQL 写入数据
+  logger.info(`正在向 PostgreSQL 插入初始世界元素...`);
   await prisma.$transaction(async (tx) => {
-    logger.info(`[事务] 正在为小说 ${novelId} 向 PostgreSQL 插入初始元素...`);
-    // 1. 插入新元素
     await Promise.all([
       tx.novelRole.createMany({
         data: roles.map((role) => ({
@@ -185,44 +188,43 @@ export async function saveInitialWorldElements(
         })),
       }),
     ]);
-    logger.info(`已成功为小说 ${novelId} 保存初始世界设定至 PostgreSQL。`);
-
-    // 2. 获取我们刚刚创建的记录
-    logger.info(`[事务] 正在从 PostgreSQL 获取为小说 ${novelId} 创建的记录...`);
-    const [createdRoles, createdScenes, createdClues] = await Promise.all([
-      tx.novelRole.findMany({
-        where: { novelId, name: { in: roles.map((r) => r.name) } },
-      }),
-      tx.novelScene.findMany({
-        where: { novelId, name: { in: scenes.map((s) => s.name) } },
-      }),
-      tx.novelClue.findMany({
-        where: { novelId, name: { in: clues.map((c) => c.name) } },
-      }),
-    ]);
-    logger.info(`[事务] 成功为小说 ${novelId} 获取创建的记录。`);
-
-    // 3. 填充向量存储
-    logger.info(`[事务] 正在为小说 ${novelId} 填充向量存储...`);
-    await Promise.all([
-      addElementsToCollection(
-        `novel_${novelId}_roles`,
-        createdRoles,
-        embeddingConfig,
-      ),
-      addElementsToCollection(
-        `novel_${novelId}_scenes`,
-        createdScenes,
-        embeddingConfig,
-      ),
-      addElementsToCollection(
-        `novel_${novelId}_clues`,
-        createdClues,
-        embeddingConfig,
-      ),
-    ]);
-    logger.info(`[事务] 成功为小说 ${novelId} 填充向量存储。`);
   });
+  logger.info(`已成功为小说 ${novelId} 保存初始世界设定至 PostgreSQL。`);
+
+  // 步骤 2: 在事务外部，获取刚刚创建的记录
+  logger.info(`正在从 PostgreSQL 获取新创建的记录以进行向量化...`);
+  const [createdRoles, createdScenes, createdClues] = await Promise.all([
+    prisma.novelRole.findMany({
+      where: { novelId, name: { in: roles.map((r) => r.name) } },
+    }),
+    prisma.novelScene.findMany({
+      where: { novelId, name: { in: scenes.map((s) => s.name) } },
+    }),
+    prisma.novelClue.findMany({
+      where: { novelId, name: { in: clues.map((c) => c.name) } },
+    }),
+  ]);
+  logger.info(`成功获取新创建的记录。`);
+
+  // 步骤 3: 同样在事务外部，填充向量存储
+  logger.info(`正在为小说 ${novelId} 填充向量存储...`);
+  await Promise.all([
+    addElementsToCollection(
+      `novel_${novelId}_roles`,
+      createdRoles,
+      embeddingConfig,
+    ),
+    addElementsToCollection(
+      `novel_${novelId}_scenes`,
+      createdScenes,
+      embeddingConfig,
+    ),
+    addElementsToCollection(
+      `novel_${novelId}_clues`,
+      createdClues,
+      embeddingConfig,
+    ),
+  ]);
 
   logger.info(`已成功为小说 ${novelId} 填充向量存储。`);
 }
@@ -392,37 +394,37 @@ export async function evolveWorldFromChapter(
         });
       }
       logger.info("[世界演化] 数据库事务更新成功。");
-
-      // 3. 获取所有受影响的记录，用于更新向量库
-      const allRoleNames = [
-        ...newRoles.map((r) => r.name),
-        ...updatedRoles.map((r) => r.name),
-      ];
-      const allSceneNames = [
-        ...newScenes.map((s) => s.name),
-        ...updatedScenes.map((s) => s.name),
-      ];
-      const allClueNames = [
-        ...newClues.map((c) => c.name),
-        ...updatedClues.map((c) => c.name),
-      ];
-
-      if (allRoleNames.length > 0) {
-        elementsToUpsertInVectorDB.roles = await tx.novelRole.findMany({
-          where: { novelId, name: { in: allRoleNames } },
-        });
-      }
-      if (allSceneNames.length > 0) {
-        elementsToUpsertInVectorDB.scenes = await tx.novelScene.findMany({
-          where: { novelId, name: { in: allSceneNames } },
-        });
-      }
-      if (allClueNames.length > 0) {
-        elementsToUpsertInVectorDB.clues = await tx.novelClue.findMany({
-          where: { novelId, name: { in: allClueNames } },
-        });
-      }
     });
+
+    // 3. 在事务外部，获取所有受影响的记录，用于更新向量库
+    const allRoleNames = [
+      ...newRoles.map((r) => r.name),
+      ...updatedRoles.map((r) => r.name),
+    ];
+    const allSceneNames = [
+      ...newScenes.map((s) => s.name),
+      ...updatedScenes.map((s) => s.name),
+    ];
+    const allClueNames = [
+      ...newClues.map((c) => c.name),
+      ...updatedClues.map((c) => c.name),
+    ];
+
+    if (allRoleNames.length > 0) {
+      elementsToUpsertInVectorDB.roles = await prisma.novelRole.findMany({
+        where: { novelId, name: { in: allRoleNames } },
+      });
+    }
+    if (allSceneNames.length > 0) {
+      elementsToUpsertInVectorDB.scenes = await prisma.novelScene.findMany({
+        where: { novelId, name: { in: allSceneNames } },
+      });
+    }
+    if (allClueNames.length > 0) {
+      elementsToUpsertInVectorDB.clues = await prisma.novelClue.findMany({
+        where: { novelId, name: { in: allClueNames } },
+      });
+    }
 
     // 4. 更新向量存储 (在事务之外执行)
     await Promise.all([
