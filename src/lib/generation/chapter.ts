@@ -95,7 +95,7 @@ ${lastChapter.content}
           );
 
           let contentStream: ReadableStream<Uint8Array> | null = null;
-          const maxRetries = 5;
+          const maxRetries = 6;
           for (let i = 0; i < maxRetries; i++) {
             sendStatusUpdate(controller, Status.AI_CREATING(i + 1, maxRetries));
             try {

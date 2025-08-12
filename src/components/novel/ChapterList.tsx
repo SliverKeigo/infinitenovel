@@ -155,9 +155,13 @@ export function ChapterList({ novelId }: ChapterListProps) {
         <Modal
           open={isModalOpen}
           onOpenChange={setIsModalOpen}
-          title={`第 ${selectedChapter.chapterNumber} 章`}
+          title={
+            <>
+              <span className="font-light">第 {selectedChapter.chapterNumber} 章:</span> {selectedChapter.title}
+            </>
+          }
         >
-          <ChapterDetail novelId={novelId} chapterId={selectedChapter.id} />
+          <ChapterDetail chapter={selectedChapter} />
         </Modal>
       )}
     </>

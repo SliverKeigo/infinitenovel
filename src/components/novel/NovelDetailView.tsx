@@ -6,6 +6,7 @@ import { WorldAnvilData } from "@/components/novel/WorldAnvilData";
 import { NovelInfoSkeleton } from "@/components/skeletons/NovelInfoSkeleton";
 import { ChapterListSkeleton } from "@/components/skeletons/ChapterListSkeleton";
 import { WorldAnvilSidebarSkeleton } from "@/components/skeletons/WorldAnvilSidebarSkeleton";
+import { ChapterManagement } from "./ChapterManagement";
 
 type NovelDetailViewProps = {
   novelId: string;
@@ -21,11 +22,7 @@ export function NovelDetailView({ novelId }: NovelDetailViewProps) {
           <NovelInfo novelId={novelId} />
         </Suspense>
 
-        <ChapterGenerator novelId={novelId} />
-
-        <Suspense fallback={<ChapterListSkeleton />}>
-          <ChapterList novelId={novelId} />
-        </Suspense>
+        <ChapterManagement novelId={novelId} />
       </main>
 
       <aside className="w-full max-w-sm flex-shrink-0">

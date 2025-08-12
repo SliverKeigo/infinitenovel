@@ -237,7 +237,7 @@ export async function evolveWorldFromChapter(
   chapterContent: string,
   generationConfig: ModelConfig,
   embeddingConfig: ModelConfig,
-  retries = 3,
+  retries = 6,
 ): Promise<void> {
   logger.info(`[世界演化] 开始为小说 ${novelId} 进行世界演化...`);
 
@@ -249,7 +249,9 @@ export async function evolveWorldFromChapter(
 
   for (let i = 0; i < retries; i++) {
     try {
-      logger.info(`[世界演化] 正在提取世界观演变 (尝试次数 ${i + 1}/${retries})...`);
+      logger.info(
+        `[世界演化] 正在提取世界观演变 (尝试次数 ${i + 1}/${retries})...`,
+      );
       const responseStream = await getChatCompletion(
         "提取世界观演变",
         generationConfig,
@@ -265,7 +267,7 @@ export async function evolveWorldFromChapter(
       if (!response) {
         throw new Error("从 AI 流中未能读取到任何内容。");
       }
-      
+
       const parsedJson = safelyParseJson<WorldEvolution>(response);
       if (!parsedJson) {
         logger.error(
@@ -285,7 +287,7 @@ export async function evolveWorldFromChapter(
         logger.debug("[世界演化] 验证失败的对象:", parsedJson);
         throw new Error("AI 返回的世界演化格式不正确。");
       }
-      
+
       evolution = validation.data;
       logger.info("[世界演化] AI 提取成功。");
       break; // 成功则跳出循环
@@ -295,7 +297,9 @@ export async function evolveWorldFromChapter(
         error instanceof Error ? error.message : String(error),
       );
       if (i === retries - 1) {
-        logger.error("[世界演化] 已达到最大重试次数，世界演化失败，将跳过此步骤。");
+        logger.error(
+          "[世界演化] 已达到最大重试次数，世界演化失败，将跳过此步骤。",
+        );
         return; // 最终失败，直接返回，不抛出错误
       }
       await new Promise((res) => setTimeout(res, 1000 * (i + 1)));
@@ -303,10 +307,10 @@ export async function evolveWorldFromChapter(
   }
 
   if (!evolution) {
-      logger.info("[世界演化] 未能成功提取世界演化信息。");
-      return;
+    logger.info("[世界演化] 未能成功提取世界演化信息。");
+    return;
   }
-  
+
   const {
     newRoles,
     updatedRoles,
@@ -329,7 +333,7 @@ export async function evolveWorldFromChapter(
     logger.info("[世界演化] AI 未提取到新的或更新的世界元素。结束流程。");
     return;
   }
-  
+
   try {
     // 数据库事务
     await prisma.$transaction(async (tx) => {
@@ -449,10 +453,10 @@ export async function evolveWorldFromChapter(
 
     logger.info("[世界演化] 向量存储更新成功。");
   } catch (dbError) {
-      logger.error({
-        msg: `[世界演化] 在更新数据库或向量存储时发生严重错误，小说ID: ${novelId}`,
-        err: dbError,
-      });
-      // 数据库或向量存储的错误比较严重，但仍然不应中断主流程
+    logger.error({
+      msg: `[世界演化] 在更新数据库或向量存储时发生严重错误，小说ID: ${novelId}`,
+      err: dbError,
+    });
+    // 数据库或向量存储的错误比较严重，但仍然不应中断主流程
   }
 }

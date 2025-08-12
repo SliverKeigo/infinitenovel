@@ -7,6 +7,7 @@ import { safelyParseJson } from "@/lib/utils";
 
 type ChapterGeneratorProps = {
   novelId: string;
+  onGenerationComplete: () => void;
 };
 
 type StoredAiConfig = {
@@ -17,13 +18,15 @@ type StoredAiConfig = {
   };
 };
 
-export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
+export function ChapterGenerator({
+  novelId,
+  onGenerationComplete,
+}: ChapterGeneratorProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
-  const [streamingContent, setStreamingContent] = useState("");
   const [generationConfig, setGenerationConfig] = useState<ModelConfig | null>(
     null,
   );
@@ -36,7 +39,11 @@ export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
     try {
       const settingsStr = localStorage.getItem("ai-config-storage");
       const settings = safelyParseJson<StoredAiConfig>(settingsStr, {
-        state: { models: [], activeGenerationModelId: "", activeEmbeddingModelId: "" },
+        state: {
+          models: [],
+          activeGenerationModelId: "",
+          activeEmbeddingModelId: "",
+        },
       });
       const { models, activeGenerationModelId, activeEmbeddingModelId } =
         settings.state || {};
@@ -66,7 +73,6 @@ export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
     }
 
     setError(null);
-    setStreamingContent("");
     setStatusMessage("正在准备生成...");
     setIsGenerating(true);
 
@@ -100,23 +106,27 @@ export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("");
+        const messageBoundary = "\n\n";
 
-        for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i];
-          if (line.startsWith("data: ")) {
-            const jsonStr = line.substring(6);
-            const data = JSON.parse(jsonStr);
-            if (data.type === "status") {
-              setStatusMessage(data.message);
-            } else if (data.type === "content") {
-              setStreamingContent((prev) => prev + data.chunk);
-            } else if (data.type === "error") {
-              throw new Error(data.message);
+        while (buffer.includes(messageBoundary)) {
+          const messageEndIndex = buffer.indexOf(messageBoundary);
+          const message = buffer.substring(0, messageEndIndex);
+          buffer = buffer.substring(messageEndIndex + messageBoundary.length);
+
+          if (message.startsWith("data: ")) {
+            const jsonStr = message.substring(6).trim();
+            if (jsonStr) {
+              const data = safelyParseJson(jsonStr);
+              if (!data) continue;
+
+              if (data.type === "status") {
+                setStatusMessage(data.message);
+              } else if (data.type === "error") {
+                throw new Error(data.message);
+              }
             }
           }
         }
-        buffer = lines[lines.length - 1];
       }
     } catch (err) {
       const errorMessage =
@@ -125,7 +135,7 @@ export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
     } finally {
       setIsGenerating(false);
       setStatusMessage("");
-      router.refresh();
+      onGenerationComplete();
     }
   };
 
@@ -150,19 +160,6 @@ export function ChapterGenerator({ novelId }: ChapterGeneratorProps) {
             <span className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-sky-500 rounded-lg blur-lg opacity-0 group-hover:opacity-60 group-focus:opacity-70 transition duration-300"></span>
             <span className="relative">{buttonText}</span>
           </button>
-
-          {isGenerating && (
-            <div className="mt-4 p-4 bg-black/20 rounded-lg max-h-60 overflow-y-auto">
-              {statusMessage && !streamingContent && (
-                <p className="text-gray-400 font-mono">{statusMessage}</p>
-              )}
-              {streamingContent && (
-                <p className="text-white whitespace-pre-wrap font-mono">
-                  {streamingContent}
-                </p>
-              )}
-            </div>
-          )}
         </>
       )}
 
