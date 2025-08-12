@@ -55,7 +55,7 @@ export async function generateInitialWorldElements(
   mainOutline: string,
   detailedOutline: DetailedOutlineBatch,
   generationConfig: ModelConfig,
-  retries = 3,
+  retries = 6,
 ): Promise<InitialWorldBuild> {
   const worldBuildingPrompt = `
     你是一位世界构建大师和小说分析师。请仔细阅读以下的故事主大纲和初始几章的详细规划，然后基于这些信息，识别出这个故事最核心的、必须预先设定的“世界元素”。
@@ -107,6 +107,7 @@ export async function generateInitialWorldElements(
       }
 
       const response = await readStreamToString(responseStream);
+      logger.debug(`[AI 原始响应] 世界设定生成: ${response}`);
 
       if (!response) {
         throw new Error("从 AI 流中未能读取到任何内容。");

@@ -27,16 +27,31 @@ function getClient(): ChromaClient {
  * @param {string} name - 集合的名称。
  * @returns {Promise<Collection>}
  */
-export async function getOrCreateCollection(name: string): Promise<Collection> {
+export async function getOrCreateCollection(
+  name: string,
+  retries = 5,
+): Promise<Collection> {
   const chroma = getClient();
-  try {
-    const collection = await chroma.getOrCreateCollection({ name });
-    logger.info(`成功连接到集合: ${name}`);
-    return collection;
-  } catch (e) {
-    logger.error(`获取或创建集合 '${name}' 失败`, e);
-    throw new Error(`无法连接到集合: ${name}`);
+  for (let i = 0; i < retries; i++) {
+    try {
+      const collection = await chroma.getOrCreateCollection({ name });
+      logger.info(`成功连接到集合: ${name}`);
+      return collection;
+    } catch (e) {
+      logger.warn(
+        `获取或创建集合 '${name}' 失败 (尝试次数 ${i + 1}/${retries}):`,
+        e, // Log the full error object for detailed diagnostics
+      );
+      if (i === retries - 1) {
+        logger.error(`已达到最大重试次数，无法连接到集合 '${name}'。`);
+        throw new Error(`在所有重试后，仍然无法连接到集合: ${name}`);
+      }
+      const delay = Math.pow(2, i) * 1000; // Exponential backoff
+      await new Promise((res) => setTimeout(res, delay));
+    }
   }
+  // This line should theoretically be unreachable
+  throw new Error(`在所有重试后，仍然无法连接到集合: ${name}`);
 }
 
 interface WorldElement {

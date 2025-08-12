@@ -30,7 +30,7 @@ export async function generateStyleAndTone(
   summary: string,
   mainOutline: string,
   generationConfig: ModelConfig,
-  retries = 3,
+  retries = 6,
 ): Promise<StyleAndTone> {
   const prompt = `
     你是一位经验丰富的文学评论家和小说家。请根据以下小说的核心信息，提炼出最适合它的**写作风格**和**整体基调**。

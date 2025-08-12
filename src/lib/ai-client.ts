@@ -61,7 +61,7 @@ export async function getChatCompletion(
     response_format?: ChatCompletionCreateParams["response_format"];
     stream?: boolean;
   } = {},
-  retries = 3,
+  retries = 6,
 ): Promise<string | ReadableStream<Uint8Array> | null> {
   const aiClient = createTemporaryClient(config);
   log(
@@ -168,7 +168,7 @@ export async function getChatCompletion(
 export async function getEmbeddings(
   config: ModelConfig,
   input: string | string[],
-  retries = 3,
+  retries = 6,
 ): Promise<number[][] | null> {
   for (let i = 0; i < retries; i++) {
     try {

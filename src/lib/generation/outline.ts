@@ -70,7 +70,7 @@ export async function generateDetailedOutline(
   novelId: string,
   generationConfig: ModelConfig,
   chaptersToGenerate: number = 5,
-  retries = 3,
+  retries = 6,
 ): Promise<DetailedOutlineBatch> {
   const novel = await prisma.novel.findUnique({
     where: { id: novelId },
@@ -164,6 +164,7 @@ export async function generateDetailedOutline(
 
       // 5. 消费流并组装完整响应
       const fullResponse = await readStreamToString(responseStream);
+      logger.debug(`[AI 原始响应] 大纲生成: ${fullResponse}`);
 
       if (!fullResponse) {
         throw new Error("从 AI 流中未能读取到任何内容。");
