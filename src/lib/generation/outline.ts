@@ -102,19 +102,28 @@ export async function generateDetailedOutline(
     你是一位顶尖的小说策划师，任务是为一部正在创作中的小说生成接下来 ${chaptersToGenerate} 章的详细情节大纲。
 
     **绝对规则:**
-    - 你的输出必须是纯粹的、格式完全正确的 JSON 数组。
+    - 你的输出必须是纯粹的、格式完全正确的 JSON 对象。返回一个包含 "outlines" 键的 JSON 对象，其值为章节大纲数组。
     - 禁止在 JSON 内容之外包含任何文本，包括解释、注释、思考过程或任何非 JSON 字符。
     - 不要使用 Markdown 语法（如 \`\`\`json）。
-    - 你的整个响应应该直接以 \`[\` 开始，并以 \`]\` 结束。
+    - 你的整个响应应直接以 \`{\` 开始，并以 \`}\` 结束。
 
-    **JSON 结构:**
-    - 你的输出必须是一个 JSON 数组，数组中的每个对象代表一个章节。
-    - 每个对象必须包含以下四个字段，且字段名必须完全匹配：
-            1. "chapterNumber": (整数) - 章节序号，从 ${lastChapterNumber + 1} 开始连续递增。
-            2. "title": (字符串) - 本章标题。
-            3. "summary": (字符串) - 本章情节的简要概述。
-            4. "keyEvents": (字符串数组) - 描述本章发生的关键事件、对话或场景的列表。
-    - 禁止包含任何额外字段。
+    **JSON 结构示例:**
+    {
+      "outlines": [
+        {
+          "chapterNumber": ${lastChapterNumber + 1},
+          "title": "章节标题示例",
+          "summary": "章节摘要示例",
+          "keyEvents": ["关键事件1", "关键事件2"]
+        }
+      ]
+    }
+
+    请严格遵循以上结构。章节数组中每个对象必须包含以下四个字段：
+    1. "chapterNumber": (整数) - 章节序号，从 ${lastChapterNumber + 1} 开始连续递增。
+    2. "title": (字符串) - 本章标题。
+    3. "summary": (字符串) - 本章情节的简要概述。
+    4. "keyEvents": (字符串数组) - 描述本章发生的关键事件、对话或场景的列表。
 
     **创作所需的上下文信息:**
 
@@ -137,53 +146,35 @@ export async function generateDetailedOutline(
     `正在为小说 ${novelId} 的接下来 ${chaptersToGenerate} 章生成详细大纲...`,
   );
 
-  // 4. 调用带流的 AI 服务
-  const responseStream = await getChatCompletion(
+  const jsonResponse = await getChatCompletion(
     "生成详细大纲",
     generationConfig,
     detailedOutlinePrompt,
-    { stream: true },
+    { response_format: { type: "json_object" } },
   );
 
-  if (!responseStream) {
-    throw new Error("从 AI 服务生成详细大纲流失败。");
+  if (typeof jsonResponse !== "string" || !jsonResponse) {
+    throw new Error("从 AI 服务生成详细大纲失败，未收到有效响应。");
   }
 
-  // 5. 消费流并组装完整响应
-  const fullResponse = await readStreamToString(responseStream);
-
-  // 6. 验证并解析组装后的响应
+  // 5. 验证并解析响应
   try {
-    // 首先，将整个响应解析为通用对象以检查其结构
-    const rawParsed = safelyParseJson<any>(fullResponse);
+    const parsedJson = safelyParseJson(jsonResponse);
 
-    // 检查响应是否嵌套在 'message' 属性中
-    let potentialOutlines: unknown;
-    if (typeof rawParsed.message === "string") {
-      // 如果 'message' 是字符串，它可能是字符串化的 JSON。再次解析它。
-      try {
-        potentialOutlines = safelyParseJson(rawParsed.message);
-      } catch (e) {
-        // 如果解析消息失败，则回退到使用原始解析对象
-        potentialOutlines = rawParsed;
-      }
-    } else {
-      // 否则，假设主对象包含数据
-      potentialOutlines = rawParsed;
-    }
+    // AI 模型有时会将数组包装在一个名为 "outlines" 或 "data" 的对象中
+    const outlinesArray = parsedJson.outlines || parsedJson.data || parsedJson;
 
-    // 实际的大纲可能在顶层，或嵌套在 'outlines' 键下
-    const validation = detailedOutlineBatchSchema.safeParse(potentialOutlines);
+    const validation = detailedOutlineBatchSchema.safeParse(outlinesArray);
 
     if (!validation.success) {
       logger.error("AI 响应验证失败:", validation.error.flatten());
-      throw new Error(`AI 返回了格式错误的详细大纲。原始响应: ${fullResponse}`);
+      throw new Error(`AI 返回了格式错误的详细大纲。原始响应: ${jsonResponse}`);
     }
 
     logger.info("详细大纲已成功生成并通过验证。");
     return validation.data;
   } catch (error) {
     logger.error("解析或验证 AI 响应时出错:", error);
-    throw new Error(`从 AI 响应解析详细大纲失败。原始响应: ${fullResponse}`);
+    throw new Error(`从 AI 响应解析详细大纲失败。原始响应: ${jsonResponse}`);
   }
 }

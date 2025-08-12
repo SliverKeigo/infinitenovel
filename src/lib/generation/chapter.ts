@@ -10,7 +10,6 @@ import {
 import { evolveWorldFromChapter } from "./world";
 import { queryCollection } from "../vector-store";
 import { getChatCompletion } from "@/lib/ai-client";
-import { log } from "node:console";
 
 const Status = {
   DETERMINING_CHAPTER_NUMBER: "正在确定章节序号...",
@@ -277,8 +276,31 @@ async function getOrCreateChapterOutline(
   generationConfig: ModelConfig,
   controller: ReadableStreamDefaultController<Uint8Array>,
 ): Promise<{ novel: Novel; detailedOutline: DetailedChapterOutline }> {
-  let novel = await prisma.novel.findUnique({ where: { id: novelId } });
-  if (!novel) throw new Error("找不到指定的小说。");
+  // 显式选择所有字段，以纠正可能存在的类型缓存问题
+  const novelSelect = {
+    id: true,
+    title: true,
+    summary: true,
+    type: true,
+    outline: true,
+    detailedOutline: true,
+    storySoFarSummary: true,
+    presetChapters: true,
+    currentWordCount: true,
+    createdAt: true,
+    updatedAt: true,
+    style: true,
+    tone: true,
+  };
+
+  let novelData = await prisma.novel.findUnique({
+    where: { id: novelId },
+    select: novelSelect,
+  });
+  if (!novelData) throw new Error("找不到指定的小说。");
+
+  // 将获取的数据断言为完整的 Novel 类型
+  let novel: Novel = novelData as Novel;
 
   const parseResult = detailedOutlineBatchSchema.safeParse(
     novel.detailedOutline,
@@ -295,10 +317,14 @@ async function getOrCreateChapterOutline(
       generationConfig,
     );
     existingOutlines.push(...newOutlines);
-    novel = await prisma.novel.update({
+
+    const updatedNovelData = await prisma.novel.update({
       where: { id: novelId },
       data: { detailedOutline: existingOutlines },
+      select: novelSelect, // 同样使用显式选择
     });
+    novel = updatedNovelData as Novel; // 再次进行类型断言
+
     detailedOutline = existingOutlines.find(
       (o) => o.chapterNumber === chapterNumber,
     );
@@ -352,8 +378,8 @@ function buildChapterPrompt(
 *   **核心摘要:** ${novel.summary}
 
 **写作风格和基调:**
-*   **风格:** ${novel.style}
-*   **基调:** ${novel.tone}
+*   **风格:** ${novel.style || "暂未设定"}
+*   **基调:** ${novel.tone || "暂未设定"}
 
 **章节创作任务:**
 *   **当前章节:** 第 ${nextChapterNumber} 章

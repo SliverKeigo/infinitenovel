@@ -3,10 +3,10 @@ import dynamic from "next/dynamic";
 
 const CreateNovelView = dynamic(
   () => import("@/components/novel/CreateNovelView"),
-  { 
+  {
     ssr: false,
-    loading: () => <p className="text-center">Loading...</p> 
-  }
+    loading: () => <p className="text-center"></p>,
+  },
 );
 
 export default function CreatePage() {
@@ -17,4 +17,3 @@ export default function CreatePage() {
     </div>
   );
 }
-

@@ -7,6 +7,7 @@ import {
   generateInitialWorldElements,
   saveInitialWorldElements,
 } from "@/lib/generation/world";
+import { generateStyleAndTone } from "@/lib/generation/style";
 import {
   generateMainOutline,
   generateDetailedOutline,
@@ -69,7 +70,15 @@ export async function POST(request: Request) {
     );
     const mainOutline = await readStreamToString(mainOutlineStream);
 
-    // 3. 在数据库中创建带有主大纲的小说记录
+    // 2.5. 生成写作风格和基调
+    const { style, tone } = await generateStyleAndTone(
+      title,
+      summary,
+      mainOutline,
+      generationConfig,
+    );
+
+    // 3. 在数据库中创建带有主大纲、风格和基调的小说记录
     const newNovel = await prisma.novel.create({
       data: {
         title,
@@ -77,6 +86,8 @@ export async function POST(request: Request) {
         type: `${category} / ${subCategory}`,
         presetChapters,
         outline: mainOutline,
+        style,
+        tone,
       },
     });
 
