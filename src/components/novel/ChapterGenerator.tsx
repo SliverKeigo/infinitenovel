@@ -116,7 +116,7 @@ export function ChapterGenerator({
           if (message.startsWith("data: ")) {
             const jsonStr = message.substring(6).trim();
             if (jsonStr) {
-              const data = safelyParseJson(jsonStr);
+              const data = safelyParseJson(jsonStr as string);
               if (!data) continue;
 
               if (data.type === "status") {

@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { NovelChapter } from "@prisma/client";
-import { FileText, ChevronLeft, ChevronRight, Loader2, BookOpen } from "lucide-react";
+import {
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  BookOpen,
+} from "lucide-react";
 import { ChapterDetail } from "./ChapterDetail";
 import { Modal } from "@/components/ui/Modal";
 
@@ -23,10 +29,12 @@ export function ChapterList({ novelId }: ChapterListProps) {
   const [pageSize, setPageSize] = useState(10);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedChapter, setSelectedChapter] = useState<NovelChapter | null>(null);
+  const [selectedChapter, setSelectedChapter] = useState<NovelChapter | null>(
+    null,
+  );
 
   useEffect(() => {
     const fetchChapters = async () => {
@@ -140,7 +148,10 @@ export function ChapterList({ novelId }: ChapterListProps) {
                     </span>
                     {chapter.title}
                   </span>
-                  <BookOpen size={18} className="text-slate-500 hover:text-white" />
+                  <BookOpen
+                    size={18}
+                    className="text-slate-500 hover:text-white"
+                  />
                 </li>
               ))}
             </ul>
@@ -157,7 +168,10 @@ export function ChapterList({ novelId }: ChapterListProps) {
           onOpenChange={setIsModalOpen}
           title={
             <>
-              <span className="font-light">第 {selectedChapter.chapterNumber} 章:</span> {selectedChapter.title}
+              <span className="font-light">
+                第 {selectedChapter.chapterNumber} 章:
+              </span>{" "}
+              {selectedChapter.title}
             </>
           }
         >
