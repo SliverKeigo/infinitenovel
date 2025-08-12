@@ -18,7 +18,8 @@ const Status = {
   GENERATING_OUTLINE: (chapterNumber: number) =>
     `正在生成第 ${chapterNumber} 章的详细大纲...`,
   RETRIEVING_CONTEXT: "正在从记忆库检索相关信息...",
-  AI_CREATING: "AI 正在创作中，请稍候...",
+  AI_CREATING: (attempt: number, maxAttempts: number) =>
+    `AI 正在创作中 (尝试次数 ${attempt}/${maxAttempts})...`,
 };
 
 function sendStatusUpdate(
@@ -93,13 +94,43 @@ ${lastChapter.content}
             nextChapterNumber,
           );
 
-          sendStatusUpdate(controller, Status.AI_CREATING);
-          const contentStream = await getChatCompletion(
-            "生成章节内容",
-            generationConfig,
-            contentGenerationPrompt,
-            { ...generationConfig.options, stream: true },
-          );
+          let contentStream: ReadableStream<Uint8Array> | null = null;
+          const maxRetries = 5;
+          for (let i = 0; i < maxRetries; i++) {
+            sendStatusUpdate(controller, Status.AI_CREATING(i + 1, maxRetries));
+            try {
+              const stream = await getChatCompletion(
+                "生成章节内容",
+                generationConfig,
+                contentGenerationPrompt,
+                { ...generationConfig.options, stream: true },
+              );
+              if (!stream) throw new Error("AI 服务返回了空的流。");
+
+              // 检查流是否为空
+              const [checkStream, finalStream] = stream.tee();
+              const reader = checkStream.getReader();
+              const { done } = await reader.read();
+              reader.releaseLock();
+
+              if (done) {
+                throw new Error("AI 服务返回了已完成的空流。");
+              }
+
+              contentStream = finalStream;
+              logger.info(`[AI 创作] 在尝试 ${i + 1} 次后成功获取内容流。`);
+              break; // 成功则跳出循环
+            } catch (error) {
+              logger.warn(
+                `[AI 创作] 生成章节内容失败 (尝试次数 ${i + 1}/${maxRetries}):`,
+                error,
+              );
+              if (i === maxRetries - 1) {
+                throw new Error("AI 服务在所有重试后仍然无法生成章节内容。");
+              }
+              await new Promise((res) => setTimeout(res, 2000 * (i + 1))); // 增加延迟
+            }
+          }
 
           if (!contentStream)
             throw new Error("AI 服务未能成功生成章节内容流。");
@@ -108,18 +139,10 @@ ${lastChapter.content}
 
           (async () => {
             try {
-              const reader = streamForDb.getReader();
-              const decoder = new TextDecoder();
-              let fullContent = "";
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                fullContent += decoder.decode(value, { stream: true });
-              }
-              fullContent += decoder.decode();
-
+              const fullContent = await readStreamToString(streamForDb);
               logger.info(`[数据库流] 完整内容长度: ${fullContent.length}`);
               if (fullContent.trim() === "") {
+                // 这个错误现在主要由重试循环处理，但作为最后一道防线保留
                 logger.error(
                   "[数据库流] AI在所有重试后返回了空内容。正在中止保存。",
                 );
@@ -353,11 +376,28 @@ function buildChapterPrompt(
     detailedOutlineSummary: detailedOutline.summary,
     detailedOutlineKeyEvents: detailedOutline.keyEvents
       .map((event) => `- ${event}`)
-      .join("\n"),
+      .join("\\n"),
     previousChapterContent,
     context,
   };
 
   // 使用通用插值函数
   return interpolatePrompt(CHAPTER_GENERATION_PROMPT, promptValues);
+}
+// readStreamToString function to read the stream into a string
+async function readStreamToString(
+  stream: ReadableStream<Uint8Array>,
+): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let result = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    result += decoder.decode(value, { stream: true });
+  }
+  result += decoder.decode(); // final chunk
+  return result;
 }
