@@ -117,24 +117,34 @@ ${lastChapter.content}
           // 后台任务，处理并保存完整内容
           (async () => {
             try {
-              let fullContent = "";
               const reader = streamForDb.getReader();
-              logger.info("[数据库流] 开始从AI流中读取数据以供数据库保存...");
+              const decoder = new TextDecoder();
+              let fullContent = "";
+              
               while (true) {
                 const { done, value } = await reader.read();
-                if (done) {
-                  logger.info("[数据库流] 流已结束。");
-                  break;
-                }
-                const decodedChunk = new TextDecoder().decode(value);
-                logger.info(`[数据库流] 正在保存数据: ${decodedChunk}`);
-                fullContent += decodedChunk;
+                if (done) break;
+                fullContent += decoder.decode(value, { stream: true });
               }
+              // 添加最后的解码调用以处理任何剩余的字节
+              fullContent += decoder.decode();
+
 
               logger.info(`[数据库流] 完整内容长度: ${fullContent.length}`);
               if (fullContent.trim() === "") {
                 logger.error(
-                  "[数据库流] AI返回了空或仅包含空白的内容。正在中止保存。",
+                  "[数据库流] AI在所有重试后返回了空内容。正在中止保存。",
+                );
+                // 向客户端发送一个特定的错误消息
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      type: "error",
+                      message: "AI未能生成章节内容，请稍后重试。",
+                    })}
+
+`,
+                  ),
                 );
                 return; // 防止保存空章节
               }
@@ -194,7 +204,12 @@ ${lastChapter.content}
             if (done) break;
             controller.enqueue(
               encoder.encode(
-                `data: ${JSON.stringify({ type: "content", chunk: new TextDecoder().decode(value) })}`,
+                `data: ${JSON.stringify({
+                  type: "content",
+                  chunk: new TextDecoder().decode(value),
+                })}
+
+`,
               ),
             );
           }
@@ -214,7 +229,10 @@ ${lastChapter.content}
           const clientErrorMessage = `章节生成失败: ${errorMessage}`;
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ type: "error", message: clientErrorMessage })}
+              `data: ${JSON.stringify({
+                type: "error",
+                message: clientErrorMessage,
+              })}
 
 `,
             ),
@@ -233,9 +251,6 @@ ${lastChapter.content}
     });
   }
 }
-
-// 此函数现在可以被移除，因为其逻辑已包含在后台任务中。
-// async function readStreamToString(stream: ReadableStream): Promise<string> { ... }
 
 async function getOutlineAndContext(
   novelId: string,

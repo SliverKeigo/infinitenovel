@@ -55,6 +55,7 @@ export async function generateInitialWorldElements(
   mainOutline: string,
   detailedOutline: DetailedOutlineBatch,
   generationConfig: ModelConfig,
+  retries = 3,
 ): Promise<InitialWorldBuild> {
   const worldBuildingPrompt = `
     你是一位世界构建大师和小说分析师。请仔细阅读以下的故事主大纲和初始几章的详细规划，然后基于这些信息，识别出这个故事最核心的、必须预先设定的“世界元素”。
@@ -88,51 +89,59 @@ export async function generateInitialWorldElements(
     ${JSON.stringify(detailedOutline, null, 2)}
   `;
 
-  logger.info("正在生成初始世界设定...");
-  const responseStream = await getChatCompletion(
-    "生成初始世界设定",
-    generationConfig,
-    worldBuildingPrompt,
-    {
-      stream: true,
-      response_format: { type: "json_object" },
-    },
-  );
-
-  if (!responseStream) {
-    throw new Error("AI 服务未能成功生成初始世界设定。");
-  }
-
-  const response = await readStreamToString(responseStream);
-
-  try {
-    const parsedResponse = safelyParseJson<InitialWorldBuild>(response);
-
-    if (!parsedResponse) {
-      logger.error(
-        "从 AI 响应中未能解析出任何 JSON 内容。原始响应:",
-        response,
+  for (let i = 0; i < retries; i++) {
+    try {
+      logger.info(`正在生成初始世界设定 (尝试次数 ${i + 1})...`);
+      const responseStream = await getChatCompletion(
+        "生成初始世界设定",
+        generationConfig,
+        worldBuildingPrompt,
+        {
+          stream: true,
+          response_format: { type: "json_object" },
+        },
       );
-      throw new Error("AI 响应为空或格式不正确，无法解析为 JSON。");
-    }
 
-    const validation = initialWorldBuildSchema.safeParse(parsedResponse);
+      if (!responseStream) {
+        throw new Error("AI 服务未能成功生成初始世界设定。");
+      }
 
-    if (!validation.success) {
-      logger.error("AI 世界设定响应验证失败:", validation.error.flatten());
-      logger.debug("验证失败的对象:", parsedResponse);
-      throw new Error("AI 返回的世界设定格式不正确。");
-    }
+      const response = await readStreamToString(responseStream);
+      
+      if (!response) {
+        throw new Error("从 AI 流中未能读取到任何内容。");
+      }
 
-    logger.info("初始世界设定已成功生成并通过验证。");
-    return validation.data;
-  } catch (error) {
-    logger.error("解析或验证 AI 世界设定响应时出错:", error);
-    if (error instanceof Error) {
-      throw error;
+      const parsedResponse = safelyParseJson<InitialWorldBuild>(response);
+
+      if (!parsedResponse) {
+        throw new Error("AI 响应为空或格式不正确，无法解析为 JSON。");
+      }
+
+      const validation = initialWorldBuildSchema.safeParse(parsedResponse);
+
+      if (!validation.success) {
+        logger.error("AI 世界设定响应验证失败:", validation.error.flatten());
+        logger.debug("验证失败的对象:", parsedResponse);
+        throw new Error(`AI 返回的世界设定格式不正确: ${validation.error.message}`);
+      }
+
+      logger.info("初始世界设定已成功生成并通过验证。");
+      return validation.data;
+    } catch (error) {
+       logger.warn(
+        `生成初始世界设定失败 (尝试次数 ${i + 1}/${retries}):`,
+        error instanceof Error ? error.message : String(error),
+      );
+      if (i === retries - 1) {
+        logger.error("已达到最大重试次数，生成初始世界设定失败。");
+        throw error;
+      }
+      await new Promise(res => setTimeout(res, 1000));
     }
-    throw new Error("从 AI 响应解析世界设定失败。");
   }
+  
+  throw new Error("在所有重试后，生成初始世界设定仍然失败。");
 }
 
 /**

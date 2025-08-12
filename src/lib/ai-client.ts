@@ -168,16 +168,36 @@ export async function getChatCompletion(
 export async function getEmbeddings(
   config: ModelConfig,
   input: string | string[],
+  retries = 3,
 ): Promise<number[][] | null> {
-  try {
-    const aiClient = createTemporaryClient(config);
-    const response = await aiClient.embeddings.create({
-      model: config.model,
-      input: input,
-    });
-    return response.data.map((item) => item.embedding);
-  } catch (error) {
-    console.error(`使用模型 [${config.name}] 生成向量时出错:`, error);
-    return null;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const aiClient = createTemporaryClient(config);
+      const response = await aiClient.embeddings.create({
+        model: config.model,
+        input: input,
+      });
+      return response.data.map((item) => item.embedding);
+    } catch (error) {
+      const is5xxError =
+        error instanceof OpenAI.APIError &&
+        error.status &&
+        error.status >= 500 &&
+        error.status < 600;
+
+      if (is5xxError && i < retries - 1) {
+        const delay = Math.pow(2, i) * 1000;
+        console.warn(
+          `[Embedding 重试] 服务返回 5xx 错误, ${delay / 1000}秒后进行第 ${
+            i + 1
+          } 次尝试...`,
+        );
+        await new Promise((res) => setTimeout(res, delay));
+        continue;
+      }
+      console.error(`使用模型 [${config.name}] 生成向量时出错:`, error);
+      return null;
+    }
   }
+  return null;
 }

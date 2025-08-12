@@ -70,6 +70,7 @@ export async function generateDetailedOutline(
   novelId: string,
   generationConfig: ModelConfig,
   chaptersToGenerate: number = 5,
+  retries = 3,
 ): Promise<DetailedOutlineBatch> {
   const novel = await prisma.novel.findUnique({
     where: { id: novelId },
@@ -141,40 +142,59 @@ export async function generateDetailedOutline(
     请基于以上所有信息，富有创造力地规划出接下来 ${chaptersToGenerate} 章的详细情节，确保故事的连贯性和吸引力。
   `;
 
-  // 4. 调用 AI 服务
-  logger.info(
-    `正在为小说 ${novelId} 的接下来 ${chaptersToGenerate} 章生成详细大纲...`,
-  );
+  for (let i = 0; i < retries; i++) {
+    try {
+      // 4. 调用 AI 服务
+      logger.info(
+        `正在为小说 ${novelId} 的接下来 ${chaptersToGenerate} 章生成详细大纲 (尝试次数 ${
+          i + 1
+        })...`,
+      );
 
-  const jsonResponse = await getChatCompletion(
-    "生成详细大纲",
-    generationConfig,
-    detailedOutlinePrompt,
-    { response_format: { type: "json_object" } },
-  );
+      const responseStream = await getChatCompletion(
+        "生成详细大纲",
+        generationConfig,
+        detailedOutlinePrompt,
+        { stream: true, response_format: { type: "json_object" } },
+      );
 
-  if (typeof jsonResponse !== "string" || !jsonResponse) {
-    throw new Error("从 AI 服务生成详细大纲失败，未收到有效响应。");
-  }
+      if (!responseStream) {
+        throw new Error("从 AI 服务生成详细大纲流失败。");
+      }
 
-  // 5. 验证并解析响应
-  try {
-    const parsedJson = safelyParseJson(jsonResponse);
+      // 5. 消费流并组装完整响应
+      const fullResponse = await readStreamToString(responseStream);
 
-    // AI 模型有时会将数组包装在一个名为 "outlines" 或 "data" 的对象中
-    const outlinesArray = parsedJson.outlines || parsedJson.data || parsedJson;
+      if (!fullResponse) {
+        throw new Error("从 AI 流中未能读取到任何内容。");
+      }
 
-    const validation = detailedOutlineBatchSchema.safeParse(outlinesArray);
+      // 6. 验证并解析组装后的响应
+      const parsedJson = safelyParseJson(fullResponse);
+      const outlinesArray =
+        parsedJson.outlines || parsedJson.data || parsedJson;
+      const validation = detailedOutlineBatchSchema.safeParse(outlinesArray);
 
-    if (!validation.success) {
-      logger.error("AI 响应验证失败:", validation.error.flatten());
-      throw new Error(`AI 返回了格式错误的详细大纲。原始响应: ${jsonResponse}`);
+      if (!validation.success) {
+        throw new Error(
+          `AI 返回了格式错误的详细大纲: ${validation.error.message}`,
+        );
+      }
+
+      logger.info("详细大纲已成功生成并通过验证。");
+      return validation.data;
+    } catch (error) {
+      logger.warn(
+        `生成详细大纲失败 (尝试次数 ${i + 1}/${retries}):`,
+        error instanceof Error ? error.message : String(error),
+      );
+      if (i === retries - 1) {
+        logger.error("已达到最大重试次数，生成详细大纲失败。");
+        throw error;
+      }
+      await new Promise((res) => setTimeout(res, 1000));
     }
-
-    logger.info("详细大纲已成功生成并通过验证。");
-    return validation.data;
-  } catch (error) {
-    logger.error("解析或验证 AI 响应时出错:", error);
-    throw new Error(`从 AI 响应解析详细大纲失败。原始响应: ${jsonResponse}`);
   }
+
+  throw new Error("在所有重试后，生成详细大纲仍然失败。");
 }
