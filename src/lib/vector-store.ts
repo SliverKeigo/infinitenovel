@@ -13,6 +13,11 @@ let client: ChromaClient | null = null;
 function getClient(): ChromaClient {
   if (!client) {
     const url = new URL(CHROMA_URL);
+    logger.info(
+      `[ChromaDB] 准备连接, 解析地址: host=${url.hostname}, port=${url.port}, ssl=${
+        url.protocol === "https:"
+      }`,
+    );
     client = new ChromaClient({
       host: url.hostname,
       port: Number(url.port),
