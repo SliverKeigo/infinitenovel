@@ -3,8 +3,8 @@ import { ChromaClient, Collection } from "chromadb";
 import { ModelConfig } from "@/types/ai";
 import { getEmbeddings } from "./ai-client";
 
-// 从环境变量读取 ChromaDB 的地址，如果没有则使用你的 IP 作为默认值
-const CHROMA_URL = process.env.CHROMA_URL || "http://10.241.158.161:8000";
+// 从环境变量读取 ChromaDB 的地址，如果没有则使用本地地址作为默认值
+const CHROMA_URL = process.env.CHROMA_URL || "http://localhost:8000";
 
 // 创建一个 ChromaDB 客户端实例
 // 我们将它设置为单例模式，确保整个应用共享同一个客户端连接
@@ -13,6 +13,7 @@ let client: ChromaClient | null = null;
 function getClient(): ChromaClient {
   if (!client) {
     const url = new URL(CHROMA_URL);
+    logger.info(`正在连接到 ChromaDB: ${url.href}`);
     client = new ChromaClient({
       host: url.hostname,
       port: Number(url.port),
@@ -56,6 +57,7 @@ export async function addElementsToCollection(
   collectionName: string,
   elements: WorldElement[],
   embeddingConfig: ModelConfig,
+  retries = 3,
 ) {
   if (elements.length === 0) {
     return;
@@ -68,14 +70,35 @@ export async function addElementsToCollection(
     (element) => `${element.name}: ${element.content}`,
   );
 
-  // 2. 调用 AI 服务生成向量嵌入
-  const embeddings = await getEmbeddings(embeddingConfig, contents);
+  // 2. 调用 AI 服务生成向量嵌入，并加入重试逻辑
+  let embeddings: number[][] | null = null;
+  for (let i = 0; i < retries; i++) {
+    try {
+      logger.info(
+        `正在为集合 ${collectionName} 生成向量 (尝试次数 ${i + 1}/${retries})`,
+      );
+      embeddings = await getEmbeddings(embeddingConfig, contents);
+      if (embeddings) {
+        break; // 成功获取，跳出循环
+      }
+      logger.warn(`第 ${i + 1} 次尝试未能生成向量，将在稍后重试...`);
+    } catch (error) {
+      logger.warn(
+        { err: error },
+        `生成向量时捕获到错误 (尝试次数 ${i + 1}/${retries})`,
+      );
+    }
+    // 如果不是最后一次尝试，则进行指数退避等待
+    if (i < retries - 1) {
+      await new Promise((res) => setTimeout(res, 1000 * Math.pow(2, i)));
+    }
+  }
+
+  // 如果在所有重试后仍然失败，则抛出错误
   if (!embeddings) {
-    // 在 getEmbeddings 内部已经有错误处理和日志记录
-    logger.warn(
-      `由于无法生成嵌入向量，跳过向集合 ${collectionName} 添加 ${elements.length} 个元素。`,
+    throw new Error(
+      `在 ${retries} 次尝试后，为集合 ${collectionName} 生成向量嵌入仍然失败。`,
     );
-    return;
   }
 
   // 3. 将元素添加到 ChromaDB 集合中
@@ -121,7 +144,9 @@ export async function queryCollection(
   });
 
   // 3. 提取并返回文档内容，同时过滤掉任何 null 或 undefined 的值
-  return (results.documents[0] ?? []).filter((doc): doc is string => doc !== null);
+  return (results.documents[0] ?? []).filter(
+    (doc): doc is string => doc !== null,
+  );
 }
 
 /**
@@ -134,6 +159,7 @@ export async function upsertElementsInCollection(
   collectionName: string,
   elements: WorldElement[],
   embeddingConfig: ModelConfig,
+  retries = 3,
 ) {
   if (elements.length === 0) {
     return;
@@ -144,12 +170,36 @@ export async function upsertElementsInCollection(
   const contents = elements.map(
     (element) => `${element.name}: ${element.content}`,
   );
-  const embeddings = await getEmbeddings(embeddingConfig, contents);
+
+  let embeddings: number[][] | null = null;
+  for (let i = 0; i < retries; i++) {
+    try {
+      logger.info(
+        `正在为集合 ${collectionName} 更新/插入向量 (尝试次数 ${
+          i + 1
+        }/${retries})`,
+      );
+      embeddings = await getEmbeddings(embeddingConfig, contents);
+      if (embeddings) {
+        break; // 成功获取，跳出循环
+      }
+      logger.warn(`第 ${i + 1} 次尝试未能生成向量，将在稍后重试...`);
+    } catch (error) {
+      logger.warn(
+        { err: error },
+        `更新/插入向量时捕获到错误 (尝试次数 ${i + 1}/${retries})`,
+      );
+    }
+    // 如果不是最后一次尝试，则进行指数退避等待
+    if (i < retries - 1) {
+      await new Promise((res) => setTimeout(res, 1000 * Math.pow(2, i)));
+    }
+  }
+
   if (!embeddings) {
-    logger.warn(
-      `由于无法生成嵌入向量，跳过对集合 ${collectionName} 的更新插入操作。`,
+    throw new Error(
+      `在 ${retries} 次尝试后，为集合 ${collectionName} 更新/插入向量嵌入仍然失败。`,
     );
-    return;
   }
 
   await collection.upsert({
