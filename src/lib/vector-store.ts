@@ -39,8 +39,10 @@ export async function getOrCreateCollection(
       return collection;
     } catch (e) {
       logger.warn(
-        `获取或创建集合 '${name}' 失败 (尝试次数 ${i + 1}/${retries}):`,
-        e, // Log the full error object for detailed diagnostics
+        { err: e },
+        `获取或创建集合 '${name}' 失败 (尝试次数 ${
+          i + 1
+        }/${retries})`,
       );
       if (i === retries - 1) {
         logger.error(`已达到最大重试次数，无法连接到集合 '${name}'。`);
