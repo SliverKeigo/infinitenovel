@@ -34,7 +34,7 @@ const formSchema = z.object({
 
 function NovelSettingsForm() {
   const { novelSettings, setNovelSettings } = useCreationStore();
-  const { getActiveGenerationModel } = useAiConfigStore();
+  const { getActiveGenerationModel, getActiveEmbeddingModel } = useAiConfigStore();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,9 +60,10 @@ function NovelSettingsForm() {
     setIsLoading(true);
 
     const generationConfig = getActiveGenerationModel();
+    const embeddingConfig = getActiveEmbeddingModel();
 
-    if (!generationConfig) {
-      setError("请先在“AI模型设置”页面激活一个文本生成模型。");
+    if (!generationConfig || !embeddingConfig) {
+      setError("请先在“AI模型设置”页面同时激活一个文本生成模型和一个向量模型。");
       setIsLoading(false);
       return;
     }
@@ -74,6 +75,7 @@ function NovelSettingsForm() {
         body: JSON.stringify({
           ...values,
           generationConfig,
+          embeddingConfig,
         }),
       });
 

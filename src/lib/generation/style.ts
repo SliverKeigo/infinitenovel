@@ -2,6 +2,7 @@ import logger from "@/lib/logger";
 import { ModelConfig } from "@/types/ai";
 import { getChatCompletion } from "@/lib/ai-client";
 import { safelyParseJson } from "@/lib/utils/json";
+import { readStreamToString } from "@/lib/utils/stream";
 import { z } from "zod";
 
 export const styleAndToneSchema = z.object({
@@ -66,15 +67,21 @@ export async function generateStyleAndTone(
         `正在为小说 "${title}" 生成写作风格和基调 (尝试次数 ${i + 1})...`,
       );
 
-      const jsonResponse = await getChatCompletion(
+      const responseStream = await getChatCompletion(
         "生成风格和基调",
         generationConfig,
         prompt,
-        { response_format: { type: "json_object" } },
+        { response_format: { type: "json_object" }, stream: true },
       );
 
-      if (typeof jsonResponse !== "string" || !jsonResponse) {
-        throw new Error("AI 服务未返回有效的响应字符串。");
+      if (!responseStream || typeof responseStream === "string") {
+        throw new Error("AI 服务未返回有效的响应流。");
+      }
+
+      const jsonResponse = await readStreamToString(responseStream);
+
+      if (!jsonResponse) {
+        throw new Error("从 AI 流中未能读取到任何内容。");
       }
 
       const parsedJson = safelyParseJson(jsonResponse);
@@ -82,9 +89,7 @@ export async function generateStyleAndTone(
 
       if (!validation.success) {
         logger.error("AI 风格/基调响应验证失败:", validation.error.flatten());
-        throw new Error(
-          `AI 返回了格式错误的风格和基调。`,
-        );
+        throw new Error(`AI 返回了格式错误的风格和基调。`);
       }
 
       logger.info(`小说 "${title}" 的风格和基调已成功生成。`);

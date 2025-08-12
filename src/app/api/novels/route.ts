@@ -13,9 +13,7 @@ import {
   generateDetailedOutline,
 } from "@/lib/generation/outline";
 import { readStreamToString } from "@/lib/utils/stream";
-import { safelyParseJson } from "@/lib/utils/json";
 
-// (保留现有的 schema 定义)
 const novelCreationRequestSchema = z.object({
   title: z.string().min(2, "标题必须至少为 2 个字符。"),
   summary: z.string().min(10, "摘要必须至少为 10 个字符。"),
@@ -30,6 +28,14 @@ const novelCreationRequestSchema = z.object({
       "model" in val
     );
   }, "必须提供有效的生成模型配置。"),
+  embeddingConfig: z.custom<ModelConfig>((val) => {
+    return (
+      typeof val === "object" &&
+      val !== null &&
+      "apiKey" in val &&
+      "model" in val
+    );
+  }, "必须提供有效的向量模型配置。"),
 });
 
 /**
@@ -58,6 +64,7 @@ export async function POST(request: Request) {
       subCategory,
       presetChapters,
       generationConfig,
+      embeddingConfig,
     } = validation.data;
 
     // 2. 生成主大纲
@@ -110,11 +117,7 @@ export async function POST(request: Request) {
 
     // 7. 保存世界元素并更新小说的详细大纲
     logger.info(`正在为小说 ${newNovel.id} 保存初始世界元素...`);
-    await saveInitialWorldElements(
-      newNovel.id,
-      worldElements,
-      generationConfig,
-    );
+    await saveInitialWorldElements(newNovel.id, worldElements, embeddingConfig);
     logger.info(`成功为小说 ${newNovel.id} 保存初始世界元素。`);
 
     logger.info(`正在为小说 ${newNovel.id} 更新详细大纲...`);
