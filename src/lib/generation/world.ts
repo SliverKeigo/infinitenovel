@@ -237,6 +237,7 @@ export async function evolveWorldFromChapter(
   chapterContent: string,
   generationConfig: ModelConfig,
   embeddingConfig: ModelConfig,
+  retries = 3,
 ): Promise<void> {
   logger.info(`[世界演化] 开始为小说 ${novelId} 进行世界演化...`);
 
@@ -244,65 +245,92 @@ export async function evolveWorldFromChapter(
     chapterContent,
   });
 
-  try {
-    const responseStream = await getChatCompletion(
-      "提取世界观演变",
-      generationConfig,
-      evolutionPrompt,
-      { response_format: { type: "json_object" }, stream: true },
-    );
+  let evolution: WorldEvolution | null = null;
 
-    if (!responseStream) {
-      logger.warn("[世界演化] AI 服务未返回响应流。跳过演化。");
+  for (let i = 0; i < retries; i++) {
+    try {
+      logger.info(`[世界演化] 正在提取世界观演变 (尝试次数 ${i + 1}/${retries})...`);
+      const responseStream = await getChatCompletion(
+        "提取世界观演变",
+        generationConfig,
+        evolutionPrompt,
+        { response_format: { type: "json_object" }, stream: true },
+      );
+
+      if (!responseStream) {
+        throw new Error("AI 服务未返回响应流。");
+      }
+
+      const response = await readStreamToString(responseStream);
+      if (!response) {
+        throw new Error("从 AI 流中未能读取到任何内容。");
+      }
+      
+      const parsedJson = safelyParseJson<WorldEvolution>(response);
+      if (!parsedJson) {
+        logger.error(
+          "[世界演化] 从 AI 响应中未能解析出任何 JSON 内容。原始响应:",
+          response,
+        );
+        throw new Error("AI 演化响应为空或格式不正确，无法解析为 JSON。");
+      }
+
+      const validation = worldEvolutionSchema.safeParse(parsedJson);
+
+      if (!validation.success) {
+        logger.error(
+          "[世界演化] AI 演化响应验证失败:",
+          validation.error.flatten(),
+        );
+        logger.debug("[世界演化] 验证失败的对象:", parsedJson);
+        throw new Error("AI 返回的世界演化格式不正确。");
+      }
+      
+      evolution = validation.data;
+      logger.info("[世界演化] AI 提取成功。");
+      break; // 成功则跳出循环
+    } catch (error) {
+      logger.warn(
+        `[世界演化] 世界演化流程失败 (尝试次数 ${i + 1}/${retries}):`,
+        error instanceof Error ? error.message : String(error),
+      );
+      if (i === retries - 1) {
+        logger.error("[世界演化] 已达到最大重试次数，世界演化失败，将跳过此步骤。");
+        return; // 最终失败，直接返回，不抛出错误
+      }
+      await new Promise((res) => setTimeout(res, 1000 * (i + 1)));
+    }
+  }
+
+  if (!evolution) {
+      logger.info("[世界演化] 未能成功提取世界演化信息。");
       return;
-    }
+  }
+  
+  const {
+    newRoles,
+    updatedRoles,
+    newScenes,
+    updatedScenes,
+    newClues,
+    updatedClues,
+  } = evolution;
 
-    const response = await readStreamToString(responseStream);
-
-    const parsedJson = safelyParseJson<WorldEvolution>(response);
-    if (!parsedJson) {
-      logger.error(
-        "[世界演化] 从 AI 响应中未能解析出任何 JSON 内容。原始响应:",
-        response,
-      );
-      throw new Error("AI 演化响应为空或格式不正确，无法解析为 JSON。");
-    }
-
-    const validation = worldEvolutionSchema.safeParse(parsedJson);
-
-    if (!validation.success) {
-      logger.error(
-        "[世界演化] AI 演化响应验证失败:",
-        validation.error.flatten(),
-      );
-      logger.debug("[世界演化] 验证失败的对象:", parsedJson);
-      throw new Error("AI 返回的世界演化格式不正确。");
-    }
-
-    const evolution = validation.data;
-    const {
+  if (
+    [
       newRoles,
       updatedRoles,
       newScenes,
       updatedScenes,
       newClues,
       updatedClues,
-    } = evolution;
-
-    if (
-      [
-        newRoles,
-        updatedRoles,
-        newScenes,
-        updatedScenes,
-        newClues,
-        updatedClues,
-      ].every((arr) => !arr || arr.length === 0)
-    ) {
-      logger.info("[世界演化] AI 未提取到新的或更新的世界元素。结束流程。");
-      return;
-    }
-
+    ].every((arr) => !arr || arr.length === 0)
+  ) {
+    logger.info("[世界演化] AI 未提取到新的或更新的世界元素。结束流程。");
+    return;
+  }
+  
+  try {
     // 数据库事务
     await prisma.$transaction(async (tx) => {
       // 1. 创建新元素
@@ -420,9 +448,11 @@ export async function evolveWorldFromChapter(
     ]);
 
     logger.info("[世界演化] 向量存储更新成功。");
-  } catch (error) {
-    logger.error("[世界演化] 世界演化流程失败:", error);
-    // 可根据需要向上抛出错误
-    throw new Error("从章节内容演化世界状态失败。");
+  } catch (dbError) {
+      logger.error({
+        msg: `[世界演化] 在更新数据库或向量存储时发生严重错误，小说ID: ${novelId}`,
+        err: dbError,
+      });
+      // 数据库或向量存储的错误比较严重，但仍然不应中断主流程
   }
 }
