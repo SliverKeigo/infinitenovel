@@ -4,6 +4,8 @@ import { getChatCompletion } from "@/lib/ai-client";
 import { safelyParseJson } from "@/lib/utils/json";
 import { readStreamToString } from "@/lib/utils/stream";
 import { z } from "zod";
+import { STYLE_AND_TONE_PROMPT } from "@/lib/prompts/style.prompts";
+import { interpolatePrompt } from "@/lib/utils/prompt";
 
 export const styleAndToneSchema = z.object({
   style: z
@@ -18,12 +20,6 @@ export type StyleAndTone = z.infer<typeof styleAndToneSchema>;
 
 /**
  * 根据小说信息生成写作风格和基调。
- *
- * @param title - 小说标题。
- * @param summary - 小说摘要。
- * @param mainOutline - 故事主线大纲。
- * @param generationConfig - AI 模型配置。
- * @returns 包含风格和基调的对象。
  */
 export async function generateStyleAndTone(
   title: string,
@@ -32,34 +28,11 @@ export async function generateStyleAndTone(
   generationConfig: ModelConfig,
   retries = 6,
 ): Promise<StyleAndTone> {
-  const prompt = `
-    你是一位经验丰富的文学评论家和小说家。请根据以下小说的核心信息，提炼出最适合它的**写作风格**和**整体基调**。
-
-    **小说信息:**
-    *   **标题:** ${title}
-    *   **类型:** ${summary}
-    *   **故事主线大纲:**
-        ${mainOutline}
-
-    **你的任务:**
-    1.  **分析:** 深入分析以上信息，理解故事的核心冲突、世界观和情感走向。
-    2.  **定义风格 (style):** 总结出一种最能体现文本特质的写作风格。
-        *   例如: "文笔细腻，注重心理描写"、"节奏明快，对话驱动"、"史诗感与悲剧色彩并存"。
-    3.  **定义基调 (tone):** 概括出整个故事最核心的情感氛围。
-        *   例如: "充满希望与救赎"、"悬疑惊悚，步步为营"、"黑色幽默与社会讽刺"。
-
-    **输出格式要求:**
-    *   你必须返回一个纯粹的、格式正确的 JSON 对象。
-    *   JSON 对象必须包含且仅包含两个键: "style" 和 "tone"。
-    *   禁止在 JSON 内容之外包含任何文本、解释或注释。
-    *   整个响应应直接以 \`{\` 开始，并以 \`}\` 结束。
-
-    **示例输出:**
-    {
-      "style": "简洁干练，以动作场面和快节奏的情节推进为主",
-      "tone": "紧张刺激，充满英雄主义和牺牲精神"
-    }
-  `;
+  const prompt = interpolatePrompt(STYLE_AND_TONE_PROMPT, {
+    title,
+    summary,
+    mainOutline,
+  });
 
   for (let i = 0; i < retries; i++) {
     try {
@@ -103,7 +76,7 @@ export async function generateStyleAndTone(
         logger.error("已达到最大重试次数，生成风格和基调失败。");
         throw error;
       }
-      await new Promise((res) => setTimeout(res, 1000 * (i + 1))); // 增加等待时间
+      await new Promise((res) => setTimeout(res, 1000 * (i + 1)));
     }
   }
   throw new Error("在所有重试后，生成风格和基调仍然失败。");

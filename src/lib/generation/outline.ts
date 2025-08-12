@@ -5,7 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { summarizeRecentChapters } from "./summary";
 import { safelyParseJson } from "../utils/json";
 import { z } from "zod";
-import { readStreamToString, chainStreamables } from "../utils/stream";
+import { readStreamToString } from "../utils/stream";
+import {
+  MAIN_OUTLINE_PROMPT,
+  DETAILED_OUTLINE_PROMPT,
+} from "@/lib/prompts/outline.prompts";
+import { interpolatePrompt } from "@/lib/utils/prompt";
 
 export const detailedChapterOutlineSchema = z.object({
   chapterNumber: z.number().int(),
@@ -21,26 +26,25 @@ export type DetailedOutlineBatch = z.infer<typeof detailedOutlineBatchSchema>;
 
 /**
  * 根据提供的小说详情生成一个高层次的故事大纲。
- * (现有函数 - 无更改)
  */
 export async function generateMainOutline(
   title: string,
   summary: string,
   category: string,
   subCategory: string,
+  estimatedChapters: number,
   generationConfig: ModelConfig,
 ) {
-  const outlinePrompt = `
-    你是一位经验丰富的小说编辑。请为以下设定创作一份引人入胜、结构清晰的故事大纲。
-    大纲需要分为三个主要部分：开端、发展、和高潮/结局。请为每个部分生成几个关键的剧情点。
+  // 准备一个简单的键值对对象，用于插值
+  const promptValues = {
+    title,
+    summary,
+    // 在这里合并 category 和 subCategory
+    category: `${category} / ${subCategory}`,
+    estimatedChapters: String(estimatedChapters),
+  };
 
-    小说信息如下：
-    - 标题: ${title}
-    - 类型: ${category} / ${subCategory}
-    - 故事简介: ${summary}
-
-    请直接返回大纲内容，不要包含任何额外的问候或解释。
-  `;
+  const outlinePrompt = interpolatePrompt(MAIN_OUTLINE_PROMPT, promptValues);
 
   logger.info("正在生成主大纲...");
   const stream = await getChatCompletion(
@@ -60,11 +64,6 @@ export async function generateMainOutline(
 
 /**
  * 生成下一批详细的、逐章的大纲。
- *
- * @param novelId - 小说 ID。
- * @param generationConfig - AI 模型配置。
- * @param chaptersToGenerate - 此批次要概述的章节数。
- * @returns 详细章节大纲的结构化数组。
  */
 export async function generateDetailedOutline(
   novelId: string,
@@ -78,6 +77,8 @@ export async function generateDetailedOutline(
       title: true,
       summary: true,
       outline: true,
+      style: true,
+      tone: true,
       storySoFarSummary: true,
       chapters: {
         orderBy: {
@@ -87,64 +88,42 @@ export async function generateDetailedOutline(
       },
     },
   });
+
   if (!novel) {
     throw new Error(`未找到 ID 为 ${novelId} 的小说。`);
   }
+
   const recentSummary = await summarizeRecentChapters(
     novelId,
     generationConfig,
   );
-  const lastChapterNumber = novel.chapters[0]?.chapterNumber
-    ? novel.chapters[0]?.chapterNumber
-    : 0;
 
-  // 3. 构建智能提示
-  const detailedOutlinePrompt = `
-    你是一位顶尖的小说策划师，任务是为一部正在创作中的小说生成接下来 ${chaptersToGenerate} 章的详细情节大纲。
+  // 1. 在代码中处理所有逻辑和计算
+  const lastChapterNumber = novel.chapters[0]?.chapterNumber || 0;
+  const nextChapterNumber = lastChapterNumber + 1;
 
-    **绝对规则:**
-    - 你的输出必须是纯粹的、格式完全正确的 JSON 对象。返回一个包含 "outlines" 键的 JSON 对象，其值为章节大纲数组。
-    - 禁止在 JSON 内容之外包含任何文本，包括解释、注释、思考过程或任何非 JSON 字符。
-    - 不要使用 Markdown 语法（如 \`\`\`json）。
-    - 你的整个响应应直接以 \`{\` 开始，并以 \`}\` 结束。
+  // 2. 准备一个干净的、与模板占位符完全对应的键值对对象
+  const promptValues = {
+    chaptersToGenerate: String(chaptersToGenerate),
+    nextChapterNumber: String(nextChapterNumber),
+    title: novel.title,
+    summary: novel.summary,
+    outline: novel.outline || "暂无主线大纲。",
+    style: novel.style || "暂未设定，请根据已有信息自行判断并保持一致。",
+    tone: novel.tone || "暂未设定，请根据已有信息自行判断并保持一致。",
+    storySoFarSummary:
+      novel.storySoFarSummary || "这是故事的开端，还没有长篇摘要。",
+    recentSummary: recentSummary,
+  };
 
-    **JSON 结构示例:**
-    {
-      "outlines": [
-        {
-          "chapterNumber": ${lastChapterNumber + 1},
-          "title": "章节标题示例",
-          "summary": "章节摘要示例",
-          "keyEvents": ["关键事件1", "关键事件2"]
-        }
-      ]
-    }
-
-    请严格遵循以上结构。章节数组中每个对象必须包含以下四个字段：
-    1. "chapterNumber": (整数) - 章节序号，从 ${lastChapterNumber + 1} 开始连续递增。
-    2. "title": (字符串) - 本章标题。
-    3. "summary": (字符串) - 本章情节的简要概述。
-    4. "keyEvents": (字符串数组) - 描述本章发生的关键事件、对话或场景的列表。
-
-    **创作所需的上下文信息:**
-
-    **1. 小说核心设定 (全局路线图):**
-    - 标题: ${novel.title}
-    - 简介: ${novel.summary}
-    - 故事主线大纲: ${novel.outline || "暂无主线大纲。"}
-
-    **2. 故事至今的总览 (长期记忆):**
-    ${novel.storySoFarSummary || "这是故事的开端，还没有长篇摘要。"}
-
-    **3. 最近发生的事件 (短期记忆):**
-    ${recentSummary}
-
-    请基于以上所有信息，富有创造力地规划出接下来 ${chaptersToGenerate} 章的详细情节，确保故事的连贯性和吸引力。
-  `;
+  // 3. 调用通用的插值函数
+  const detailedOutlinePrompt = interpolatePrompt(
+    DETAILED_OUTLINE_PROMPT,
+    promptValues,
+  );
 
   for (let i = 0; i < retries; i++) {
     try {
-      // 4. 调用 AI 服务
       logger.info(
         `正在为小说 ${novelId} 的接下来 ${chaptersToGenerate} 章生成详细大纲 (尝试次数 ${
           i + 1
@@ -162,7 +141,6 @@ export async function generateDetailedOutline(
         throw new Error("从 AI 服务生成详细大纲流失败。");
       }
 
-      // 5. 消费流并组装完整响应
       const fullResponse = await readStreamToString(responseStream);
       logger.debug(`[AI 原始响应] 大纲生成: ${fullResponse}`);
 
@@ -170,7 +148,6 @@ export async function generateDetailedOutline(
         throw new Error("从 AI 流中未能读取到任何内容。");
       }
 
-      // 6. 验证并解析组装后的响应
       const parsedJson = safelyParseJson(fullResponse);
       const outlinesArray =
         parsedJson.outlines || parsedJson.data || parsedJson;

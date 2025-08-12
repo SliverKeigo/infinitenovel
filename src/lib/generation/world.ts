@@ -10,6 +10,11 @@ import {
 import { DetailedOutlineBatch } from "./outline";
 import { safelyParseJson } from "../utils/json";
 import { readStreamToString } from "../utils/stream";
+import {
+  INITIAL_WORLD_BUILD_PROMPT,
+  WORLD_EVOLUTION_PROMPT,
+} from "@/lib/prompts/world.prompts";
+import { interpolatePrompt } from "@/lib/utils/prompt";
 
 // 用于验证 AI 生成的世界观元素的 Zod 模式
 const worldElementSchema = z.object({
@@ -57,37 +62,10 @@ export async function generateInitialWorldElements(
   generationConfig: ModelConfig,
   retries = 6,
 ): Promise<InitialWorldBuild> {
-  const worldBuildingPrompt = `
-    你是一位世界构建大师和小说分析师。请仔细阅读以下的故事主大纲和初始几章的详细规划，然后基于这些信息，识别出这个故事最核心的、必须预先设定的“世界元素”。
-
-    **输出格式要求:**
-    请严格按照以下 JSON 格式提供你的回答，不要包含任何 markdown 语法 (\`\`\`json\`) 或其他解释性文本。
-    对于每一个角色、场景或线索，提供一个名称（name）和一段详细的描述（description）。
-
-    {
-      "roles": [
-        { "name": "核心角色1", "description": "角色的背景、性格、目标、外貌等..." },
-        { "name": "核心角色2", "description": "..." }
-      ],
-      "scenes": [
-        { "name": "关键场景1", "description": "这个场景的环境、氛围、重要性等..." },
-        { "name": "关键场景2", "description": "..." }
-      ],
-      "clues": [
-        { "name": "关键线索或物品1", "description": "这个线索或物品的详细信息、作用..." }
-      ]
-    }
-
-    ---
-    **故事背景资料**
-    ---
-
-    **主大纲:**
-    ${mainOutline}
-
-    **初始章节详细规划:**
-    ${JSON.stringify(detailedOutline, null, 2)}
-  `;
+  const worldBuildingPrompt = interpolatePrompt(INITIAL_WORLD_BUILD_PROMPT, {
+    mainOutline,
+    detailedOutlineJson: JSON.stringify(detailedOutline, null, 2),
+  });
 
   for (let i = 0; i < retries; i++) {
     try {
@@ -166,65 +144,81 @@ export async function saveInitialWorldElements(
   // 步骤 1: 在一个事务中向 PostgreSQL 写入数据
   logger.info(`正在向 PostgreSQL 插入初始世界元素...`);
   await prisma.$transaction(async (tx) => {
-    await Promise.all([
-      tx.novelRole.createMany({
+    if (roles.length > 0) {
+      await tx.novelRole.createMany({
         data: roles.map((role) => ({
           novelId,
           name: role.name,
           content: role.description,
         })),
-      }),
-      tx.novelScene.createMany({
+        skipDuplicates: true,
+      });
+    }
+    if (scenes.length > 0) {
+      await tx.novelScene.createMany({
         data: scenes.map((scene) => ({
           novelId,
           name: scene.name,
           content: scene.description,
         })),
-      }),
-      tx.novelClue.createMany({
+        skipDuplicates: true,
+      });
+    }
+    if (clues.length > 0) {
+      await tx.novelClue.createMany({
         data: clues.map((clue) => ({
           novelId,
           name: clue.name,
           content: clue.description,
         })),
-      }),
-    ]);
+        skipDuplicates: true,
+      });
+    }
   });
   logger.info(`已成功为小说 ${novelId} 保存初始世界设定至 PostgreSQL。`);
 
   // 步骤 2: 在事务外部，获取刚刚创建的记录
   logger.info(`正在从 PostgreSQL 获取新创建的记录以进行向量化...`);
   const [createdRoles, createdScenes, createdClues] = await Promise.all([
-    prisma.novelRole.findMany({
-      where: { novelId, name: { in: roles.map((r) => r.name) } },
-    }),
-    prisma.novelScene.findMany({
-      where: { novelId, name: { in: scenes.map((s) => s.name) } },
-    }),
-    prisma.novelClue.findMany({
-      where: { novelId, name: { in: clues.map((c) => c.name) } },
-    }),
+    roles.length > 0
+      ? prisma.novelRole.findMany({
+          where: { novelId, name: { in: roles.map((r) => r.name) } },
+        })
+      : Promise.resolve([]),
+    scenes.length > 0
+      ? prisma.novelScene.findMany({
+          where: { novelId, name: { in: scenes.map((s) => s.name) } },
+        })
+      : Promise.resolve([]),
+    clues.length > 0
+      ? prisma.novelClue.findMany({
+          where: { novelId, name: { in: clues.map((c) => c.name) } },
+        })
+      : Promise.resolve([]),
   ]);
   logger.info(`成功获取新创建的记录。`);
 
   // 步骤 3: 同样在事务外部，填充向量存储
   logger.info(`正在为小说 ${novelId} 填充向量存储...`);
   await Promise.all([
-    addElementsToCollection(
-      `novel_${novelId}_roles`,
-      createdRoles,
-      embeddingConfig,
-    ),
-    addElementsToCollection(
-      `novel_${novelId}_scenes`,
-      createdScenes,
-      embeddingConfig,
-    ),
-    addElementsToCollection(
-      `novel_${novelId}_clues`,
-      createdClues,
-      embeddingConfig,
-    ),
+    createdRoles.length > 0 &&
+      addElementsToCollection(
+        `novel_${novelId}_roles`,
+        createdRoles,
+        embeddingConfig,
+      ),
+    createdScenes.length > 0 &&
+      addElementsToCollection(
+        `novel_${novelId}_scenes`,
+        createdScenes,
+        embeddingConfig,
+      ),
+    createdClues.length > 0 &&
+      addElementsToCollection(
+        `novel_${novelId}_clues`,
+        createdClues,
+        embeddingConfig,
+      ),
   ]);
 
   logger.info(`已成功为小说 ${novelId} 填充向量存储。`);
@@ -246,30 +240,9 @@ export async function evolveWorldFromChapter(
 ): Promise<void> {
   logger.info(`[世界演化] 开始为小说 ${novelId} 进行世界演化...`);
 
-  const evolutionPrompt = `
-    你是一个世界观演化分析引擎。你的任务是阅读以下小说章节内容，并与已知世界设定进行对比，提取出所有“新的”和“被更新的”世界元素。
-
-    **分析重点:**
-    1.  **新角色/场景/线索 (newRoles, newScenes, newClues)**: 识别并提取章节中全新出现的、之前从未提及的角色、场景或线索。
-    2.  **更新的角色/场景/线索 (updatedRoles, updatedScenes, updatedClues)**: 识别那些已经存在但其描述在本章中得到显著补充、改变或发展的角色、场景或线索。请提供它们的名称和“更新后的”完整描述。
-
-    **输出格式要求:**
-    请严格按照以下 JSON 格式提供回答，如果某个类别下没有内容，请返回空数组 []。不要添加任何额外解释。
-
-    {
-      "newRoles": [{ "name": "新角色名", "description": "新角色的完整描述" }],
-      "updatedRoles": [{ "name": "被更新角色名", "updatedDescription": "该角色更新后的完整描述" }],
-      "newScenes": [{ "name": "新场景名", "description": "新场景的完整描述" }],
-      "updatedScenes": [{ "name": "被更新场景名", "updatedDescription": "该场景更新后的完整描述" }],
-      "newClues": [{ "name": "新线索名", "description": "新线索的完整描述" }],
-      "updatedClues": [{ "name": "被更新线索名", "updatedDescription": "该线索更新后的完整描述" }]
-    }
-
-    **待分析的章节内容:**
-    ---
-    ${chapterContent}
-    ---
-  `;
+  const evolutionPrompt = interpolatePrompt(WORLD_EVOLUTION_PROMPT, {
+    chapterContent,
+  });
 
   try {
     const responseStream = await getChatCompletion(
@@ -284,14 +257,7 @@ export async function evolveWorldFromChapter(
       return;
     }
 
-    const reader = responseStream.getReader();
-    const decoder = new TextDecoder();
-    let response = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      response += decoder.decode(value);
-    }
+    const response = await readStreamToString(responseStream);
 
     const parsedJson = safelyParseJson<WorldEvolution>(response);
     if (!parsedJson) {
@@ -331,119 +297,126 @@ export async function evolveWorldFromChapter(
         updatedScenes,
         newClues,
         updatedClues,
-      ].every((arr) => arr.length === 0)
+      ].every((arr) => !arr || arr.length === 0)
     ) {
       logger.info("[世界演化] AI 未提取到新的或更新的世界元素。结束流程。");
       return;
     }
 
-    // 用于向量存储更新的元素集合
-    const elementsToUpsertInVectorDB = {
-      roles: [] as { id: string; name: string; content: string }[],
-      scenes: [] as { id: string; name: string; content: string }[],
-      clues: [] as { id: string; name: string; content: string }[],
-    };
-
     // 数据库事务
     await prisma.$transaction(async (tx) => {
       // 1. 创建新元素
-      if (newRoles.length > 0) {
+      if (newRoles && newRoles.length > 0) {
         await tx.novelRole.createMany({
           data: newRoles.map((r) => ({
             novelId,
             name: r.name,
             content: r.description,
           })),
+          skipDuplicates: true,
         });
       }
-      if (newScenes.length > 0) {
+      if (newScenes && newScenes.length > 0) {
         await tx.novelScene.createMany({
           data: newScenes.map((s) => ({
             novelId,
             name: s.name,
             content: s.description,
           })),
+          skipDuplicates: true,
         });
       }
-      if (newClues.length > 0) {
+      if (newClues && newClues.length > 0) {
         await tx.novelClue.createMany({
           data: newClues.map((c) => ({
             novelId,
             name: c.name,
             content: c.description,
           })),
+          skipDuplicates: true,
         });
       }
 
       // 2. 更新现有元素
-      for (const role of updatedRoles) {
-        await tx.novelRole.updateMany({
-          where: { novelId, name: role.name },
-          data: { content: role.updatedDescription },
-        });
+      if (updatedRoles && updatedRoles.length > 0) {
+        for (const role of updatedRoles) {
+          await tx.novelRole.updateMany({
+            where: { novelId, name: role.name },
+            data: { content: role.updatedDescription },
+          });
+        }
       }
-      for (const scene of updatedScenes) {
-        await tx.novelScene.updateMany({
-          where: { novelId, name: scene.name },
-          data: { content: scene.updatedDescription },
-        });
+      if (updatedScenes && updatedScenes.length > 0) {
+        for (const scene of updatedScenes) {
+          await tx.novelScene.updateMany({
+            where: { novelId, name: scene.name },
+            data: { content: scene.updatedDescription },
+          });
+        }
       }
-      for (const clue of updatedClues) {
-        await tx.novelClue.updateMany({
-          where: { novelId, name: clue.name },
-          data: { content: clue.updatedDescription },
-        });
+      if (updatedClues && updatedClues.length > 0) {
+        for (const clue of updatedClues) {
+          await tx.novelClue.updateMany({
+            where: { novelId, name: clue.name },
+            data: { content: clue.updatedDescription },
+          });
+        }
       }
       logger.info("[世界演化] 数据库事务更新成功。");
     });
 
     // 3. 在事务外部，获取所有受影响的记录，用于更新向量库
     const allRoleNames = [
-      ...newRoles.map((r) => r.name),
-      ...updatedRoles.map((r) => r.name),
+      ...(newRoles || []).map((r) => r.name),
+      ...(updatedRoles || []).map((r) => r.name),
     ];
     const allSceneNames = [
-      ...newScenes.map((s) => s.name),
-      ...updatedScenes.map((s) => s.name),
+      ...(newScenes || []).map((s) => s.name),
+      ...(updatedScenes || []).map((s) => s.name),
     ];
     const allClueNames = [
-      ...newClues.map((c) => c.name),
-      ...updatedClues.map((c) => c.name),
+      ...(newClues || []).map((c) => c.name),
+      ...(updatedClues || []).map((c) => c.name),
     ];
 
-    if (allRoleNames.length > 0) {
-      elementsToUpsertInVectorDB.roles = await prisma.novelRole.findMany({
-        where: { novelId, name: { in: allRoleNames } },
-      });
-    }
-    if (allSceneNames.length > 0) {
-      elementsToUpsertInVectorDB.scenes = await prisma.novelScene.findMany({
-        where: { novelId, name: { in: allSceneNames } },
-      });
-    }
-    if (allClueNames.length > 0) {
-      elementsToUpsertInVectorDB.clues = await prisma.novelClue.findMany({
-        where: { novelId, name: { in: allClueNames } },
-      });
-    }
+    const [rolesToUpsert, scenesToUpsert, cluesToUpsert] = await Promise.all([
+      allRoleNames.length > 0
+        ? prisma.novelRole.findMany({
+            where: { novelId, name: { in: allRoleNames } },
+          })
+        : Promise.resolve([]),
+      allSceneNames.length > 0
+        ? prisma.novelScene.findMany({
+            where: { novelId, name: { in: allSceneNames } },
+          })
+        : Promise.resolve([]),
+      allClueNames.length > 0
+        ? prisma.novelClue.findMany({
+            where: { novelId, name: { in: allClueNames } },
+          })
+        : Promise.resolve([]),
+    ]);
 
     // 4. 更新向量存储 (在事务之外执行)
     await Promise.all([
-      upsertElementsInCollection(
-        `novel_${novelId}_roles`,
-        elementsToUpsertInVectorDB.roles,
-        embeddingConfig,
-      ),
-      upsertElementsInCollection(
-        `novel_${novelId}_scenes`,
-        elementsToUpsertInVectorDB.scenes,
-        embeddingConfig,
-      ),
-      upsertElementsInCollection(
-        `novel_${novelId}_clues`,
-        elementsToUpsertInVectorDB.clues,
-        embeddingConfig,
-      ),
+      rolesToUpsert.length > 0 &&
+        upsertElementsInCollection(
+          `novel_${novelId}_roles`,
+          rolesToUpsert,
+          embeddingConfig,
+        ),
+      scenesToUpsert.length > 0 &&
+        upsertElementsInCollection(
+          `novel_${novelId}_scenes`,
+          scenesToUpsert,
+          embeddingConfig,
+        ),
+      cluesToUpsert.length > 0 &&
+        upsertElementsInCollection(
+          `novel_${novelId}_clues`,
+          cluesToUpsert,
+          embeddingConfig,
+        ),
     ]);
 
     logger.info("[世界演化] 向量存储更新成功。");

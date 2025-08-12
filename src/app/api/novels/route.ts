@@ -73,6 +73,7 @@ export async function POST(request: Request) {
       summary,
       category,
       subCategory,
+      presetChapters, // 确保这个变量被传递
       generationConfig,
     );
     const mainOutline = await readStreamToString(mainOutlineStream);

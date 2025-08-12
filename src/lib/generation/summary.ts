@@ -2,6 +2,8 @@ import logger from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { ModelConfig } from "@/types/ai";
 import { getChatCompletion } from "@/lib/ai-client";
+import { SUMMARY_PROMPT } from "@/lib/prompts/summary.prompts";
+import { interpolatePrompt } from "@/lib/utils/prompt";
 
 /**
  * 总结小说的最近几个章节。
@@ -21,7 +23,7 @@ export async function summarizeRecentChapters(
   // 1. 从数据库获取最近的章节
   const recentChapters = await prisma.novelChapter.findMany({
     where: { novelId },
-    orderBy: { createdAt: "desc" }, // 首先获取最新的章节
+    orderBy: { chapterNumber: "desc" }, // 首先获取最新的章节
     take: chaptersToSummarize,
   });
 
@@ -32,25 +34,19 @@ export async function summarizeRecentChapters(
   }
 
   // 2. 合并章节内容
-  // 反转数组以保持时间顺序（从最近的最旧的到最新的）
+  // 反转数组以保持时间顺序（从最旧的到最新的）
   const combinedContent = recentChapters
     .reverse()
-    .map((chapter) => `第${chapter.chapterNumber}章: ${chapter.content}`)
-    .join(`---`);
+    .map(
+      (chapter) =>
+        `# 第 ${chapter.chapterNumber} 章: ${chapter.title}\\n\\n${chapter.content}`,
+    )
+    .join(`\\n\\n---\\n\\n`);
 
-  // 3. 为 AI 创建提示
-  const summaryPrompt = `
-    你是一位专业的小说摘要作者。请阅读以下连续的几章内容，并生成一个简洁的、第三人称的摘要，
-    概括出期间发生的主要事件、人物的关键行动和情节的重要进展。
-    这个摘要将用于为后续章节的创作提供上下文，所以请确保它信息密集且重点突出。
-
-    章节内容如下：
-    ---
-    ${combinedContent}
-    ---
-
-    请直接返回摘要内容，不要添加任何额外的标题、引言或结束语。
-  `;
+  // 3. 使用新的 prompt 模板和插值函数
+  const prompt = interpolatePrompt(SUMMARY_PROMPT, {
+    combinedContent,
+  });
 
   // 4. 调用 AI 服务获取摘要
   logger.info(
@@ -59,7 +55,7 @@ export async function summarizeRecentChapters(
   const summary = await getChatCompletion(
     "总结最近章节",
     generationConfig,
-    summaryPrompt,
+    prompt,
     { stream: false },
   );
 
