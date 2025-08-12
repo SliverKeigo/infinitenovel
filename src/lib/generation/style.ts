@@ -29,6 +29,7 @@ export async function generateStyleAndTone(
   summary: string,
   mainOutline: string,
   generationConfig: ModelConfig,
+  retries = 3,
 ): Promise<StyleAndTone> {
   const prompt = `
     你是一位经验丰富的文学评论家和小说家。请根据以下小说的核心信息，提炼出最适合它的**写作风格**和**整体基调**。
@@ -59,34 +60,46 @@ export async function generateStyleAndTone(
     }
   `;
 
-  logger.info(`正在为小说 "${title}" 生成写作风格和基调...`);
-
-  const jsonResponse = await getChatCompletion(
-    "生成风格和基调",
-    generationConfig,
-    prompt,
-    { response_format: { type: "json_object" } },
-  );
-
-  if (typeof jsonResponse !== "string" || !jsonResponse) {
-    throw new Error("从 AI 服务生成风格和基调失败，未收到有效响应。");
-  }
-
-  try {
-    const parsedJson = safelyParseJson(jsonResponse);
-    const validation = styleAndToneSchema.safeParse(parsedJson);
-
-    if (!validation.success) {
-      logger.error("AI 风格/基调响应验证失败:", validation.error.flatten());
-      throw new Error(
-        `AI 返回了格式错误的风格和基调。原始响应: ${jsonResponse}`,
+  for (let i = 0; i < retries; i++) {
+    try {
+      logger.info(
+        `正在为小说 "${title}" 生成写作风格和基调 (尝试次数 ${i + 1})...`,
       );
-    }
 
-    logger.info(`小说 "${title}" 的风格和基调已成功生成。`);
-    return validation.data;
-  } catch (error) {
-    logger.error("解析或验证风格/基调响应时出错:", error);
-    throw new Error(`从 AI 响应解析风格和基调失败。原始响应: ${jsonResponse}`);
+      const jsonResponse = await getChatCompletion(
+        "生成风格和基调",
+        generationConfig,
+        prompt,
+        { response_format: { type: "json_object" } },
+      );
+
+      if (typeof jsonResponse !== "string" || !jsonResponse) {
+        throw new Error("AI 服务未返回有效的响应字符串。");
+      }
+
+      const parsedJson = safelyParseJson(jsonResponse);
+      const validation = styleAndToneSchema.safeParse(parsedJson);
+
+      if (!validation.success) {
+        logger.error("AI 风格/基调响应验证失败:", validation.error.flatten());
+        throw new Error(
+          `AI 返回了格式错误的风格和基调。`,
+        );
+      }
+
+      logger.info(`小说 "${title}" 的风格和基调已成功生成。`);
+      return validation.data;
+    } catch (error) {
+      logger.warn(
+        `生成风格和基调失败 (尝试次数 ${i + 1}/${retries}):`,
+        error instanceof Error ? error.message : String(error),
+      );
+      if (i === retries - 1) {
+        logger.error("已达到最大重试次数，生成风格和基调失败。");
+        throw error;
+      }
+      await new Promise((res) => setTimeout(res, 1000 * (i + 1))); // 增加等待时间
+    }
   }
+  throw new Error("在所有重试后，生成风格和基调仍然失败。");
 }
