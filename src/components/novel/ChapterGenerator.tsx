@@ -7,7 +7,7 @@ import { safelyParseJson } from "@/lib/utils";
 
 type ChapterGeneratorProps = {
   novelId: string;
-  onGenerationComplete: () => void;
+  onChapterGenerated: (chapter: NovelChapter) => void;
 };
 
 type StoredAiConfig = {
@@ -20,7 +20,7 @@ type StoredAiConfig = {
 
 export function ChapterGenerator({
   novelId,
-  onGenerationComplete,
+  onChapterGenerated,
 }: ChapterGeneratorProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -124,9 +124,7 @@ export function ChapterGenerator({
               if (data.type === "status") {
                 setStatusMessage(data.message);
               } else if (data.type === "chapter_end") {
-                // 当一个完整的章节生成后，后端会发送这个事件
-                // 此时我们可以刷新章节列表
-                onGenerationComplete();
+                onChapterGenerated(data.data);
                 setStatusMessage(`第 ${data.data.chapterNumber} 章已生成！`);
               } else if (data.type === "error") {
                 throw new Error(data.message);
@@ -141,8 +139,7 @@ export function ChapterGenerator({
       setError(`生成章节时出错: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
-      setStatusMessage("");
-      // 移除这里的 onGenerationComplete，因为它现在由 chapter_end 事件触发
+      setStatusMessage("生成任务已完成。");
     }
   };
 

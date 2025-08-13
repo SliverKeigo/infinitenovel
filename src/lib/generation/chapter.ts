@@ -150,9 +150,11 @@ ${lastChapter.content}
                   `[AI 创作] 尝试 ${i + 1}，收到内容长度: ${fullContent.length}`,
                 );
 
-                if (fullContent.trim().endsWith("<END_OF_CHAPTER>")) {
+                const endTagIndex = fullContent.indexOf("<END_OF_CHAPTER>");
+
+                if (endTagIndex !== -1) {
                   const finalContent = fullContent
-                    .replace(/<END_OF_CHAPTER>\s*$/, "")
+                    .substring(0, endTagIndex)
                     .trim();
                   logger.info(
                     `[AI 创作] 在尝试 ${i + 1} 次后成功获取并验证了完整内容。`,
