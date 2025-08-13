@@ -34,33 +34,57 @@ export async function generateMainOutline(
   category: string,
   subCategory: string,
   estimatedChapters: number,
+  style: string,
+  tone: string,
   generationConfig: ModelConfig,
-) {
-  // 准备一个简单的键值对对象，用于插值
+  retries = 6,
+): Promise<string> {
   const promptValues = {
     title,
     summary,
-    // 在这里合并 category 和 subCategory
     category: `${category} / ${subCategory}`,
     estimatedChapters: String(estimatedChapters),
+    style,
+    tone,
   };
-
   const outlinePrompt = interpolatePrompt(MAIN_OUTLINE_PROMPT, promptValues);
 
-  logger.info("正在生成主大纲...");
-  const stream = await getChatCompletion(
-    "生成主大纲",
-    generationConfig,
-    outlinePrompt,
-    { stream: true },
-  );
+  for (let i = 0; i < retries; i++) {
+    try {
+      logger.info(`正在生成主大纲 (尝试次数 ${i + 1}/${retries})...`);
+      const stream = await getChatCompletion(
+        "生成主大纲",
+        generationConfig,
+        outlinePrompt,
+        { stream: true },
+      );
 
-  if (!stream) {
-    throw new Error("从 AI 服务生成小说大纲失败。");
+      if (!stream) {
+        throw new Error("AI 服务返回了空的流。");
+      }
+
+      const mainOutline = await readStreamToString(stream);
+      if (mainOutline.trim().length < 50) {
+        // 增加一个简单的验证，确保大纲不是太短或空的
+        throw new Error("生成的主大纲内容过短或为空。");
+      }
+
+      logger.info("主大纲已成功生成并通过验证。");
+      return mainOutline;
+    } catch (error) {
+      logger.warn(
+        `生成主大纲失败 (尝试次数 ${i + 1}/${retries}):`,
+        error instanceof Error ? error.message : String(error),
+      );
+      if (i === retries - 1) {
+        logger.error("已达到最大重试次数，生成主大纲失败。");
+        throw error;
+      }
+      await new Promise((res) => setTimeout(res, 1000 * (i + 1))); // 增加延迟
+    }
   }
 
-  logger.info("主大纲流生成成功。");
-  return stream;
+  throw new Error("在所有重试后，生成主大纲仍然失败。");
 }
 
 /**

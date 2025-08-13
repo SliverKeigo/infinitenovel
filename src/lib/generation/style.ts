@@ -24,14 +24,12 @@ export type StyleAndTone = z.infer<typeof styleAndToneSchema>;
 export async function generateStyleAndTone(
   title: string,
   summary: string,
-  mainOutline: string,
   generationConfig: ModelConfig,
   retries = 6,
 ): Promise<StyleAndTone> {
   const prompt = interpolatePrompt(STYLE_AND_TONE_PROMPT, {
     title,
     summary,
-    mainOutline,
   });
 
   for (let i = 0; i < retries; i++) {

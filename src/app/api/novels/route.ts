@@ -12,7 +12,6 @@ import {
   generateMainOutline,
   generateDetailedOutline,
 } from "@/lib/generation/outline";
-import { readStreamToString } from "@/lib/utils/stream";
 
 const novelCreationRequestSchema = z.object({
   title: z.string().min(2, "标题必须至少为 2 个字符。"),
@@ -67,26 +66,26 @@ export async function POST(request: Request) {
       embeddingConfig,
     } = validation.data;
 
-    // 2. 生成主大纲
-    const mainOutlineStream = await generateMainOutline(
+    // 2. 生成写作风格和基调
+    const { style, tone } = await generateStyleAndTone(
+      title,
+      summary,
+      generationConfig,
+    );
+
+    // 3. 在已知风格和基调的情况下，生成主大纲
+    const mainOutline = await generateMainOutline(
       title,
       summary,
       category,
       subCategory,
-      presetChapters, // 确保这个变量被传递
-      generationConfig,
-    );
-    const mainOutline = await readStreamToString(mainOutlineStream);
-
-    // 2.5. 生成写作风格和基调
-    const { style, tone } = await generateStyleAndTone(
-      title,
-      summary,
-      mainOutline,
+      presetChapters,
+      style,
+      tone,
       generationConfig,
     );
 
-    // 3. 在数据库中创建带有主大纲、风格和基调的小说记录
+    // 4. 在数据库中创建小说基础记录
     const newNovel = await prisma.novel.create({
       data: {
         title,
@@ -98,10 +97,9 @@ export async function POST(request: Request) {
         tone,
       },
     });
+    logger.info(`小说已创建，ID: ${newNovel.id}。`);
 
-    logger.info(`小说已创建，ID: ${newNovel.id}。现在开始生成初始详细大纲。`);
-
-    // 4. 为新小说生成第一批详细大纲
+    // 5. 生成详细开篇大纲
     const initialDetailedOutline = await generateDetailedOutline(
       newNovel.id,
       generationConfig,
@@ -116,12 +114,10 @@ export async function POST(request: Request) {
     );
     logger.info(`小说 ${newNovel.id} 的初始世界元素生成完成。`);
 
-    // 7. 保存世界元素并更新小说的详细大纲
-    logger.info(`正在为小说 ${newNovel.id} 保存初始世界元素...`);
+    // 7. 保存世界元素并更新详细大纲
+    logger.info(`正在为小说 ${newNovel.id} 保存初始世界元素并更新大纲...`);
     await saveInitialWorldElements(newNovel.id, worldElements, embeddingConfig);
-    logger.info(`成功为小说 ${newNovel.id} 保存初始世界元素。`);
 
-    logger.info(`正在为小说 ${newNovel.id} 更新详细大纲...`);
     const fullyInitializedNovel = await prisma.novel.update({
       where: { id: newNovel.id },
       data: {

@@ -294,7 +294,7 @@ async function getOrCreateChapterOutline(
     style: true,
     tone: true,
   };
-  let novelData = await prisma.novel.findUnique({
+  const novelData = await prisma.novel.findUnique({
     where: { id: novelId },
     select: novelSelect,
   });
