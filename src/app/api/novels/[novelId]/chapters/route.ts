@@ -18,6 +18,7 @@ const chapterGenerationRequestSchema = z.object({
     "必须提供有效的向量模型配置。",
   ),
   stream: z.boolean().optional().default(false),
+  count: z.number().int().min(1).optional().default(1),
 });
 
 /**
@@ -46,15 +47,18 @@ export async function POST(
       );
     }
 
-    const { generationConfig, embeddingConfig, stream } = validation.data;
-    logger.info(`收到为小说 ${novelId} 生成下一章的请求 (stream: ${stream})。`);
+    const { generationConfig, embeddingConfig, stream, count } =
+      validation.data;
+    logger.info(
+      `收到为小说 ${novelId} 生成 ${count} 章的请求 (stream: ${stream})。`,
+    );
 
     // 2. 调用核心服务函数
     const result = await generateNextChapter(
       novelId,
       generationConfig,
       embeddingConfig,
-      { stream },
+      { stream, count },
     );
 
     // 3. 根据结果类型返回响应

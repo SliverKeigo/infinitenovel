@@ -27,6 +27,7 @@ export function ChapterGenerator({
   const [configLoading, setConfigLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [count, setCount] = useState(1);
   const [generationConfig, setGenerationConfig] = useState<ModelConfig | null>(
     null,
   );
@@ -84,6 +85,7 @@ export function ChapterGenerator({
           generationConfig,
           embeddingConfig,
           stream: true,
+          count: count,
         }),
       });
 
@@ -121,6 +123,11 @@ export function ChapterGenerator({
 
               if (data.type === "status") {
                 setStatusMessage(data.message);
+              } else if (data.type === "chapter_end") {
+                // 当一个完整的章节生成后，后端会发送这个事件
+                // 此时我们可以刷新章节列表
+                onGenerationComplete();
+                setStatusMessage(`第 ${data.data.chapterNumber} 章已生成！`);
               } else if (data.type === "error") {
                 throw new Error(data.message);
               }
@@ -135,7 +142,7 @@ export function ChapterGenerator({
     } finally {
       setIsGenerating(false);
       setStatusMessage("");
-      onGenerationComplete();
+      // 移除这里的 onGenerationComplete，因为它现在由 chapter_end 事件触发
     }
   };
 
@@ -151,16 +158,37 @@ export function ChapterGenerator({
       {configLoading && <p>正在加载 AI 配置...</p>}
 
       {!configLoading && generationConfig && embeddingConfig && (
-        <>
-          <button
-            onClick={handleGenerateChapter}
-            disabled={isLoading}
-            className="w-full px-4 py-3 text-lg font-bold text-white bg-white/5 border border-white/20 rounded-lg backdrop-blur-md hover:bg-white/10 disabled:bg-gray-500/10 disabled:cursor-not-allowed transition-all duration-200 ease-in-out relative overflow-hidden group"
-          >
-            <span className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-sky-500 rounded-lg blur-lg opacity-0 group-hover:opacity-60 group-focus:opacity-70 transition duration-300"></span>
-            <span className="relative">{buttonText}</span>
-          </button>
-        </>
+        <div className="flex items-end gap-4">
+          <div className="w-28">
+            <label
+              htmlFor="chapter-count"
+              className="block text-sm font-medium text-gray-300 mb-2"
+            >
+              生成数量
+            </label>
+            <input
+              type="number"
+              id="chapter-count"
+              name="chapter-count"
+              min="1"
+              max="10"
+              value={count}
+              onChange={(e) => setCount(parseInt(e.target.value, 10))}
+              className="w-full bg-white/5 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              disabled={isLoading}
+            />
+          </div>
+          <div className="flex-grow">
+            <button
+              onClick={handleGenerateChapter}
+              disabled={isLoading}
+              className="w-full px-4 py-3 text-lg font-bold text-white bg-white/5 border border-white/20 rounded-lg backdrop-blur-md hover:bg-white/10 disabled:bg-gray-500/10 disabled:cursor-not-allowed transition-all duration-200 ease-in-out relative overflow-hidden group"
+            >
+              <span className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-sky-500 rounded-lg blur-lg opacity-0 group-hover:opacity-60 group-focus:opacity-70 transition duration-300"></span>
+              <span className="relative">{buttonText}</span>
+            </button>
+          </div>
+        </div>
       )}
 
       {error && (

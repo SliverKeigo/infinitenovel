@@ -38,176 +38,206 @@ export async function generateNextChapter(
   novelId: string,
   generationConfig: ModelConfig,
   embeddingConfig: ModelConfig,
-  options: { stream: true },
+  options: { stream: true; count?: number },
 ): Promise<Response>;
 
 export async function generateNextChapter(
   novelId: string,
   generationConfig: ModelConfig,
   embeddingConfig: ModelConfig,
-  options?: { stream?: false },
+  options: { stream?: false; count: number },
+): Promise<NovelChapter[]>;
+
+export async function generateNextChapter(
+  novelId: string,
+  generationConfig: ModelConfig,
+  embeddingConfig: ModelConfig,
+  options?: { stream?: false; count?: 1 | undefined },
 ): Promise<NovelChapter>;
 
 export async function generateNextChapter(
   novelId: string,
   generationConfig: ModelConfig,
   embeddingConfig: ModelConfig,
-  options: { stream?: boolean } = {},
-): Promise<Response | NovelChapter> {
-  if (options.stream) {
+  options: { stream?: boolean; count?: number } = {},
+): Promise<Response | NovelChapter | NovelChapter[]> {
+  const { stream = false, count = 1 } = options;
+  if (stream) {
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
         try {
-          sendStatusUpdate(controller, Status.DETERMINING_CHAPTER_NUMBER);
-          const lastChapter = await prisma.novelChapter.findFirst({
+          let lastChapter = await prisma.novelChapter.findFirst({
             where: { novelId },
             orderBy: { chapterNumber: "desc" },
           });
-          const nextChapterNumber = lastChapter
-            ? lastChapter.chapterNumber + 1
-            : 1;
 
-          const { novel, detailedOutline, context } =
-            await getOutlineAndContext(
-              novelId,
-              nextChapterNumber,
-              generationConfig,
-              embeddingConfig,
-              controller,
-            );
+          for (let i = 0; i < count; i++) {
+            sendStatusUpdate(controller, `开始生成第 ${i + 1}/${count} 章...`);
+            sendStatusUpdate(controller, Status.DETERMINING_CHAPTER_NUMBER);
+            const nextChapterNumber = lastChapter
+              ? lastChapter.chapterNumber + 1
+              : 1;
 
-          const previousChapterContent = lastChapter
-            ? `
+            const { novel, detailedOutline, context } =
+              await getOutlineAndContext(
+                novelId,
+                nextChapterNumber,
+                generationConfig,
+                embeddingConfig,
+                controller,
+              );
+
+            const previousChapterContent = lastChapter
+              ? `
 这是小说的上一章内容，请确保新章节与它衔接流畅:
 ---
 ${lastChapter.content}
 ---
 `
-            : "这是第一章。";
+              : "这是第一章。";
 
-          const contentGenerationPrompt = buildChapterPrompt(
-            novel,
-            detailedOutline,
-            context,
-            previousChapterContent,
-            nextChapterNumber,
-          );
+            const contentGenerationPrompt = buildChapterPrompt(
+              novel,
+              detailedOutline,
+              context,
+              previousChapterContent,
+              nextChapterNumber,
+            );
 
-          const maxRetries = 6;
-          let chapter: NovelChapter | null = null;
-          for (let i = 0; i < maxRetries; i++) {
-            sendStatusUpdate(controller, Status.AI_CREATING(i + 1, maxRetries));
-            try {
-              const stream = await getChatCompletion(
-                "生成章节内容",
-                generationConfig,
-                contentGenerationPrompt,
-                { ...generationConfig.options, stream: true },
+            const maxRetries = 6;
+            let chapter: NovelChapter | null = null;
+            for (let i = 0; i < maxRetries; i++) {
+              sendStatusUpdate(
+                controller,
+                Status.AI_CREATING(i + 1, maxRetries),
               );
-              if (!stream) throw new Error("AI 服务返回了空的流。");
+              try {
+                const stream = await getChatCompletion(
+                  "生成章节内容",
+                  generationConfig,
+                  contentGenerationPrompt,
+                  { ...generationConfig.options, stream: true },
+                );
+                if (!stream) throw new Error("AI 服务返回了空的流。");
 
-              const [streamForClient, streamForDb] = stream.tee();
+                const [streamForClient, streamForDb] = stream.tee();
 
-              // 将 streamForClient 推送到客户端
-              (async () => {
-                const reader = streamForClient.getReader();
-                const textDecoder = new TextDecoder();
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  const chunk = textDecoder.decode(value, { stream: true });
-                  // 注意：这里我们不再从发送给客户端的流中过滤结束标记
-                  // 客户端将负责处理或忽略它
-                  controller.enqueue(
-                    encoder.encode(
-                      `data: ${JSON.stringify({
-                        type: "content",
-                        chunk,
-                      })}\\n\\n`,
-                    ),
-                  );
-                }
-              })();
+                // 将 streamForClient 推送到客户端
+                (async () => {
+                  const reader = streamForClient.getReader();
+                  const textDecoder = new TextDecoder();
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = textDecoder.decode(value, { stream: true });
+                    // 注意：这里我们不再从发送给客户端的流中过滤结束标记
+                    // 客户端将负责处理或忽略它
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({
+                          type: "content",
+                          chunk,
+                        })}\\n\\n`,
+                      ),
+                    );
+                  }
+                })();
 
-              // 从 streamForDb 读取完整内容并验证
-              const fullContent = await readStreamToString(streamForDb);
-              logger.info(
-                `[AI 创作] 尝试 ${i + 1}，收到内容长度: ${fullContent.length}`,
-              );
-
-              if (fullContent.trim().endsWith("<END_OF_CHAPTER>")) {
-                const finalContent = fullContent
-                  .replace(/<END_OF_CHAPTER>\s*$/, "")
-                  .trim();
+                // 从 streamForDb 读取完整内容并验证
+                const fullContent = await readStreamToString(streamForDb);
                 logger.info(
-                  `[AI 创作] 在尝试 ${i + 1} 次后成功获取并验证了完整内容。`,
+                  `[AI 创作] 尝试 ${i + 1}，收到内容长度: ${fullContent.length}`,
                 );
-                const wordCount = finalContent.length;
 
-                // 使用事务来保证数据一致性
-                await prisma.$transaction(async (tx) => {
-                  const createdChapter = await tx.novelChapter.create({
-                    data: {
-                      novelId,
-                      title: detailedOutline.title,
-                      chapterNumber: nextChapterNumber,
-                      content: finalContent,
-                    },
-                  });
+                if (fullContent.trim().endsWith("<END_OF_CHAPTER>")) {
+                  const finalContent = fullContent
+                    .replace(/<END_OF_CHAPTER>\s*$/, "")
+                    .trim();
+                  logger.info(
+                    `[AI 创作] 在尝试 ${i + 1} 次后成功获取并验证了完整内容。`,
+                  );
+                  const wordCount = finalContent.length;
 
-                  await tx.novel.update({
-                    where: { id: novelId },
-                    data: {
-                      currentWordCount: {
-                        increment: wordCount,
+                  // 使用事务来保证数据一致性
+                  await prisma.$transaction(async (tx) => {
+                    const createdChapter = await tx.novelChapter.create({
+                      data: {
+                        novelId,
+                        title: detailedOutline.title,
+                        chapterNumber: nextChapterNumber,
+                        content: finalContent,
                       },
-                    },
+                    });
+
+                    await tx.novel.update({
+                      where: { id: novelId },
+                      data: {
+                        currentWordCount: {
+                          increment: wordCount,
+                        },
+                      },
+                    });
+
+                    logger.info(
+                      `小说 ${novelId} 的总字数已更新，增加 ${wordCount} 字。`,
+                    );
+                    chapter = createdChapter;
                   });
 
-                  logger.info(
-                    `小说 ${novelId} 的总字数已更新，增加 ${wordCount} 字。`,
-                  );
-                  chapter = createdChapter;
-                });
+                  if (chapter) {
+                    await evolveWorldFromChapter(
+                      novelId,
+                      finalContent,
+                      generationConfig,
+                      embeddingConfig,
+                    );
+                    logger.info(
+                      `后台任务完成: 已保存并演化了第 ${nextChapterNumber} 章。`,
+                    );
+                  }
 
-                if (chapter) {
-                  await evolveWorldFromChapter(
-                    novelId,
-                    finalContent,
-                    generationConfig,
-                    embeddingConfig,
-                  );
-                  logger.info(
-                    `后台任务完成: 已保存并演化了第 ${nextChapterNumber} 章。`,
+                  break; // 成功则跳出循环
+                } else {
+                  throw new Error(
+                    "生成的内容不完整或未包含结束标记 ‘<END_OF_CHAPTER>’。",
                   );
                 }
-
-                break; // 成功则跳出循环
-              } else {
-                throw new Error(
-                  "生成的内容不完整或未包含结束标记 ‘<END_OF_CHAPTER>’。",
+              } catch (error) {
+                logger.warn(
+                  `[AI 创作] 生成或验证章节内容失败 (尝试次数 ${
+                    i + 1
+                  }/${maxRetries}):`,
+                  error,
                 );
+                if (i === maxRetries - 1) {
+                  throw new Error(
+                    "AI 服务在所有重试后仍然无法生成完整的章节内容。",
+                  );
+                }
+                await new Promise((res) => setTimeout(res, 2000 * (i + 1))); // 增加延迟
               }
-            } catch (error) {
-              logger.warn(
-                `[AI 创作] 生成或验证章节内容失败 (尝试次数 ${
-                  i + 1
-                }/${maxRetries}):`,
-                error,
-              );
-              if (i === maxRetries - 1) {
-                throw new Error(
-                  "AI 服务在所有重试后仍然无法生成完整的章节内容。",
-                );
-              }
-              await new Promise((res) => setTimeout(res, 2000 * (i + 1))); // 增加延迟
             }
-          }
 
-          if (!chapter) {
-            throw new Error("AI 未能成功生成和保存章节。");
-          }
+            if (!chapter) {
+              throw new Error("AI 在所有重试后仍然无法生成和保存章节。");
+            }
+
+            // 将完整章节信息发送到客户端
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: "chapter_end",
+                  data: chapter,
+                })}\\n\\n`,
+              ),
+            );
+
+            // 为下一次迭代更新 lastChapter
+            lastChapter = chapter;
+          } // End of the for loop for 'count'
+
+          sendStatusUpdate(controller, `成功生成了 ${count} 章。`);
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : "出现未知服务器错误";
@@ -240,6 +270,11 @@ ${lastChapter.content}
         "Cache-Control": "no-cache",
       },
     });
+  }
+  if (count > 1) {
+    throw new Error(
+      "Non-streaming implementation for multiple chapters is not yet supported.",
+    );
   }
   throw new Error("Non-streaming implementation is not yet supported.");
 }
