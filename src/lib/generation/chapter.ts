@@ -94,8 +94,8 @@ ${lastChapter.content}
             nextChapterNumber,
           );
 
-          let contentStream: ReadableStream<Uint8Array> | null = null;
           const maxRetries = 6;
+          let chapter: NovelChapter | null = null;
           for (let i = 0; i < maxRetries; i++) {
             sendStatusUpdate(controller, Status.AI_CREATING(i + 1, maxRetries));
             try {
@@ -107,111 +107,106 @@ ${lastChapter.content}
               );
               if (!stream) throw new Error("AI 服务返回了空的流。");
 
-              // 检查流是否为空
-              const [checkStream, finalStream] = stream.tee();
-              const reader = checkStream.getReader();
-              const { done } = await reader.read();
-              reader.releaseLock();
+              const [streamForClient, streamForDb] = stream.tee();
 
-              if (done) {
-                throw new Error("AI 服务返回了已完成的空流。");
+              // 将 streamForClient 推送到客户端
+              (async () => {
+                const reader = streamForClient.getReader();
+                const textDecoder = new TextDecoder();
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  const chunk = textDecoder.decode(value, { stream: true });
+                  // 注意：这里我们不再从发送给客户端的流中过滤结束标记
+                  // 客户端将负责处理或忽略它
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({
+                        type: "content",
+                        chunk,
+                      })}\\n\\n`,
+                    ),
+                  );
+                }
+              })();
+
+              // 从 streamForDb 读取完整内容并验证
+              const fullContent = await readStreamToString(streamForDb);
+              logger.info(
+                `[AI 创作] 尝试 ${i + 1}，收到内容长度: ${fullContent.length}`,
+              );
+
+              if (fullContent.trim().endsWith("<END_OF_CHAPTER>")) {
+                const finalContent = fullContent
+                  .replace(/<END_OF_CHAPTER>\s*$/, "")
+                  .trim();
+                logger.info(
+                  `[AI 创作] 在尝试 ${i + 1} 次后成功获取并验证了完整内容。`,
+                );
+                const wordCount = finalContent.length;
+
+                // 使用事务来保证数据一致性
+                await prisma.$transaction(async (tx) => {
+                  const createdChapter = await tx.novelChapter.create({
+                    data: {
+                      novelId,
+                      title: detailedOutline.title,
+                      chapterNumber: nextChapterNumber,
+                      content: finalContent,
+                    },
+                  });
+
+                  await tx.novel.update({
+                    where: { id: novelId },
+                    data: {
+                      currentWordCount: {
+                        increment: wordCount,
+                      },
+                    },
+                  });
+
+                  logger.info(
+                    `小说 ${novelId} 的总字数已更新，增加 ${wordCount} 字。`,
+                  );
+                  chapter = createdChapter;
+                });
+
+                if (chapter) {
+                  await evolveWorldFromChapter(
+                    novelId,
+                    finalContent,
+                    generationConfig,
+                    embeddingConfig,
+                  );
+                  logger.info(
+                    `后台任务完成: 已保存并演化了第 ${nextChapterNumber} 章。`,
+                  );
+                }
+
+                break; // 成功则跳出循环
+              } else {
+                throw new Error(
+                  "生成的内容不完整或未包含结束标记 ‘<END_OF_CHAPTER>’。",
+                );
               }
-
-              contentStream = finalStream;
-              logger.info(`[AI 创作] 在尝试 ${i + 1} 次后成功获取内容流。`);
-              break; // 成功则跳出循环
             } catch (error) {
               logger.warn(
-                `[AI 创作] 生成章节内容失败 (尝试次数 ${i + 1}/${maxRetries}):`,
+                `[AI 创作] 生成或验证章节内容失败 (尝试次数 ${
+                  i + 1
+                }/${maxRetries}):`,
                 error,
               );
               if (i === maxRetries - 1) {
-                throw new Error("AI 服务在所有重试后仍然无法生成章节内容。");
+                throw new Error(
+                  "AI 服务在所有重试后仍然无法生成完整的章节内容。",
+                );
               }
               await new Promise((res) => setTimeout(res, 2000 * (i + 1))); // 增加延迟
             }
           }
 
-          if (!contentStream)
-            throw new Error("AI 服务未能成功生成章节内容流。");
-
-          const [streamForClient, streamForDb] = contentStream.tee();
-
-          (async () => {
-            try {
-              const fullContent = await readStreamToString(streamForDb);
-              logger.info(`[数据库流] 完整内容长度: ${fullContent.length}`);
-              if (fullContent.trim() === "") {
-                // 这个错误现在主要由重试循环处理，但作为最后一道防线保留
-                logger.error(
-                  "[数据库流] AI在所有重试后返回了空内容。正在中止保存。",
-                );
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({
-                      type: "error",
-                      message: "AI未能生成章节内容，请稍后重试。",
-                    })}\\n\\n`,
-                  ),
-                );
-                return;
-              }
-
-              await prisma.$transaction(async (tx) => {
-                await tx.novelChapter.create({
-                  data: {
-                    novelId,
-                    title: detailedOutline.title,
-                    chapterNumber: nextChapterNumber,
-                    content: fullContent,
-                  },
-                });
-                const wordCount = fullContent.length;
-                await tx.novel.update({
-                  where: { id: novelId },
-                  data: {
-                    currentWordCount: {
-                      increment: wordCount,
-                    },
-                  },
-                });
-                logger.info(
-                  `小说 ${novelId} 的总字数已更新，增加 ${wordCount} 字。`,
-                );
-              });
-
-              await evolveWorldFromChapter(
-                novelId,
-                fullContent,
-                generationConfig,
-                embeddingConfig,
-              );
-              logger.info(
-                `后台任务完成: 已保存并演化了第 ${nextChapterNumber} 章。`,
-              );
-            } catch (e) {
-              logger.error({
-                msg: `后台为小说 ${novelId} 保存第 ${nextChapterNumber} 章并进行世界观演化时失败`,
-                err:
-                  e instanceof Error
-                    ? { message: e.message, stack: e.stack }
-                    : e,
-              });
-            }
-          })();
-
-          const reader = streamForClient.getReader();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: "content",
-                  chunk: new TextDecoder().decode(value),
-                })}\\n\\n`,
-              ),
-            );
+          if (!chapter) {
+            throw new Error("AI 未能成功生成和保存章节。");
           }
         } catch (error) {
           const errorMessage =

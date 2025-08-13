@@ -9,6 +9,7 @@ import { readStreamToString } from "../utils/stream";
 import {
   MAIN_OUTLINE_PROMPT,
   DETAILED_OUTLINE_PROMPT,
+  COLD_START_DETAILED_OUTLINE_PROMPT,
 } from "@/lib/prompts/outline.prompts";
 import { interpolatePrompt } from "@/lib/utils/prompt";
 
@@ -79,10 +80,11 @@ export async function generateDetailedOutline(
       outline: true,
       style: true,
       tone: true,
+      type: true, // Assuming 'type' is the category
       storySoFarSummary: true,
       chapters: {
         orderBy: {
-          createdAt: "desc",
+          chapterNumber: "desc",
         },
         take: 1,
       },
@@ -93,34 +95,51 @@ export async function generateDetailedOutline(
     throw new Error(`未找到 ID 为 ${novelId} 的小说。`);
   }
 
-  const recentSummary = await summarizeRecentChapters(
-    novelId,
-    generationConfig,
-  );
-
-  // 1. 在代码中处理所有逻辑和计算
   const lastChapterNumber = novel.chapters[0]?.chapterNumber || 0;
-  const nextChapterNumber = lastChapterNumber + 1;
+  const isColdStart = lastChapterNumber === 0;
 
-  // 2. 准备一个干净的、与模板占位符完全对应的键值对对象
-  const promptValues = {
-    chaptersToGenerate: String(chaptersToGenerate),
-    nextChapterNumber: String(nextChapterNumber),
-    title: novel.title,
-    summary: novel.summary,
-    outline: novel.outline || "暂无主线大纲。",
-    style: novel.style || "暂未设定，请根据已有信息自行判断并保持一致。",
-    tone: novel.tone || "暂未设定，请根据已有信息自行判断并保持一致。",
-    storySoFarSummary:
-      novel.storySoFarSummary || "这是故事的开端，还没有长篇摘要。",
-    recentSummary: recentSummary,
-  };
+  let detailedOutlinePrompt;
+  let promptValues;
 
-  // 3. 调用通用的插值函数
-  const detailedOutlinePrompt = interpolatePrompt(
-    DETAILED_OUTLINE_PROMPT,
-    promptValues,
-  );
+  if (isColdStart) {
+    logger.info(`小说 ${novelId} 为冷启动，使用开篇大纲生成策略。`);
+    promptValues = {
+      chaptersToGenerate: String(chaptersToGenerate),
+      title: novel.title,
+      summary: novel.summary,
+      category: novel.type,
+      style: novel.style || "暂未设定",
+      tone: novel.tone || "暂未设定",
+    };
+    detailedOutlinePrompt = interpolatePrompt(
+      COLD_START_DETAILED_OUTLINE_PROMPT,
+      promptValues,
+    );
+  } else {
+    logger.info(`小说 ${novelId} 为续写，使用标准大纲生成策略。`);
+    const recentSummary = await summarizeRecentChapters(
+      novelId,
+      generationConfig,
+    );
+    const nextChapterNumber = lastChapterNumber + 1;
+
+    promptValues = {
+      chaptersToGenerate: String(chaptersToGenerate),
+      nextChapterNumber: String(nextChapterNumber),
+      title: novel.title,
+      summary: novel.summary, // novel summary is the overall summary
+      outline: novel.outline || "暂无主线大纲。",
+      style: novel.style || "暂未设定",
+      tone: novel.tone || "暂未设定",
+      storySoFarSummary:
+        novel.storySoFarSummary || "这是故事的开端，还没有长篇摘要。",
+      recentSummary: recentSummary,
+    };
+    detailedOutlinePrompt = interpolatePrompt(
+      DETAILED_OUTLINE_PROMPT,
+      promptValues,
+    );
+  }
 
   for (let i = 0; i < retries; i++) {
     try {
