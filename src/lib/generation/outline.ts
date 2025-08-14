@@ -37,7 +37,7 @@ export async function generateMainOutline(
   style: string,
   tone: string,
   generationConfig: ModelConfig,
-  retries = 6,
+  retries = 30,
 ): Promise<string> {
   const promptValues = {
     title,
@@ -94,7 +94,7 @@ export async function generateDetailedOutline(
   novelId: string,
   generationConfig: ModelConfig,
   chaptersToGenerate: number = 5,
-  retries = 6,
+  retries = 30,
 ): Promise<DetailedOutlineBatch> {
   const novel = await prisma.novel.findUnique({
     where: { id: novelId },

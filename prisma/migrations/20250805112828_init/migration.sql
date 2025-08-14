@@ -72,3 +72,13 @@ ALTER TABLE "public"."NovelScene" ADD CONSTRAINT "NovelScene_novelId_fkey" FOREI
 
 -- AddForeignKey
 ALTER TABLE "public"."NovelClue" ADD CONSTRAINT "NovelClue_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "public"."Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+
+-- CreateIndex
+CREATE UNIQUE INDEX "NovelRole_novelId_name_key" ON "public"."NovelRole"("novelId", "name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "NovelClue_novelId_name_key" ON "public"."NovelClue"("novelId", "name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "NovelScene_novelId_name_key" ON "public"."NovelScene"("novelId", "name");

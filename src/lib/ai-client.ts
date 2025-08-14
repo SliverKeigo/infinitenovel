@@ -324,7 +324,7 @@ export async function getChatCompletion(
   config: ModelConfig,
   prompt: string,
   options: ChatCompletionOptions = {},
-  retries = 6,
+  retries = 30,
 ): Promise<string | ReadableStream<Uint8Array> | null> {
   log(
     `[AI请求] 任务: ${taskDescription} | 模型配置: ${config.name} (${
@@ -342,7 +342,7 @@ export async function getChatCompletion(
 export async function getEmbeddings(
   config: ModelConfig,
   input: string | string[],
-  retries = 6,
+  retries = 30,
 ): Promise<number[][] | null> {
   log(
     `[Embedding请求] 模型配置: ${config.name} (${config.provider}) | 输入数量: ${

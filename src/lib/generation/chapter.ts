@@ -105,7 +105,7 @@ ${lastChapter.content}
               nextChapterNumber,
             );
 
-            const maxRetries = 6;
+            const maxRetries = 30;
             let chapter: NovelChapter | null = null;
             for (let i = 0; i < maxRetries; i++) {
               sendStatusUpdate(

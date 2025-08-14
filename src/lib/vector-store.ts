@@ -57,7 +57,7 @@ export async function addElementsToCollection(
   collectionName: string,
   elements: WorldElement[],
   embeddingConfig: ModelConfig,
-  retries = 6,
+  retries = 30,
 ) {
   if (elements.length === 0) {
     return;
@@ -159,7 +159,7 @@ export async function upsertElementsInCollection(
   collectionName: string,
   elements: WorldElement[],
   embeddingConfig: ModelConfig,
-  retries = 6,
+  retries = 30,
 ) {
   if (elements.length === 0) {
     return;

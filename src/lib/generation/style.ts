@@ -25,7 +25,7 @@ export async function generateStyleAndTone(
   title: string,
   summary: string,
   generationConfig: ModelConfig,
-  retries = 6,
+  retries = 30,
 ): Promise<StyleAndTone> {
   const prompt = interpolatePrompt(STYLE_AND_TONE_PROMPT, {
     title,

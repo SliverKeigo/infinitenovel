@@ -60,7 +60,7 @@ export async function generateInitialWorldElements(
   mainOutline: string,
   detailedOutline: DetailedOutlineBatch,
   generationConfig: ModelConfig,
-  retries = 6,
+  retries = 30,
 ): Promise<InitialWorldBuild> {
   const worldBuildingPrompt = interpolatePrompt(INITIAL_WORLD_BUILD_PROMPT, {
     mainOutline,
@@ -237,7 +237,7 @@ export async function evolveWorldFromChapter(
   chapterContent: string,
   generationConfig: ModelConfig,
   embeddingConfig: ModelConfig,
-  retries = 6,
+  retries = 30,
 ): Promise<void> {
   logger.info(`[世界演化] 开始为小说 ${novelId} 进行世界演化...`);
 
