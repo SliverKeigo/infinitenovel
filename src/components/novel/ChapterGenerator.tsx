@@ -1,5 +1,6 @@
 "use client";
 
+import { NovelChapter } from "@prisma/client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ModelConfig } from "@/types/ai";
@@ -10,13 +11,12 @@ type ChapterGeneratorProps = {
   onChapterGenerated: (chapter: NovelChapter) => void;
 };
 
-type StoredAiConfig = {
-  state: {
-    models: ModelConfig[];
-    activeGenerationModelId: string;
-    activeEmbeddingModelId: string;
-  };
+type StreamedData = {
+  type: "status" | "chapter_end" | "error";
+  message?: string;
+  data?: NovelChapter;
 };
+
 
 export function ChapterGenerator({
   novelId,
@@ -118,14 +118,16 @@ export function ChapterGenerator({
           if (message.startsWith("data: ")) {
             const jsonStr = message.substring(6).trim();
             if (jsonStr) {
-              const data = safelyParseJson(jsonStr as string);
+              const data = safelyParseJson<StreamedData>(
+                jsonStr as string,
+              );
               if (!data) continue;
 
               if (data.type === "status") {
                 setStatusMessage(data.message);
               } else if (data.type === "chapter_end") {
-                onChapterGenerated(data.data);
-                setStatusMessage(`第 ${data.data.chapterNumber} 章已生成！`);
+                onChapterGenerated(data.data as NovelChapter);
+                setStatusMessage(`第 ${data.data?.chapterNumber} 章已生成！`);
               } else if (data.type === "error") {
                 throw new Error(data.message);
               }

@@ -1,9 +1,12 @@
-export type ModelType = 'generation' | 'embedding';
+export type AIProvider = "openai" | "google";
+
+export type ModelType = "generation" | "embedding";
 
 export interface ModelConfig {
   id: string;
   name: string;
   type: ModelType;
+  provider: AIProvider;
   baseURL: string;
   apiKey: string;
   model: string;

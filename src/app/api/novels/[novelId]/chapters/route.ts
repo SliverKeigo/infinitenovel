@@ -30,8 +30,7 @@ export async function POST(
   context: { params: { novelId: string } },
 ) {
   try {
-    const params = context.params;
-    const { novelId } = params;
+        const { novelId } = context.params;
 
     // 1. 验证请求体
     const body = await request.json();

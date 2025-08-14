@@ -10,7 +10,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { ChapterDetail } from "./ChapterDetail";
-import { Modal } from "@/components/ui/Modal";
+import { Modal } from "@/components/ui/modal";
 
 type ChapterListProps = {
   novelId: string;

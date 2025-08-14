@@ -23,6 +23,7 @@ import { ModelConfig } from '@/types/ai';
 const formSchema = z.object({
   name: z.string().min(1, "名称不能为空"),
   type: z.enum(['generation', 'embedding'], { required_error: "必须选择模型类型" }),
+  provider: z.enum(['openai', 'google'], { required_error: "必须选择AI提供商" }),
   baseURL: z.string().url("请输入有效的URL"),
   apiKey: z.string().min(1, "API Key不能为空"),
   model: z.string().min(1, "模型名称不能为空"),
@@ -35,6 +36,7 @@ function ModelForm({ config, onSave, onCancel }: { config?: ModelConfig, onSave:
     defaultValues: {
       name: config?.name || "",
       type: config?.type || "generation",
+      provider: config?.provider || "openai",
       baseURL: config?.baseURL || "",
       apiKey: config?.apiKey || "",
       model: config?.model || "",
@@ -60,6 +62,12 @@ function ModelForm({ config, onSave, onCancel }: { config?: ModelConfig, onSave:
                 <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
                 <SelectContent className="bg-slate-900/95 backdrop-blur-lg border border-white/20"><SelectItem value="generation">文本生成</SelectItem><SelectItem value="embedding">向量</SelectItem></SelectContent>
               </Select><FormMessage /></FormItem>
+            )}/>
+            <FormField name="provider" control={form.control} render={({ field }) => (
+                <FormItem><FormLabel className="text-slate-300">AI 提供商</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                    <SelectContent className="bg-slate-900/95 backdrop-blur-lg border border-white/20"><SelectItem value="openai">OpenAI</SelectItem><SelectItem value="google">Google</SelectItem></SelectContent>
+                </Select><FormMessage /></FormItem>
             )}/>
             <FormField name="baseURL" control={form.control} render={({ field }) => (
               <FormItem><FormLabel className="text-slate-300">API 地址</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
@@ -131,7 +139,7 @@ export default function SettingsView() {
           {models.map(config => (
             <div key={config.id} className="bg-white/10 p-4 rounded-lg flex justify-between items-center">
               <div>
-                <p className="font-bold text-white">{config.name} <span className="text-xs ml-2 px-2 py-1 bg-blue-400/20 text-blue-300 rounded-full">{config.type}</span></p>
+                <p className="font-bold text-white">{config.name} <span className="text-xs ml-2 px-2 py-1 bg-purple-400/20 text-purple-300 rounded-full">{config.provider}</span> <span className="text-xs ml-2 px-2 py-1 bg-blue-400/20 text-blue-300 rounded-full">{config.type}</span></p>
                 <p className="text-sm text-slate-400">{config.model}</p>
               </div>
               <div className="flex gap-2">

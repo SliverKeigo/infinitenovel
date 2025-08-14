@@ -5,7 +5,7 @@ import { NovelChapter } from "@prisma/client";
 import { ChapterGenerator } from "./ChapterGenerator";
 import { ChapterList } from "./ChapterList";
 import { ChapterDetail } from "./ChapterDetail";
-import { Modal } from "@/components/ui/Modal";
+import { Modal } from "@/components/ui/modal";
 
 type ChapterManagementProps = {
   novelId: string;

@@ -3,8 +3,17 @@
 import { Bot, BookOpen, Edit, Settings, Library } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { type ComponentType, type ReactNode } from "react";
 
-const NavLink = ({ href, icon: Icon, children }) => {
+const NavLink = ({
+  href,
+  icon: Icon,
+  children,
+}: {
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  children: ReactNode;
+}) => {
   const pathname = usePathname();
   const isActive = pathname === href;
 

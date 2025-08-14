@@ -2,9 +2,22 @@
 
 import { BookOpen, Edit, Settings } from "lucide-react";
 import Link from "next/link";
+import { type ComponentType } from "react";
 import { Button } from "@/components/ui/button";
 
-const GlassCard = ({ icon: Icon, title, description, linkHref, linkText }) => (
+const GlassCard = ({
+  icon: Icon,
+  title,
+  description,
+  linkHref,
+  linkText,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  linkHref: string;
+  linkText: string;
+}) => (
   <div className="bg-white/10 backdrop-blur-xl p-6 rounded-2xl border border-white/20 shadow-2xl flex flex-col">
     <div className="flex items-center gap-4 mb-4">
       <div className="p-3 bg-white/10 rounded-full">
