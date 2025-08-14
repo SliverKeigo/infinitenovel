@@ -51,6 +51,8 @@ model NovelRole {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+
+  @@unique([novelId, name])
 }
 
 model NovelScene {
@@ -61,6 +63,8 @@ model NovelScene {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+
+  @@unique([novelId, name])
 }
 
 model NovelClue {
@@ -71,4 +75,6 @@ model NovelClue {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+
+  @@unique([novelId, name])
 }

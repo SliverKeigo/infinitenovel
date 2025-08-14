@@ -29,8 +29,9 @@ export async function POST(
   request: Request,
   context: { params: { novelId: string } },
 ) {
+  const { novelId } = context.params;
+
   try {
-        const { novelId } = context.params;
 
     // 1. 验证请求体
     const body = await request.json();
@@ -68,7 +69,7 @@ export async function POST(
     }
   } catch (error) {
     logger.error(
-      { err: error, novelId: context.params.novelId },
+      { err: error, novelId },
       `在 POST /api/novels/[novelId]/chapters 路由中发生错误`,
     );
     const errorMessage =

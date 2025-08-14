@@ -18,7 +18,7 @@ interface ChaptersApiResponse {
   currentPage: number;
 }
 
-// 現在所有狀態都在一個物件中管理，以防止在快速更新期間出現過時狀態的問題。
+// 统一管理组件的所有状态，以避免在快速更新期间因状态闭包导致数据不一致。
 type ComponentState = {
   chapters: NovelChapter[];
   totalChapters: number;
@@ -40,11 +40,17 @@ export function ChapterManagement({ novelId }: ChapterManagementProps) {
     error: null,
   });
 
+  // 用于存储和管理模态框中选中的章节详情。
   const [selectedChapter, setSelectedChapter] = useState<NovelChapter | null>(
     null,
   );
+  // 控制章节详情模态框的显示和隐藏。
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  /**
+   * 异步函数，用于从后端 API 获取指定页码和大小的章节列表。
+   * 使用 useCallback 进行性能优化，仅在 novelId 变化时重新创建。
+   */
   const fetchChapters = useCallback(
     async (page: number, size: number) => {
       setState((prevState) => ({ ...prevState, isLoading: true, error: null }));
@@ -75,49 +81,53 @@ export function ChapterManagement({ novelId }: ChapterManagementProps) {
     [novelId],
   );
 
+  // Effect hook，用于在组件挂载或分页状态（页码、页面大小）变化时获取章节数据。
   useEffect(() => {
     fetchChapters(state.currentPage, state.pageSize);
   }, [fetchChapters, state.currentPage, state.pageSize]);
 
-  // 此函數現在對單一狀態物件使用函數式更新，
-  // 確保所有計算都基於最新的狀態。
+  /**
+   * 处理新章节生成后的回调函数。
+   * 它会计算新的总章节数和总页数，并自动跳转到最后一页以显示最新生成的章节。
+   * @param newChapter - 新生成的章节对象。
+   */
   const handleNewChapter = (newChapter: NovelChapter) => {
-    // 透過將狀態更新包裝在 setTimeout 中，我們讓出執行緒給瀏覽器的事件循環。
-    // 這會強制 React 立即處理狀態更新並重新渲染，而不是等到 SSE 流關閉後才批次處理。
-    // 這是實現在流式傳輸期間即時更新 UI 的關鍵。
-    setTimeout(() => {
-      setState((prevState) => {
-        const newTotalChapters = prevState.totalChapters + 1;
-        const newTotalPages = Math.ceil(newTotalChapters / prevState.pageSize);
+    setState((prevState) => {
+      const newTotalChapters = prevState.totalChapters + 1;
+      const newTotalPages = Math.ceil(newTotalChapters / prevState.pageSize);
+      const newCurrentPage = newTotalPages;
 
-        if (prevState.currentPage === newTotalPages) {
-          return {
-            ...prevState,
-            chapters: [...prevState.chapters, newChapter],
-            totalChapters: newTotalChapters,
-            totalPages: newTotalPages,
-          };
-        }
-
-        return {
-          ...prevState,
-          totalChapters: newTotalChapters,
-          totalPages: newTotalPages,
-          currentPage: newTotalPages,
-        };
-      });
-    }, 0);
+      // 仅更新分页状态，useEffect 会自动触发数据的重新获取。
+      return {
+        ...prevState,
+        totalChapters: newTotalChapters,
+        totalPages: newTotalPages,
+        currentPage: newCurrentPage,
+      };
+    });
   };
 
+  /**
+   * 处理用户在列表中选择一个章节的事件。
+   * @param chapter - 被选中的章节对象。
+   */
   const handleChapterSelect = (chapter: NovelChapter) => {
     setSelectedChapter(chapter);
     setIsModalOpen(true);
   };
 
+  /**
+   * 处理用户点击分页组件切换页码的事件。
+   * @param page - 新的页码。
+   */
   const handlePageChange = (page: number) => {
     setState((prevState) => ({ ...prevState, currentPage: page }));
   };
 
+  /**
+   * 处理用户更改每页显示数量的事件。
+   * @param size - 新的页面大小。
+   */
   const handlePageSizeChange = (size: number) => {
     setState((prevState) => ({ ...prevState, pageSize: size, currentPage: 1 }));
   };
