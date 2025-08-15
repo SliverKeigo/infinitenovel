@@ -2,10 +2,60 @@ import logger from "@/lib/logger";
 import { ModelConfig } from "@/types/ai";
 import { getChatCompletion } from "@/lib/ai-client";
 import { prisma } from "@/lib/prisma";
-import { summarizeRecentChapters } from "./summary";
+import { summarizeRecentChapters, updateStorySoFarSummary } from "./summary";
 import { safelyParseJson } from "../utils/json";
 import { z } from "zod";
 import { readStreamToString } from "../utils/stream";
+
+/**
+ * 根据总章节数和当前章节号，从主大纲中提取当前卷的大纲。
+ * @param mainOutline - 完整的主线大纲。
+ * @param currentChapterNumber - 当前正在生成的章节号。
+ * @returns 当前卷的大纲文本，如果找不到则返回整个主线大纲。
+ */
+function getCurrentVolumeOutline(
+  mainOutline: string,
+  currentChapterNumber: number,
+): string {
+  // 使用更稳健的正则表达式按卷进行分割
+  // 正则表达式匹配以 "####" 或 "**" 开头，后跟 "第X卷" 的模式
+  const volumes = mainOutline.split(
+    /(?=####\s*第二卷：|####\s*第三卷：|####\s*第四卷：|####\s*第五卷：|####\s*第六卷：|\*\*第二卷：|\*\*第三卷：|\*\*第四卷：|\*\*第五卷：|\*\*第六卷：)/,
+  );
+
+  if (volumes.length <= 1 && mainOutline.includes("第一卷")) {
+    return mainOutline; // 如果只有一个卷，直接返回
+  }
+
+  let currentVolumeText = "";
+
+  for (const volumeText of volumes) {
+    // 匹配 "预计章节：251-500" 或 "章节：1-50" 等格式
+    const match = volumeText.match(/(?:预计)?章节：\s*(\d+)\s*-\s*(\d+)/);
+
+    if (match) {
+      const start = parseInt(match[1], 10);
+      const end = parseInt(match[2], 10);
+      if (currentChapterNumber >= start && currentChapterNumber <= end) {
+        currentVolumeText = volumeText;
+        break;
+      }
+    }
+  }
+
+  if (currentVolumeText) {
+    logger.info(
+      `[大纲范围锁定] 已为章节 ${currentChapterNumber} 锁定到当前卷的大纲。`,
+    );
+    return currentVolumeText;
+  }
+
+  logger.warn(
+    `[大纲范围锁定] 未能为章节 ${currentChapterNumber} 找到匹配的卷。将使用完整大纲作为后备。`,
+  );
+  return mainOutline; // 后备方案
+}
+
 import {
   MAIN_OUTLINE_PROMPT,
   DETAILED_OUTLINE_PROMPT,
@@ -93,10 +143,14 @@ export async function generateMainOutline(
 export async function generateDetailedOutline(
   novelId: string,
   generationConfig: ModelConfig,
-  chaptersToGenerate: number = 5,
+  chaptersToGenerate: number = 10,
   retries = 30,
 ): Promise<DetailedOutlineBatch> {
-  const novel = await prisma.novel.findUnique({
+  // 在生成新大纲前，首先触发一次长篇摘要的滚动更新
+  await updateStorySoFarSummary(novelId, generationConfig);
+
+  // 更新需要重新从数据库获取 novel 对象，以确保拿到最新的 storySoFarSummary
+  const updatedNovel = await prisma.novel.findUnique({
     where: { id: novelId },
     select: {
       title: true,
@@ -104,7 +158,7 @@ export async function generateDetailedOutline(
       outline: true,
       style: true,
       tone: true,
-      type: true, // Assuming 'type' is the category
+      type: true,
       storySoFarSummary: true,
       chapters: {
         orderBy: {
@@ -115,25 +169,36 @@ export async function generateDetailedOutline(
     },
   });
 
-  if (!novel) {
-    throw new Error(`未找到 ID 为 ${novelId} 的小说。`);
+  if (!updatedNovel) {
+    throw new Error(`在更新摘要后未能重新获取小说 ${novelId}。`);
   }
 
-  const lastChapterNumber = novel.chapters[0]?.chapterNumber || 0;
+  const lastChapterNumber = updatedNovel.chapters[0]?.chapterNumber || 0;
   const isColdStart = lastChapterNumber === 0;
 
   let detailedOutlinePrompt;
   let promptValues;
 
   if (isColdStart) {
-    logger.info(`小说 ${novelId} 为冷启动，使用开篇大纲生成策略。`);
+    // 对于冷启动，生成一个更长的初始批次来奠定坚实的基础
+    chaptersToGenerate = 20;
+    logger.info(
+      `小说 ${novelId} 为冷启动，将生成 ${chaptersToGenerate} 章的开篇大纲。`,
+    );
+
+    const currentVolumeOutline = getCurrentVolumeOutline(
+      updatedNovel.outline || "暂无主线大纲。",
+      1, // Cold start always begins at chapter 1
+    );
+
     promptValues = {
       chaptersToGenerate: String(chaptersToGenerate),
-      title: novel.title,
-      summary: novel.summary,
-      category: novel.type,
-      style: novel.style || "暂未设定",
-      tone: novel.tone || "暂未设定",
+      title: updatedNovel.title,
+      summary: updatedNovel.summary,
+      category: updatedNovel.type,
+      style: updatedNovel.style || "暂未设定",
+      tone: updatedNovel.tone || "暂未设定",
+      outline: currentVolumeOutline,
     };
     detailedOutlinePrompt = interpolatePrompt(
       COLD_START_DETAILED_OUTLINE_PROMPT,
@@ -147,16 +212,21 @@ export async function generateDetailedOutline(
     );
     const nextChapterNumber = lastChapterNumber + 1;
 
+    const currentVolumeOutline = getCurrentVolumeOutline(
+      updatedNovel.outline || "暂无主线大纲。",
+      nextChapterNumber,
+    );
+
     promptValues = {
       chaptersToGenerate: String(chaptersToGenerate),
       nextChapterNumber: String(nextChapterNumber),
-      title: novel.title,
-      summary: novel.summary, // novel summary is the overall summary
-      outline: novel.outline || "暂无主线大纲。",
-      style: novel.style || "暂未设定",
-      tone: novel.tone || "暂未设定",
+      title: updatedNovel.title,
+      summary: updatedNovel.summary, // novel summary is the overall summary
+      outline: currentVolumeOutline,
+      style: updatedNovel.style || "暂未设定",
+      tone: updatedNovel.tone || "暂未设定",
       storySoFarSummary:
-        novel.storySoFarSummary || "这是故事的开端，还没有长篇摘要。",
+        updatedNovel.storySoFarSummary || "这是故事的开端，还没有长篇摘要。",
       recentSummary: recentSummary,
     };
     detailedOutlinePrompt = interpolatePrompt(
