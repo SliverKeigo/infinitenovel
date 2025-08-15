@@ -11,8 +11,9 @@ import { DetailedOutlineBatch } from "./outline";
 import { safelyParseJson } from "../utils/json";
 import { readStreamToString } from "../utils/stream";
 import {
+  ENTITY_IDENTIFICATION_PROMPT,
   INITIAL_WORLD_BUILD_PROMPT,
-  WORLD_EVOLUTION_PROMPT,
+  WORLD_FUSION_PROMPT,
 } from "@/lib/prompts/world.prompts";
 import { interpolatePrompt } from "@/lib/utils/prompt";
 
@@ -31,22 +32,13 @@ const initialWorldBuildSchema = z.object({
 // 导出类型供外部使用
 export type InitialWorldBuild = z.infer<typeof initialWorldBuildSchema>;
 
-// 用于“演化”步骤的新模式
-const worldElementUpdateSchema = z.object({
-  name: z.string(),
-  updatedDescription: z.string(),
+const entityIdentificationSchema = z.object({
+  roles: z.array(z.string()).default([]),
+  scenes: z.array(z.string()).default([]),
+  clues: z.array(z.string()).default([]),
 });
 
-const worldEvolutionSchema = z.object({
-  newRoles: z.array(worldElementSchema).default([]),
-  updatedRoles: z.array(worldElementUpdateSchema).default([]),
-  newScenes: z.array(worldElementSchema).default([]),
-  updatedScenes: z.array(worldElementUpdateSchema).default([]),
-  newClues: z.array(worldElementSchema).default([]),
-  updatedClues: z.array(worldElementUpdateSchema).default([]),
-});
-
-export type WorldEvolution = z.infer<typeof worldEvolutionSchema>;
+export type IdentifiedEntities = z.infer<typeof entityIdentificationSchema>;
 
 /**
  * 根据小说的主要大纲和第一批详细的章节大纲，生成初始的核心角色、场景和线索。
@@ -237,144 +229,255 @@ export async function evolveWorldFromChapter(
   chapterContent: string,
   generationConfig: ModelConfig,
   embeddingConfig: ModelConfig,
-  retries = 30,
+  retries = 5,
 ): Promise<void> {
   logger.info(`[世界演化] 开始为小说 ${novelId} 进行世界演化...`);
 
-  const evolutionPrompt = interpolatePrompt(WORLD_EVOLUTION_PROMPT, {
-    chapterContent,
-  });
-
-  let evolution: WorldEvolution | null = null;
-
+  // 步骤 1: 识别章节中提及的实体
+  let identifiedEntities: IdentifiedEntities;
   for (let i = 0; i < retries; i++) {
     try {
       logger.info(
-        `[世界演化] 正在提取世界观演变 (尝试次数 ${i + 1}/${retries})...`,
+        `[世界演化] 步骤 1/4: 识别章节中的实体... (尝试 ${i + 1}/${retries})`,
+      );
+      const identificationPrompt = interpolatePrompt(
+        ENTITY_IDENTIFICATION_PROMPT,
+        {
+          chapterContent,
+        },
+      );
+      logger.debug(
+        `[世界演化] 步骤 1/4: 生成的实体识别 Prompt:
+${identificationPrompt}`,
       );
       const responseStream = await getChatCompletion(
-        "提取世界观演变",
+        "识别世界观实体",
         generationConfig,
-        evolutionPrompt,
+        identificationPrompt,
         { response_format: { type: "json_object" }, stream: true },
       );
-
-      if (!responseStream) {
-        throw new Error("AI 服务未返回响应流。");
-      }
+      if (!responseStream) throw new Error("AI 未返回实体识别响应流。");
 
       const response = await readStreamToString(responseStream);
-      if (!response) {
-        throw new Error("从 AI 流中未能读取到任何内容。");
-      }
+      if (!response) throw new Error("从 AI 实体识别流中未能读取到任何内容。");
+      logger.debug(`[世界演化] 步骤 1/4: AI 原始响应: ${response}`);
 
-      const parsedJson = safelyParseJson<WorldEvolution>(response);
+      const parsedJson = safelyParseJson<IdentifiedEntities>(response);
       if (!parsedJson) {
-        logger.error(
-          "[世界演化] 从 AI 响应中未能解析出任何 JSON 内容。原始响应:",
-          response,
-        );
-        throw new Error("AI 演化响应为空或格式不正确，无法解析为 JSON。");
+        logger.error("[世界演化] 无法解析实体识别的 AI 响应。响应:", response);
+        throw new Error("AI 实体识别响应格式不正确。");
       }
 
-      const validation = worldEvolutionSchema.safeParse(parsedJson);
-
+      const validation = entityIdentificationSchema.safeParse(parsedJson);
       if (!validation.success) {
         logger.error(
-          "[世界演化] AI 演化响应验证失败:",
+          "[世界演化] 实体识别响应验证失败:",
           validation.error.flatten(),
         );
-        logger.debug("[世界演化] 验证失败的对象:", parsedJson);
-        throw new Error("AI 返回的世界演化格式不正确。");
+        throw new Error("AI 返回的实体列表格式不正确。");
       }
+      identifiedEntities = validation.data;
+      logger.info(
+        `[世界演化] 实体识别成功: ${identifiedEntities.roles.length}角色, ${identifiedEntities.scenes.length}场景, ${identifiedEntities.clues.length}线索。`,
+      );
+      logger.debug("[世界演化] 识别出的实体:", identifiedEntities);
 
-      evolution = validation.data;
-      logger.info("[世界演化] AI 提取成功。");
-      break; // 成功则跳出循环
+      // 成功后，跳出循环
+      break;
     } catch (error) {
       logger.warn(
-        `[世界演化] 世界演化流程失败 (尝试次数 ${i + 1}/${retries}):`,
-        error instanceof Error ? error.message : String(error),
+        `[世界演化] 步骤 1/4: 实体识别失败 (尝试 ${i + 1}/${retries})`,
+        error instanceof Error ? error.message : error,
       );
       if (i === retries - 1) {
         logger.error(
-          "[世界演化] 已达到最大重试次数，世界演化失败，将跳过此步骤。",
+          "[世界演化] 步骤 1/4: 实体识别已达最大重试次数，演化终止。",
+          error instanceof Error ? error.stack : error,
         );
-        return; // 最终失败，直接返回，不抛出错误
+        return; // 识别失败则终止流程
       }
+      // 等待一秒再重试
       await new Promise((res) => setTimeout(res, 1000 * (i + 1)));
     }
   }
 
-  if (!evolution) {
-    logger.info("[世界演化] 未能成功提取世界演化信息。");
+  // @ts-ignore
+  if (!identifiedEntities) {
+    logger.error("[世界演化] 在所有重试后，未能成功识别实体。");
     return;
   }
-
-  const {
-    newRoles,
-    updatedRoles,
-    newScenes,
-    updatedScenes,
-    newClues,
-    updatedClues,
-  } = evolution;
-
-  // 辅助函数，用于将新元素和更新元素合并并去重
-  const mergeAndUnique = <
-    T extends { name: string; description: string },
-    U extends { name: string; updatedDescription: string },
-  >(
-    newItems: T[],
-    updatedItems: U[],
-  ): { name: string; content: string }[] => {
-    const itemMap = new Map<string, string>();
-
-    [...newItems, ...updatedItems].forEach((item) => {
-      const content =
-        "description" in item ? item.description : item.updatedDescription;
-      itemMap.set(item.name, content);
-    });
-
-    return Array.from(itemMap.entries()).map(([name, content]) => ({
-      name,
-      content,
-    }));
-  };
-
-  const allRoles = mergeAndUnique(newRoles, updatedRoles);
-  const allScenes = mergeAndUnique(newScenes, updatedScenes);
-  const allClues = mergeAndUnique(newClues, updatedClues);
 
   if (
-    allRoles.length === 0 &&
-    allScenes.length === 0 &&
-    allClues.length === 0
+    identifiedEntities.roles.length === 0 &&
+    identifiedEntities.scenes.length === 0 &&
+    identifiedEntities.clues.length === 0
   ) {
-    logger.info("[世界演化] AI 未提取到新的或更新的世界元素。结束流程。");
+    logger.info("[世界演化] 未识别到任何相关实体，演化结束。");
     return;
   }
 
+  // 步骤 2: 从数据库读取现有实体的描述
+  logger.info("[世界演化] 步骤 2/4: 从数据库读取现有实体...");
+  const [existingRoles, existingScenes, existingClues] = await Promise.all([
+    identifiedEntities.roles.length > 0
+      ? prisma.novelRole.findMany({
+          where: { novelId, name: { in: identifiedEntities.roles } },
+        })
+      : Promise.resolve([]),
+    identifiedEntities.scenes.length > 0
+      ? prisma.novelScene.findMany({
+          where: { novelId, name: { in: identifiedEntities.scenes } },
+        })
+      : Promise.resolve([]),
+    identifiedEntities.clues.length > 0
+      ? prisma.novelClue.findMany({
+          where: { novelId, name: { in: identifiedEntities.clues } },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const existingRolesMap = new Map(
+    existingRoles.map((r) => [r.name, r.content]),
+  );
+  const existingScenesMap = new Map(
+    existingScenes.map((s) => [s.name, s.content]),
+  );
+  const existingCluesMap = new Map(
+    existingClues.map((c) => [c.name, c.content]),
+  );
+  logger.info("[世界演化] 读取现有实体数据完成。");
+  logger.debug(
+    "[世界演化] 已存在的角色描述:",
+    Object.fromEntries(existingRolesMap),
+  );
+  logger.debug(
+    "[世界演化] 已存在的场景描述:",
+    Object.fromEntries(existingScenesMap),
+  );
+  logger.debug(
+    "[世界演化] 已存在的线索描述:",
+    Object.fromEntries(existingCluesMap),
+  );
+
+  // 步骤 3: 并行调用 AI 进行信息融合
+  logger.info("[世界演化] 步骤 3/4: 调用 AI 进行信息融合...");
+  const fusedEntities: {
+    roles: { name: string; content: string }[];
+    scenes: { name: string; content: string }[];
+    clues: { name: string; content: string }[];
+  } = { roles: [], scenes: [], clues: [] };
+
+  const fusionTask = async (
+    entityType: "角色" | "场景" | "线索",
+    entityName: string,
+    existingDescription: string,
+  ) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const fusionPrompt = interpolatePrompt(WORLD_FUSION_PROMPT, {
+          entityType,
+          entityName,
+          existingDescription,
+          chapterContent,
+        });
+
+        logger.debug(
+          `[世界演化] 为实体 "${entityName}" 生成的融合 Prompt:
+${fusionPrompt}`,
+        );
+
+        const response = (await getChatCompletion(
+          `融合世界观-${entityType}`,
+          generationConfig,
+          fusionPrompt,
+        )) as string;
+
+        if (!response) {
+          throw new Error(`AI 未返回 ${entityName} 的融合描述。`);
+        }
+        return { name: entityName, content: response.trim() };
+      } catch (error) {
+        logger.warn(
+          `[世界演化] 融合实体 "${entityName}" 失败 (尝试 ${i + 1}/${retries}):`,
+          error,
+        );
+        if (i === retries - 1) {
+          logger.error(
+            `[世界演化] 融合实体 "${entityName}" 已达最大重试次数，将跳过此实体。`,
+          );
+          return null;
+        }
+      }
+    }
+    return null;
+  };
+
+  const fusionPromises = [
+    ...identifiedEntities.roles.map((name) =>
+      fusionTask("角色", name, existingRolesMap.get(name) || "新登场"),
+    ),
+    ...identifiedEntities.scenes.map((name) =>
+      fusionTask("场景", name, existingScenesMap.get(name) || "新登场"),
+    ),
+    ...identifiedEntities.clues.map((name) =>
+      fusionTask("线索", name, existingCluesMap.get(name) || "新登场"),
+    ),
+  ];
+
+  const results = await Promise.all(fusionPromises);
+  results.forEach((result, index) => {
+    if (result) {
+      if (index < identifiedEntities.roles.length) {
+        fusedEntities.roles.push(result);
+      } else if (
+        index <
+        identifiedEntities.roles.length + identifiedEntities.scenes.length
+      ) {
+        fusedEntities.scenes.push(result);
+      } else {
+        fusedEntities.clues.push(result);
+      }
+    }
+  });
+
+  logger.info(
+    `[世界演化] 信息融合完成: 成功融合 ${
+      fusedEntities.roles.length +
+      fusedEntities.scenes.length +
+      fusedEntities.clues.length
+    } 个实体。`,
+  );
+  logger.debug("[世界演化] 融合后的实体:", fusedEntities);
+
+  if (
+    fusedEntities.roles.length === 0 &&
+    fusedEntities.scenes.length === 0 &&
+    fusedEntities.clues.length === 0
+  ) {
+    logger.info("[世界演化] AI 未能成功融合任何实体信息。结束流程。");
+    return;
+  }
+
+  // 步骤 4: 将融合后的结果存入数据库和向量存储
+  logger.info("[世界演化] 步骤 4/4: 更新数据库和向量存储...");
   try {
-    // 数据库事务
     await prisma.$transaction(async (tx) => {
-      // 使用 upsert 批量处理所有角色、场景和线索
       const upsertPromises = [
-        ...allRoles.map((role) =>
+        ...fusedEntities.roles.map((role) =>
           tx.novelRole.upsert({
             where: { novelId_name: { novelId, name: role.name } },
             update: { content: role.content },
             create: { novelId, name: role.name, content: role.content },
           }),
         ),
-        ...allScenes.map((scene) =>
+        ...fusedEntities.scenes.map((scene) =>
           tx.novelScene.upsert({
             where: { novelId_name: { novelId, name: scene.name } },
             update: { content: scene.content },
             create: { novelId, name: scene.name, content: scene.content },
           }),
         ),
-        ...allClues.map((clue) =>
+        ...fusedEntities.clues.map((clue) =>
           tx.novelClue.upsert({
             where: { novelId_name: { novelId, name: clue.name } },
             update: { content: clue.content },
@@ -386,30 +489,33 @@ export async function evolveWorldFromChapter(
       logger.info("[世界演化] 数据库事务更新成功。");
     });
 
-    // 3. 在事务外部，获取所有受影响的记录，用于更新向量库
-    const allRoleNames = allRoles.map((r) => r.name);
-    const allSceneNames = allScenes.map((s) => s.name);
-    const allClueNames = allClues.map((c) => c.name);
-
     const [rolesToUpsert, scenesToUpsert, cluesToUpsert] = await Promise.all([
-      allRoleNames.length > 0
+      fusedEntities.roles.length > 0
         ? prisma.novelRole.findMany({
-            where: { novelId, name: { in: allRoleNames } },
+            where: {
+              novelId,
+              name: { in: fusedEntities.roles.map((r) => r.name) },
+            },
           })
         : Promise.resolve([]),
-      allSceneNames.length > 0
+      fusedEntities.scenes.length > 0
         ? prisma.novelScene.findMany({
-            where: { novelId, name: { in: allSceneNames } },
+            where: {
+              novelId,
+              name: { in: fusedEntities.scenes.map((s) => s.name) },
+            },
           })
         : Promise.resolve([]),
-      allClueNames.length > 0
+      fusedEntities.clues.length > 0
         ? prisma.novelClue.findMany({
-            where: { novelId, name: { in: allClueNames } },
+            where: {
+              novelId,
+              name: { in: fusedEntities.clues.map((c) => c.name) },
+            },
           })
         : Promise.resolve([]),
     ]);
 
-    // 4. 更新向量存储 (在事务之外执行)
     await Promise.all([
       rolesToUpsert.length > 0 &&
         upsertElementsInCollection(
@@ -431,12 +537,11 @@ export async function evolveWorldFromChapter(
         ),
     ]);
 
-    logger.info("[世界演化] 向量存储更新成功。");
+    logger.info("[世界演化] 向量存储更新成功。演化流程全部完成。");
   } catch (dbError) {
     logger.error({
-      msg: `[世界演化] 在更新数据库或向量存储时发生严重错误，小说ID: ${novelId}`,
+      msg: `[世界演化] 步骤 4/4: 更新数据库或向量存储时发生严重错误`,
       err: dbError,
     });
-    // 数据库或向量存储的错误比较严重，但仍然不应中断主流程
   }
 }
