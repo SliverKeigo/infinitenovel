@@ -302,7 +302,7 @@ async function executeAIRequest<T>(
             error.message.includes("[500]")));
 
       if (isRetryableError && i < retries - 1) {
-        const delay = Math.pow(2, i) * 1000;
+        const delay = 5 * 1000;
         console.warn(
           `[AI重试] ${
             error instanceof Error ? error.message : "请求失败"

@@ -301,7 +301,6 @@ async function getOutlineAndContext(
       embeddingConfig,
       controller,
     );
-    logger.info(`小说相关上下文 ${context}`);
     return { novel, detailedOutline, context };
   } catch (error) {
     throw new Error(

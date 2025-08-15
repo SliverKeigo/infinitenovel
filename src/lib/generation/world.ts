@@ -234,7 +234,7 @@ export async function evolveWorldFromChapter(
   logger.info(`[世界演化] 开始为小说 ${novelId} 进行世界演化...`);
 
   // 步骤 1: 识别章节中提及的实体
-  let identifiedEntities: IdentifiedEntities;
+  let identifiedEntities: IdentifiedEntities | null = null;
   for (let i = 0; i < retries; i++) {
     try {
       logger.info(
@@ -301,7 +301,6 @@ ${identificationPrompt}`,
     }
   }
 
-  // @ts-ignore
   if (!identifiedEntities) {
     logger.error("[世界演化] 在所有重试后，未能成功识别实体。");
     return;
@@ -381,19 +380,22 @@ ${identificationPrompt}`,
           chapterContent,
         });
 
-        logger.debug(
-          `[世界演化] 为实体 "${entityName}" 生成的融合 Prompt:
-${fusionPrompt}`,
-        );
+        logger.info(`[世界演化] 为实体 "${entityName}" 生成的融合`);
 
-        const response = (await getChatCompletion(
+        const responseStream = await getChatCompletion(
           `融合世界观-${entityType}`,
           generationConfig,
           fusionPrompt,
-        )) as string;
+          { stream: true },
+        );
+
+        if (!responseStream) {
+          throw new Error(`AI 未返回 ${entityName} 的融合描述流。`);
+        }
+        const response = await readStreamToString(responseStream);
 
         if (!response) {
-          throw new Error(`AI 未返回 ${entityName} 的融合描述。`);
+          throw new Error(`从 AI 融合流中为 ${entityName} 读取内容失败。`);
         }
 
         const parts = response.split("---");
