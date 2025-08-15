@@ -5,6 +5,146 @@ import { getChatCompletion } from "@/lib/ai-client";
 import { SUMMARY_PROMPT } from "@/lib/prompts/summary.prompts";
 import { interpolatePrompt } from "@/lib/utils/prompt";
 import { readStreamToString } from "../utils/stream";
+import { STORY_SO_FAR_SUMMARY_UPDATE_PROMPT } from "../prompts/summary.prompts";
+
+const CHAPTERS_PER_SUMMARY_BATCH = 10; // 每10章更新一次长篇摘要
+
+/**
+ * 检查是否需要更新故事长篇摘要。
+ * @param novelId - 小说 ID。
+ * @returns 如果需要更新，则返回 true；否则返回 false。
+ */
+async function needsSummaryUpdate(novelId: string): Promise<boolean> {
+  const novel = await prisma.novel.findUnique({
+    where: { id: novelId },
+    select: {
+      storySoFarSummary: true,
+      lastSummaryChapter: true,
+      chapters: {
+        orderBy: { chapterNumber: "desc" },
+        take: 1,
+      },
+    },
+  });
+
+  if (!novel) return false;
+
+  const lastChapterNumber = novel.chapters[0]?.chapterNumber || 0;
+  const lastSummaryChapter = novel.lastSummaryChapter || 0;
+
+  // 如果长篇摘要为空，或者最新章节数超过上次总结的章节数一个批次，则需要更新
+  return (
+    !novel.storySoFarSummary ||
+    lastChapterNumber >= lastSummaryChapter + CHAPTERS_PER_SUMMARY_BATCH
+  );
+}
+
+/**
+ * 更新小说的“故事至今”长篇摘要。
+ * 这是一个滚动更新的摘要，会整合最近未被总结的章节。
+ * @param novelId - 小说 ID。
+ * @param generationConfig - AI 模型配置。
+ */
+export async function updateStorySoFarSummary(
+  novelId: string,
+  generationConfig: ModelConfig,
+  retries = 30,
+): Promise<void> {
+  const needsUpdate = await needsSummaryUpdate(novelId);
+  if (!needsUpdate) {
+    logger.info(`小说 ${novelId} 的长篇摘要无需更新。`);
+    return;
+  }
+
+  logger.info(`开始为小说 ${novelId} 更新长篇摘要...`);
+
+  const novel = await prisma.novel.findUnique({
+    where: { id: novelId },
+    select: { storySoFarSummary: true, lastSummaryChapter: true },
+  });
+
+  if (!novel) {
+    logger.warn(`在尝试更新摘要时未找到小说 ${novelId}。`);
+    return;
+  }
+
+  const lastSummaryChapter = novel.lastSummaryChapter || 0;
+
+  // 1. 获取自上次总结以来的所有新章节
+  const newChapters = await prisma.novelChapter.findMany({
+    where: {
+      novelId,
+      chapterNumber: {
+        gt: lastSummaryChapter,
+      },
+    },
+    orderBy: { chapterNumber: "asc" },
+  });
+
+  if (newChapters.length === 0) {
+    logger.info(`小说 ${novelId} 没有需要总结的新章节。`);
+    return;
+  }
+
+  // 2. 将新章节内容合并为“近期进展”
+  const recentDevelopments = newChapters
+    .map((c) => `# 第 ${c.chapterNumber} 章: ${c.title}\\n${c.content}`)
+    .join("\\n\\n---\\n\\n");
+
+  // 3. 构建 prompt
+  const prompt = interpolatePrompt(STORY_SO_FAR_SUMMARY_UPDATE_PROMPT, {
+    existingSummary:
+      novel.storySoFarSummary || "这是故事的开端，请根据近期情节进行首次总结。",
+    recentDevelopments,
+  });
+
+  // 4. 调用 AI 进行融合
+  for (let i = 0; i < retries; i++) {
+    try {
+      const stream = await getChatCompletion(
+        "更新故事长篇摘要",
+        generationConfig,
+        prompt,
+        { stream: true },
+      );
+      if (!stream) throw new Error("AI未能返回有效的摘要更新流。");
+
+      const updatedSummary = await readStreamToString(stream);
+      if (!updatedSummary.trim()) {
+        throw new Error("AI返回了空的摘要。");
+      }
+
+      // 5. 将新摘要和更新后的章节号存回数据库
+      const latestChapterNumberInBatch =
+        newChapters[newChapters.length - 1].chapterNumber;
+      await prisma.novel.update({
+        where: { id: novelId },
+        data: {
+          storySoFarSummary: updatedSummary,
+          lastSummaryChapter: latestChapterNumberInBatch,
+        },
+      });
+
+      logger.info(
+        `已成功为小说 ${novelId} 更新长篇摘要，最新已总结章节为: ${latestChapterNumberInBatch}`,
+      );
+      return; // 成功后退出
+    } catch (error) {
+      logger.warn(
+        `更新小说 ${novelId} 的长篇摘要失败 (尝试 ${i + 1}/${retries})`,
+        error,
+      );
+      if (i === retries - 1) {
+        logger.error(
+          `小说 ${novelId} 的长篇摘要更新已达最大重试次数，操作失败。`,
+        );
+        // 在这里我们选择不抛出错误，以免阻塞主流程，但记录严重错误
+        return;
+      }
+      await new Promise((res) => setTimeout(res, 2000 * (i + 1)));
+    }
+  }
+}
 
 /**
  * 总结小说的最近几个章节。
