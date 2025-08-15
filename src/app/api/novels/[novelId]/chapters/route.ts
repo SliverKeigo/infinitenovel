@@ -27,9 +27,9 @@ const chapterGenerationRequestSchema = z.object({
  */
 export async function POST(
   request: Request,
-  context: { params: { novelId: string } },
+  context: { params: Promise<{ novelId: string }> },
 ) {
-  const { novelId } = context.params;
+  const { novelId } = await context.params;
 
   try {
 
@@ -86,9 +86,9 @@ export async function POST(
  */
 export async function GET(
   request: Request,
-  context: { params: { novelId: string } },
+  context: { params: Promise<{ novelId: string }> },
 ) {
-  const { novelId } = context.params;
+  const { novelId } = await context.params;
   const { searchParams } = new URL(request.url);
   const page = parseInt(searchParams.get("page") || "1", 10);
   const pageSize = parseInt(searchParams.get("pageSize") || "10", 10);
