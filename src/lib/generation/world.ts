@@ -395,7 +395,21 @@ ${fusionPrompt}`,
         if (!response) {
           throw new Error(`AI 未返回 ${entityName} 的融合描述。`);
         }
-        return { name: entityName, content: response.trim() };
+
+        const parts = response.split("---");
+        const coreDefinition = parts[0].trim();
+
+        if (parts.length < 2) {
+          logger.warn(
+            `[世界演化] 实体 "${entityName}" 的 AI 响应未使用 '---' 分隔符，将使用完整响应作为核心设定。`,
+          );
+        }
+
+        if (!coreDefinition) {
+          throw new Error(`AI 返回了空的 ${entityName} 核心设定。`);
+        }
+
+        return { name: entityName, content: coreDefinition };
       } catch (error) {
         logger.warn(
           `[世界演化] 融合实体 "${entityName}" 失败 (尝试 ${i + 1}/${retries}):`,
