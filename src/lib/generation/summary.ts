@@ -4,6 +4,7 @@ import { ModelConfig } from "@/types/ai";
 import { getChatCompletion } from "@/lib/ai-client";
 import { SUMMARY_PROMPT } from "@/lib/prompts/summary.prompts";
 import { interpolatePrompt } from "@/lib/utils/prompt";
+import { readStreamToString } from "../utils/stream";
 
 /**
  * 总结小说的最近几个章节。
@@ -19,6 +20,7 @@ export async function summarizeRecentChapters(
   novelId: string,
   generationConfig: ModelConfig,
   chaptersToSummarize: number = 3,
+  retries = 30,
 ): Promise<string> {
   // 1. 从数据库获取最近的章节
   const recentChapters = await prisma.novelChapter.findMany({
@@ -49,20 +51,45 @@ export async function summarizeRecentChapters(
   });
 
   // 4. 调用 AI 服务获取摘要
-  logger.info(
-    `正在为小说 ${novelId} 总结最近 ${recentChapters.length} 个章节...`,
-  );
-  const summary = await getChatCompletion(
-    "总结最近章节",
-    generationConfig,
-    prompt,
-    { stream: false },
-  );
+  for (let i = 0; i < retries; i++) {
+    try {
+      logger.info(
+        `正在为小说 ${novelId} 总结最近 ${recentChapters.length} 个章节... (尝试 ${
+          i + 1
+        }/${retries})`,
+      );
+      logger.debug(`[章节总结] 为小说 ${novelId} 生成的 Prompt:\n${prompt}`);
+      const summaryStream = await getChatCompletion(
+        "总结最近章节",
+        generationConfig,
+        prompt,
+        { stream: true },
+      );
 
-  if (!summary) {
-    throw new Error("从 AI 服务生成摘要失败。");
+      if (!summaryStream) {
+        throw new Error("AI 服务未能成功生成摘要流。");
+      }
+
+      const summary = await readStreamToString(summaryStream);
+
+      if (!summary) {
+        throw new Error("从 AI 流中未能读取到任何内容。");
+      }
+
+      logger.info("最近章节总结成功。");
+      return summary;
+    } catch (error) {
+      logger.warn(
+        { err: error },
+        `为小说 ${novelId} 总结章节失败 (尝试 ${i + 1}/${retries})`,
+      );
+      if (i === retries - 1) {
+        logger.error(`为小说 ${novelId} 总结章节已达最大重试次数，操作失败。`);
+        throw error;
+      }
+      await new Promise((res) => setTimeout(res, 1000 * (i + 1)));
+    }
   }
 
-  logger.info("最近章节总结成功。");
-  return summary as string;
+  throw new Error("在所有重试后，总结章节仍然失败。");
 }

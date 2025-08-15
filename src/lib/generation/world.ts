@@ -229,7 +229,7 @@ export async function evolveWorldFromChapter(
   chapterContent: string,
   generationConfig: ModelConfig,
   embeddingConfig: ModelConfig,
-  retries = 5,
+  retries = 30,
 ): Promise<void> {
   logger.info(`[世界演化] 开始为小说 ${novelId} 进行世界演化...`);
 
