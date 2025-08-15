@@ -191,7 +191,7 @@ class GoogleClient implements AIClient {
                 if (text) {
                   controller.enqueue(new TextEncoder().encode(text));
                 }
-              } catch (e) {
+              } catch {
                 // 忽略不完整的 JSON
               }
             }

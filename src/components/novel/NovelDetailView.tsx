@@ -1,10 +1,7 @@
 import { Suspense } from "react";
-import { ChapterGenerator } from "@/components/novel/ChapterGenerator";
 import { NovelInfo } from "@/components/novel/NovelInfo";
-import { ChapterList } from "@/components/novel/ChapterList";
 import { WorldAnvilData } from "@/components/novel/WorldAnvilData";
 import { NovelInfoSkeleton } from "@/components/skeletons/NovelInfoSkeleton";
-import { ChapterListSkeleton } from "@/components/skeletons/ChapterListSkeleton";
 import { WorldAnvilSidebarSkeleton } from "@/components/skeletons/WorldAnvilSidebarSkeleton";
 import { ChapterManagement } from "./ChapterManagement";
 

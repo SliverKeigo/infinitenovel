@@ -23,7 +23,7 @@ export function safelyParseJson<T>(text: string): T | null {
 
   try {
     return JSON.parse(cleanedText);
-  } catch (error) {
+  } catch {
     console.error(
       "解析清理后的 JSON 字符串失败:",
       cleanedText,

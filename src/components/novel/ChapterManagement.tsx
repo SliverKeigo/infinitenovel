@@ -91,7 +91,8 @@ export function ChapterManagement({ novelId }: ChapterManagementProps) {
    * 它会计算新的总章节数和总页数，并自动跳转到最后一页以显示最新生成的章节。
    * @param newChapter - 新生成的章节对象。
    */
-  const handleNewChapter = (newChapter: NovelChapter) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleNewChapter = (_newChapter: NovelChapter) => {
     setState((prevState) => {
       const newTotalChapters = prevState.totalChapters + 1;
       const newTotalPages = Math.ceil(newTotalChapters / prevState.pageSize);

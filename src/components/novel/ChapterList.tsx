@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { NovelChapter } from "@prisma/client";
 import {
   FileText,
@@ -9,24 +8,11 @@ import {
   Loader2,
   BookOpen,
 } from "lucide-react";
-import { ChapterDetail } from "./ChapterDetail";
-import { Modal } from "@/components/ui/modal";
 
-type ChapterListProps = {
-  novelId: string;
-};
-
-interface ChaptersApiResponse {
-  chapters: NovelChapter[];
-  totalChapters: number;
-  totalPages: number;
-  currentPage: number;
-}
 
 // 这是一个纯粹的展示组件，负责渲染章节列表和分页控件
 export function ChapterList({
   chapters,
-  totalChapters,
   totalPages,
   currentPage,
   pageSize,
@@ -37,7 +23,6 @@ export function ChapterList({
   onChapterSelect,
 }: {
   chapters: NovelChapter[];
-  totalChapters: number;
   totalPages: number;
   currentPage: number;
   pageSize: number;

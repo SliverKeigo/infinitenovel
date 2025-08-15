@@ -2,7 +2,6 @@
 
 import { NovelChapter } from "@prisma/client";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { ModelConfig } from "@/types/ai";
 import { safelyParseJson } from "@/lib/utils";
 
@@ -22,8 +21,7 @@ export function ChapterGenerator({
   novelId,
   onChapterGenerated,
 }: ChapterGeneratorProps) {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");

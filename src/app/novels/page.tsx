@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { Suspense } from "react";
 import NovelsListView from "@/components/novel/NovelsListView";
 
 export default function NovelsPage() {
